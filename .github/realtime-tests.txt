@@ -48,3 +48,5 @@
 *two live engines over loopback agree on the beat*
 *without counter sampling the preview timer falls back*
 *map arrangement: a hidden screen's output keeps presenting*
+*an effect edit on the selected clip recompiles its preview off the render thread*
+*clip previews turn on and off live*
