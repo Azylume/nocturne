@@ -238,7 +238,10 @@ TEST_CASE("a rescan takes in new, changed and removed user ISF files without a r
     fs::remove(root.path / "isf-user/Test Tint.fs");
     CHECK(rescan(client)["shaders"].empty());
     CHECK_FALSE(azl::findEffect("userTestTint"));
-    CHECK(request(client, "rescan")["op"] == "rescan");
+    Message unchanged = request(client, "rescan");
+    while (unchanged.value("type", "") != "isf")
+        unchanged = client.next();
+    CHECK(unchanged["op"] == "rescan");
 }
 
 TEST_CASE("a user ISF transition takes its parameters, and switching to it compiles nothing")

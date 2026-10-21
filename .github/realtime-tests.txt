@@ -47,3 +47,4 @@
 *djlink: the receiver hears a loopback feed*
 *two live engines over loopback agree on the beat*
 *without counter sampling the preview timer falls back*
+*map arrangement: a hidden screen's output keeps presenting*
