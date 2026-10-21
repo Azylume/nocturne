@@ -1,0 +1,95 @@
+usage: nocturne [options]
+  --display ID    display of the starting screen, a full slice of the composition (default: the first display)
+  --main ID       display whose output sets the render clock's phase while attached (default: the first screen's)
+  --displays      list the attached displays with their ids and quit
+  --windowed      regular windows instead of borderless fullscreen
+  --virtual N     N simulated displays window-1..window-N, windows side by side on the main display
+  --offscreen     no windows and no app activation: the --virtual displays (default 1) render into textures and
+                  present to nothing at 60 Hz; stats still count
+  --slow ID:MS    hold every present of that display's output back by MS milliseconds
+  --seconds N     quit after N seconds
+  --fps N         render rate (default 60)
+  --size WxH      composition size (default 1920x1080)
+  --port N        protocol WebSocket port on every interface (default 7400). Clients on other machines must present
+                  this machine's pairing token, kept in the --state folder (default ~/Library/Application
+                  Support/Nocturne/State) as "token" and shown by nocturne-ctl token; clients on this machine need none
+  --library DIR   media library index folder (default ~/Library/Application Support/Nocturne/MediaLibrary)
+  --clip-cache MB bound on the two GOPs a clip playing backward holds (default 2048)
+  --preload MB    bound on the frames of clips preloaded for the next trigger (default 3072)
+  --kept-previews N
+                  clip previews kept for a selection back besides the watched ones (default 8)
+  --profile smooth|sharp
+                  smooth: the frame guard lowers resolution as the GPU time nears the frame budget; sharp: only once
+                  frames overrun it (default smooth)
+  --protect-transitions on|off
+                  during a transition the frame guard lowers resolution before a frame would drop (default off)
+  --bake-static on|off
+                  a chain's leading passes whose inputs stay the same (no modulation, no clock, a still picture) are
+                  drawn once and reused, with the same picture (default off)
+  --seed N        Random Jump and random Autopilot seed (default random)
+  --clip-previews start with a moving preview of the clip a UI has selected and is not playing, with the clip's own
+                  effects (off by default: on an engine that drives outputs it takes keyframe decodes and small GPU
+                  draws besides the show's; while off a UI shows its still). A UI or `nocturne-ctl clippreviews on|off`
+                  turns them on and off live
+  --presets FILE  effect presets file (default ~/Library/Application Support/Nocturne/Presets.json)
+  --macro-sets FILE
+                  Macro Sets file (default ~/Library/Application Support/Nocturne/MacroSets.json)
+  --stats-json F  also append the stats as one JSON object per second to file F
+  --frame-trace F on quit, write the timeline of every rendered frame and every present to file F as JSON
+                  lines
+  --realtime-frames
+                  run the render and present threads as time-constraint threads: their timed waits wake on time
+                  instead of a few ms late, at some CPU, and they can starve other threads on a busy machine
+  --gpu-profile   GPU time per pass by layer, fade side (in, out) and effects in the stats, and per layer and side on
+                  the console (costs a little GPU time)
+  --no-frame-guard  never draw layers at half resolution to keep the frame rate (the composition can also turn it off)
+  --fsr-upscale   layers the frame guard draws at half resolution scale up with FSR 1 instead of bilinearly
+                  (sharper, but costs more GPU time than half resolution saves on light chains)
+  --debug-frame-bits  a strip of bars along the bottom of every output shows the render frame index in binary
+                  (16 bits, most significant left, white = 1), so dropped or repeated frames are visible
+  --opaque-outputs  outputs draw slices of the composition with no masks or soft edge without blending (the same
+                  picture; for an A/B of the outputs' GPU time)
+  --audio-input D audio input device by UID, name or part of a name; the default input when missing (default:
+                  the default input; "system": all system audio; "app:NAME": one app's audio, by part of its
+                  bundle ID or name; "off" captures nothing and never asks for the microphone; NOCTURNE_NO_AUDIO_INPUT=1 in
+                  the environment keeps every input off, for tests and laptop runs)
+  --audio-channels LIST
+                  1-based input channels mixed to mono, e.g. 2 or 1,2 (default: all). With --state, the input
+                  picked at runtime reopens on every start (a crash, a hang, a supervisor or login restart) while
+                  --audio-input and --audio-channels stay as they were when it was picked; changed flags, or a
+                  picked device no longer attached, open the flags' input
+  --audio-gain G  auto, or a fixed gain in dB (default auto)
+  --audio-latency MS
+                  delay audio reactions by MS milliseconds (0..1000, default 0)
+  --audio-log FILE
+                  append the audio analysis as JSON lines at 10 Hz, with input events
+  --state DIR     keep the composition and where the show is in DIR and resume them on start; record what is opened
+                  or compiled for the supervisor's skip list, and skip what is on it
+  --composition FILE
+                  start on this composition file and play it; with --state, only when the saved state holds another
+                  show: the saved state of the same FILE wins even after FILE changes (nocturne-ctl load reloads it),
+                  and a copy of it goes to DIR/backups before FILE replaces it
+  --media-root DIR
+                  where the composition file's media paths start (default: the file's folder)
+  --safe-mode REASON
+                  show black (or --fallback-image) with REASON on every display and run nothing else
+  --fallback-image FILE
+                  the picture safe mode shows
+  --node          start as a node: follow the main engine found on the network (Bonjour, _nocturne._tcp), copy its
+                  composition and the media this machine lacks, and keep playing alone whenever it is away
+  --follow MAIN   as --node, following the engine advertised as MAIN, or HOST[:PORT]; NOCTURNE_TOKEN in the
+                  environment is the main machine's pairing token
+  --name NAME     the name this engine advertises (default: the computer name)
+  With --state, the cache sizes, the profile, protect-transitions and bake-static set at runtime (nocturne-ctl settings, the UI's
+  Settings) are kept and come back on every start; these flags override what is kept.
+  --record-path DIR
+                  the folder recordings go to (default ~/Movies/Nocturne). With --state, the recording settings set at
+                  runtime (nocturne-ctl record, the UI's Settings) are kept and come back on every start; these flags
+                  override what is kept
+  --record-reserve MB
+                  a recording stops, and none starts, when less than the larger of MB and the percentage below stays
+                  free on its disk (default 20480; nocturne-ctl record reserve changes it live)
+  --record-reserve-percent N
+                  the reserve as a percentage of the recording's disk (default 10)
+  --mic-check     print the microphone permission (asking for it if it was never decided) and the input devices,
+                  then quit; exit status 0 when access is granted

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Venue desk</title>
+<style>
+:root {
+  --bg: #0b0b0e;
+  --panel: #17171d;
+  --text: #f2f2f5;
+  --muted: #8b8b96;
+  --live: #3ddc84;
+  --next: #f5b841;
+  --line: #2a2a33;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 18px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  -webkit-text-size-adjust: 100%;
+}
+header { margin-bottom: 16px; }
+#venue { font-size: 28px; font-weight: 700; }
+#date, #status { color: var(--muted); font-size: 16px; }
+#banner {
+  display: none; margin: 0 0 16px; padding: 12px 14px; border-radius: 10px;
+  background: #4a1d1d; color: #ffd7d7; font-weight: 600;
+}
+body.offline #banner { display: block; }
+body.offline main { opacity: 0.35; filter: grayscale(1); }
+#lineup { display: flex; flex-direction: column; gap: 12px; }
+.slot {
+  display: block; width: 100%; text-align: left; padding: 16px 18px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--panel); color: var(--text); font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.slot .dj { display: block; font-size: 28px; font-weight: 700; }
+.slot .meta { display: block; margin-top: 4px; color: var(--muted); font-size: 17px; }
+.slot.live { background: var(--live); border-color: var(--live); color: #04140a; }
+.slot.live .meta { color: #0d3a1f; }
+.slot.next { border-color: var(--next); }
+.slot.next .meta { color: var(--next); }
+.slot.played { opacity: 0.5; }
+.slot.missing { opacity: 0.35; border-style: dashed; }
+#empty { display: none; padding: 24px 0; }
+#empty .title { font-size: 26px; font-weight: 700; }
+#empty .live { margin-top: 8px; color: var(--muted); }
+body.empty #empty { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div id="venue">Venue desk</div>
+  <div id="date"></div>
+  <div id="status"></div>
+</header>
+<div id="banner">No connection to the show machine</div>
+<main>
+  <div id="empty"><div class="title">No lineup tonight</div><div class="live" id="liveDeck"></div></div>
+  <div id="lineup"></div>
+</main>
+<script>
+"use strict";
+const POLL_MS = 2000;
+const STALE_MS = 6000;
+let state = null;
+let fetchedAt = 0;
+let lastOk = 0;
+let timer = null;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function minutesText(seconds) {
+  const m = Math.max(0, Math.ceil(seconds / 60));
+  if (m < 60) return "in " + m + " min";
+  return "in " + Math.floor(m / 60) + " h " + (m % 60) + " min";
+}
+
+function serverNow() {
+  return state.now + (Date.now() - fetchedAt) / 1000;
+}
+
+function render() {
+  if (!state) return;
+  document.getElementById("venue").textContent = state.venue || "Venue desk";
+  const night = state.tonight;
+  document.body.classList.toggle("empty", !night);
+  document.getElementById("date").textContent = night ? night.date : "";
+  document.getElementById("liveDeck").textContent = "Live: " + (state.deckName || "deck " + state.deck);
+  const list = document.getElementById("lineup");
+  list.textContent = "";
+  if (!night) {
+    document.getElementById("status").textContent = "";
+    return;
+  }
+  for (const slot of night.lineup) {
+    const b = el("button", "slot");
+    b.type = "button";
+    b.dataset.slot = slot.slot;
+    b.setAttribute("aria-disabled", "true");
+    if (slot.live) b.classList.add("live");
+    if (slot.next) b.classList.add("next");
+    if (slot.played) b.classList.add("played");
+    if (slot.missing) b.classList.add("missing");
+    b.appendChild(el("span", "dj", slot.dj));
+    let meta = slot.time + " · " + (slot.missing ? "deck missing" : slot.deckName);
+    if (slot.live) meta += " · live";
+    if (slot.next) meta += " · " + minutesText(slot.at - serverNow());
+    b.appendChild(el("span", "meta", meta));
+    list.appendChild(b);
+  }
+  const next = night.next;
+  document.getElementById("status").textContent =
+    next ? "Next: " + next.dj + " at " + next.time + ", " + minutesText(next.at - serverNow()) : "";
+}
+
+function setOffline(offline) {
+  document.body.classList.toggle("offline", offline);
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/state", { cache: "no-store" });
+    const s = await r.json();
+    if (!r.ok || !s.connected) throw new Error("engine");
+    state = s;
+    fetchedAt = Date.now();
+    lastOk = fetchedAt;
+    setOffline(false);
+    render();
+  } catch (e) {
+    if (Date.now() - lastOk > STALE_MS) setOffline(true);
+  }
+}
+
+function schedule() {
+  clearInterval(timer);
+  timer = null;
+  if (document.visibilityState === "visible") timer = setInterval(poll, POLL_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") poll();
+  schedule();
+});
+window.addEventListener("pageshow", poll);
+setInterval(() => {
+  if (Date.now() - lastOk > STALE_MS) setOffline(true);
+  render();
+}, 1000);
+lastOk = Date.now();
+poll();
+schedule();
+</script>
+</body>
+</html>

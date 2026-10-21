@@ -1,0 +1,379 @@
+{
+  "composition": {
+    "bpm": 120.0,
+    "column": 1,
+    "deck": 1,
+    "decks": [
+      {
+        "columns": [
+          {
+            "id": 1,
+            "name": "Column 1"
+          },
+          {
+            "id": 2,
+            "name": "Column 2"
+          }
+        ],
+        "id": 1,
+        "name": "opener"
+      },
+      {
+        "columns": [
+          {
+            "id": 3,
+            "name": "Column 1"
+          }
+        ],
+        "id": 2,
+        "name": "closer"
+      }
+    ],
+    "effects": [],
+    "guides": [],
+    "layers": [
+      {
+        "armed": [],
+        "autopilot": {
+          "bars": 4,
+          "mode": "off"
+        },
+        "blend": "normal",
+        "bypass": false,
+        "clip": {
+          "effects": [],
+          "hash": "1ed1b3eb76e0a1ea2c8917c278df5643407c518783cf4d074959ca5488d5acec",
+          "name": "opener_sun1",
+          "step": 0,
+          "transition": null,
+          "transport": {
+            "beats": 64,
+            "jumpDistance": 2.0,
+            "jumpInterval": 1.0,
+            "playMode": "loop",
+            "sync": "timeline"
+          }
+        },
+        "clips": {
+          "1": {
+            "effects": [],
+            "hash": "1ed1b3eb76e0a1ea2c8917c278df5643407c518783cf4d074959ca5488d5acec",
+            "name": "opener_sun1",
+            "path": "opener_sun1.mp4",
+            "size": 15,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 64,
+              "jumpDistance": 2.0,
+              "jumpInterval": 1.0,
+              "playMode": "loop",
+              "sync": "timeline"
+            }
+          },
+          "2": {
+            "effects": [],
+            "hash": "665bd8b4342fd173db24e7a01d42f8b111f874a6bd98ce63900fab71e1991d21",
+            "name": "opener_sun2",
+            "path": "opener_sun2.mp4",
+            "size": 15,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 64,
+              "jumpDistance": 2.0,
+              "jumpInterval": 1.0,
+              "playMode": "loop",
+              "sync": "timeline"
+            }
+          },
+          "3": {
+            "effects": [],
+            "hash": "",
+            "name": "closer_moon1",
+            "path": "/Volumes/show/loops/closer_moon1.mov",
+            "size": 0,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 16,
+              "jumpDistance": 2.0,
+              "jumpInterval": 1.0,
+              "playMode": "loop",
+              "sync": "timeline"
+            }
+          }
+        },
+        "decks": {
+          "1": {
+            "effects": [
+              {
+                "id": 4,
+                "params": {
+                  "alpha": 1.0,
+                  "brightness": 1.0,
+                  "hue": 0.007440476190476188,
+                  "invert": 0.0,
+                  "mix": 1.0,
+                  "saturation": 0.8808988764044944
+                },
+                "type": "colorize"
+              }
+            ]
+          },
+          "2": {
+            "effects": [
+              {
+                "id": 6,
+                "params": {
+                  "alpha": 1.0,
+                  "brightness": 1.0,
+                  "hue": 0.09560723514211888,
+                  "invert": 0.0,
+                  "mix": 1.0,
+                  "saturation": 0.13708820403825706
+                },
+                "type": "colorize"
+              }
+            ]
+          }
+        },
+        "effects": [],
+        "id": 1,
+        "name": "base",
+        "opacity": 1.0,
+        "playing": {
+          "beat": null,
+          "column": 1
+        },
+        "solo": false,
+        "transition": {
+          "beats": 0.0,
+          "mode": "alpha"
+        }
+      },
+      {
+        "armed": [],
+        "autopilot": {
+          "bars": 4,
+          "mode": "off"
+        },
+        "blend": "add",
+        "bypass": false,
+        "clip": {
+          "effects": [],
+          "hash": "a471cf91c1ea671777ffe404432e1b78866993e67809d45bafb73a097a5bb915",
+          "name": "loop-01",
+          "step": 0,
+          "transition": null,
+          "transport": {
+            "beats": 32,
+            "jumpDistance": 4.0,
+            "jumpInterval": 4.0,
+            "playMode": "randomJump",
+            "sync": "bpm"
+          }
+        },
+        "clips": {
+          "1": {
+            "effects": [],
+            "hash": "a471cf91c1ea671777ffe404432e1b78866993e67809d45bafb73a097a5bb915",
+            "name": "loop-01",
+            "path": "loop-01.mp4",
+            "size": 11,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 32,
+              "jumpDistance": 4.0,
+              "jumpInterval": 4.0,
+              "playMode": "randomJump",
+              "sync": "bpm"
+            }
+          },
+          "2": {
+            "effects": [],
+            "hash": "98f77f8b5d010087f0cb80a5f58d45bf8c549174a5a9820157d026b6d429c922",
+            "name": "loop-02",
+            "path": "loop-02.mp4",
+            "size": 11,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 16,
+              "jumpDistance": 16.0,
+              "jumpInterval": 1.0,
+              "playMode": "reverse",
+              "sync": "timeline"
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": 1,
+            "params": {
+              "mix": 1.0,
+              "multiplier": 0.3
+            },
+            "type": "edgeDetection"
+          },
+          {
+            "id": 2,
+            "params": {
+              "feedback": 0.9,
+              "mix": 1.0
+            },
+            "type": "trails"
+          }
+        ],
+        "id": 2,
+        "name": "low",
+        "opacity": 0.0,
+        "playing": {
+          "beat": null,
+          "column": 1
+        },
+        "solo": false,
+        "transition": {
+          "beats": 0.0,
+          "mode": "alpha"
+        }
+      },
+      {
+        "armed": [],
+        "autopilot": {
+          "bars": 4,
+          "mode": "off"
+        },
+        "blend": "add",
+        "bypass": false,
+        "clip": {
+          "effects": [],
+          "hash": "31ff032c32271fc60e7a7cd1f2c32e3b53e1ab207fd45dec3eb337d996491a0d",
+          "name": "still_logo",
+          "step": 0,
+          "transition": null,
+          "transport": {
+            "beats": 16,
+            "jumpDistance": 2.0,
+            "jumpInterval": 1.0,
+            "playMode": "loop",
+            "sync": "timeline"
+          }
+        },
+        "clips": {
+          "1": {
+            "effects": [],
+            "hash": "31ff032c32271fc60e7a7cd1f2c32e3b53e1ab207fd45dec3eb337d996491a0d",
+            "name": "still_logo",
+            "path": "still_logo.mp4",
+            "size": 14,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 16,
+              "jumpDistance": 2.0,
+              "jumpInterval": 1.0,
+              "playMode": "loop",
+              "sync": "timeline"
+            }
+          },
+          "2": {
+            "effects": [],
+            "hash": "64d8b596bc8d86fdfa3754df17840158c60043301bb50edf7b706d3408b3cb4b",
+            "name": "text_title",
+            "path": "text_title.mp4",
+            "size": 14,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 2,
+              "jumpDistance": 2.0,
+              "jumpInterval": 1.0,
+              "playMode": "loop",
+              "sync": "timeline"
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": 3,
+            "params": {
+              "add": 0.0,
+              "alpha": 0.0,
+              "audioBand": 0.0,
+              "audioMix": 0.0,
+              "audioWidth": 0.0,
+              "blue": 0.0,
+              "direction": 0.0,
+              "directionSpread": 0.0,
+              "evolve": 0.0,
+              "feather": 0.0,
+              "green": 0.0,
+              "invert": 0.0,
+              "jitter": 0.0,
+              "maxWidth": 1.0,
+              "minWidth": 1.0,
+              "mix": 1.0,
+              "movement": 0.0,
+              "number": 32.5,
+              "red": 0.0,
+              "reshuffle": 0.0,
+              "speed": 1.0,
+              "speedSpread": 0.0,
+              "spread": 0.0,
+              "width": 0.75
+            },
+            "type": "stripper"
+          }
+        ],
+        "id": 3,
+        "name": "text",
+        "opacity": 0.8,
+        "playing": {
+          "beat": null,
+          "column": 1
+        },
+        "solo": false,
+        "transition": {
+          "beats": 0.0,
+          "mode": "alpha"
+        }
+      }
+    ],
+    "macros": [],
+    "modulators": [
+      {
+        "attack": 10.0,
+        "beats": 1.0,
+        "combine": "add",
+        "curve": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "envelope": "meter",
+        "feature": "bass",
+        "hold": 40.0,
+        "id": 1,
+        "max": 1.0,
+        "min": 0.0,
+        "name": "low opacity",
+        "phase": 0.0,
+        "release": 500.0,
+        "shape": "sine",
+        "source": "audio",
+        "target": {
+          "layer": 2,
+          "param": "opacity"
+        }
+      }
+    ],
+    "quantise": 0,
+    "screens": [],
+    "testCard": false
+  },
+  "format": "nocturne.composition",
+  "version": 1
+}

@@ -1,0 +1,1 @@
+{"type": "audio", "op": "state", "time": 12.3, "live": true, "silent": false, "overruns": 0, "gainDb": 6.0, "values": {"level": 0.4, "kick": 0.8}, "onsets": {"kick": 3, "snare": 1, "hat": 5}, "spectrum": [], "channels": []}

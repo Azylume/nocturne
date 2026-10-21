@@ -1,0 +1,12 @@
+#include "effects/isf.hpp"
+
+namespace azl {
+
+const std::vector<IsfSource>& isfSources()
+{
+    static const std::vector<IsfSource> sources{
+@isf_entries@    };
+    return sources;
+}
+
+} // namespace azl

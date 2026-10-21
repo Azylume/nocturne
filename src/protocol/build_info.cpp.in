@@ -1,0 +1,17 @@
+#include "protocol/build_info.hpp"
+
+namespace azl {
+
+namespace {
+
+// tools/deploy-mini.sh reads the id out of the binaries by this prefix.
+constexpr char kBuild[] = "nocturne-build @NOCTURNE_BUILD_ID@";
+
+} // namespace
+
+const char* buildId()
+{
+    return kBuild + sizeof("nocturne-build");
+}
+
+} // namespace azl

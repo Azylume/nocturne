@@ -1,0 +1,334 @@
+{
+  "report": {
+    "approximated": [],
+    "ignored": [
+      "soft edging settings: no slice has soft edge on"
+    ],
+    "mapped": [
+      "screen Inner left / slice Slice: input rect 0,0 1x1",
+      "screen Inner left: 1 slice(s), output OutputDeviceVirtual 'Inner left' 1920x1080 (VirtualInner left) -> display VirtualInner left",
+      "screen Inner mid / slice Slice: input rect 0,0 1x1",
+      "screen Inner mid: 1 slice(s), output OutputDeviceVirtual 'Inner mid' 1920x1080 (VirtualInner mid) -> display VirtualInner mid",
+      "screen Inner right / slice Slice: input rect 0,0 1x1",
+      "screen Inner right: 1 slice(s), output OutputDeviceVirtual 'Inner right' 1920x1080 (VirtualInner right) -> display VirtualInner right",
+      "screen Outer A  / slice Slice: input rect 0,0 1x1",
+      "screen Outer A : 1 slice(s), output OutputDeviceVirtual 'Outer A ' 1920x1080 (VirtualOuter A ) -> display VirtualOuter A ",
+      "screen Outer B / slice Slice: input rect 0,0 1x1",
+      "screen Outer B: 1 slice(s), output OutputDeviceVirtual 'Outer B' 1920x1080 (VirtualOuter B) -> display VirtualOuter B",
+      "test card off on every screen: Advanced Output files do not save one"
+    ],
+    "unsupported": []
+  },
+  "screens": [
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualInner left",
+      "id": 1,
+      "masks": [],
+      "name": "Inner left",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 1,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualInner mid",
+      "id": 2,
+      "masks": [],
+      "name": "Inner mid",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 2,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualInner right",
+      "id": 3,
+      "masks": [],
+      "name": "Inner right",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 3,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualOuter A ",
+      "id": 4,
+      "masks": [],
+      "name": "Outer A ",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 4,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualOuter B",
+      "id": 5,
+      "masks": [],
+      "name": "Outer B",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 5,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    }
+  ]
+}

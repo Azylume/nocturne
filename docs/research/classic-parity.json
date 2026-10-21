@@ -1,0 +1,1844 @@
+{
+ "classicColorize": {
+  "pass": 1.0,
+  "cases": 66,
+  "medianMae": 0.0,
+  "byControl": {
+   "colorAlpha": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.54,
+    "minSsim": 0.9989,
+    "worstShownGap": 0.0
+   },
+   "colorBlue": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.27,
+    "minSsim": 0.9999,
+    "worstShownGap": 0.0
+   },
+   "colorGreen": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.27,
+    "minSsim": 0.999,
+    "worstShownGap": 0.0
+   },
+   "colorRed": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.27,
+    "minSsim": 0.9984,
+    "worstShownGap": 0.0
+   },
+   "contrast": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.01,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "greysKeep": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "greysTolerance": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.89,
+    "minSsim": 0.9982,
+    "worstShownGap": 0.0
+   },
+   "invert": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "mode": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.04,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "preset": {
+    "cases": 3,
+    "passing": 3,
+    "worstMae": 0.04,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "weighted": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicStripper": {
+  "pass": 0.427,
+  "cases": 124,
+  "medianMae": 17.53,
+  "byControl": {
+   "alpha": {
+    "cases": 9,
+    "passing": 0,
+    "worstMae": 44.89,
+    "minSsim": 0.3907,
+    "worstShownGap": 0.568
+   },
+   "blue": {
+    "cases": 9,
+    "passing": 0,
+    "worstMae": 38.0,
+    "minSsim": 0.6243,
+    "worstShownGap": 0.369
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 17.53,
+    "minSsim": 0.6255,
+    "worstShownGap": 0.027
+   },
+   "direction": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 20.58,
+    "minSsim": 0.6032,
+    "worstShownGap": 0.066
+   },
+   "directionSpread": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 32.15,
+    "minSsim": 0.2975,
+    "worstShownGap": 0.027
+   },
+   "feather": {
+    "cases": 9,
+    "passing": 0,
+    "worstMae": 17.04,
+    "minSsim": 0.6243,
+    "worstShownGap": 0.359
+   },
+   "globalWidth": {
+    "cases": 9,
+    "passing": 3,
+    "worstMae": 37.0,
+    "minSsim": 0.2012,
+    "worstShownGap": 0.177
+   },
+   "green": {
+    "cases": 9,
+    "passing": 0,
+    "worstMae": 39.32,
+    "minSsim": 0.6243,
+    "worstShownGap": 0.369
+   },
+   "maxWidth": {
+    "cases": 9,
+    "passing": 1,
+    "worstMae": 41.98,
+    "minSsim": 0.1086,
+    "worstShownGap": 0.9
+   },
+   "minWidth": {
+    "cases": 9,
+    "passing": 3,
+    "worstMae": 20.86,
+    "minSsim": 0.5141,
+    "worstShownGap": 0.321
+   },
+   "mode": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 131.98,
+    "minSsim": 0.1823,
+    "worstShownGap": 0.039
+   },
+   "movementType": {
+    "cases": 9,
+    "passing": 7,
+    "worstMae": 42.55,
+    "minSsim": 0.0873,
+    "worstShownGap": 0.272
+   },
+   "number": {
+    "cases": 9,
+    "passing": 7,
+    "worstMae": 17.53,
+    "minSsim": 0.6255,
+    "worstShownGap": 0.336
+   },
+   "preset": {
+    "cases": 6,
+    "passing": 4,
+    "worstMae": 128.71,
+    "minSsim": 0.4068,
+    "worstShownGap": 0.155
+   },
+   "red": {
+    "cases": 9,
+    "passing": 0,
+    "worstMae": 38.43,
+    "minSsim": 0.6243,
+    "worstShownGap": 0.369
+   }
+  },
+  "statistics": {
+   "method": "our frame within the spread of the reference instances (share shown +-0.05, strips across the middle row or column +-1, their mean width +-15 %)",
+   "instances": 5,
+   "pass": 0.968,
+   "cases": 124,
+   "byControl": {
+    "alpha": {
+     "cases": 9,
+     "passing": 9
+    },
+    "blue": {
+     "cases": 9,
+     "passing": 9
+    },
+    "default": {
+     "cases": 1,
+     "passing": 1
+    },
+    "direction": {
+     "cases": 9,
+     "passing": 9
+    },
+    "directionSpread": {
+     "cases": 9,
+     "passing": 9
+    },
+    "feather": {
+     "cases": 9,
+     "passing": 9
+    },
+    "globalWidth": {
+     "cases": 9,
+     "passing": 9
+    },
+    "green": {
+     "cases": 9,
+     "passing": 9
+    },
+    "maxWidth": {
+     "cases": 9,
+     "passing": 9
+    },
+    "minWidth": {
+     "cases": 9,
+     "passing": 7
+    },
+    "mode": {
+     "cases": 9,
+     "passing": 9
+    },
+    "movementType": {
+     "cases": 9,
+     "passing": 8
+    },
+    "number": {
+     "cases": 9,
+     "passing": 9
+    },
+    "preset": {
+     "cases": 6,
+     "passing": 5
+    },
+    "red": {
+     "cases": 9,
+     "passing": 9
+    }
+   }
+  }
+ },
+ "classicAutoMask": {
+  "pass": 1.0,
+  "cases": 16,
+  "medianMae": 0.0,
+  "byControl": {
+   "channel": {
+    "cases": 4,
+    "passing": 4,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "contrast": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.02,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "invert": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicKaleidoscope": {
+  "pass": 1.0,
+  "cases": 41,
+  "medianMae": 0.0,
+  "byControl": {
+   "angles": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "blackBG": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "inputRotation": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "preset": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "rotation": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "zoom": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicMirror": {
+  "pass": 1.0,
+  "cases": 37,
+  "medianMae": 0.0,
+  "byControl": {
+   "blackBG": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "flipX": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "flipY": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "inOut": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "preset": {
+    "cases": 3,
+    "passing": 3,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "x": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "y": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicShiftRgb": {
+  "pass": 1.0,
+  "cases": 50,
+  "medianMae": 0.0,
+  "byControl": {
+   "b": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "blackBG": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "distance": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "g": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "mode": {
+    "cases": 6,
+    "passing": 6,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "preset": {
+    "cases": 5,
+    "passing": 5,
+    "worstMae": 0.61,
+    "minSsim": 0.9909,
+    "worstShownGap": 0.0
+   },
+   "r": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.37,
+    "minSsim": 0.9999,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicTwitch": {
+  "pass": 0.992,
+  "cases": 132,
+  "medianMae": 0.0,
+  "byControl": {
+   "blackBG": {
+    "cases": 2,
+    "passing": 2,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "blurFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "globalTwitch": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "lightFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxBlur": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxLight": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxOpacity": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxPosX": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxPosY": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxRGBShift": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "maxScale": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "opacityFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "posFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "preset": {
+    "cases": 3,
+    "passing": 2,
+    "worstMae": 13.8,
+    "minSsim": 0.7257,
+    "worstShownGap": 0.059
+   },
+   "rgbFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   },
+   "scaleFrequency": {
+    "cases": 9,
+    "passing": 9,
+    "worstMae": 0.0,
+    "minSsim": 1.0,
+    "worstShownGap": 0.0
+   }
+  }
+ },
+ "classicBrightnessContrast": {
+  "pass": 1.0,
+  "cases": 57,
+  "medianMae": 0.0,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "brightness": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.17,
+    "minSsim": 0.9987
+   },
+   "contrast": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.4,
+    "minSsim": 0.9971
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.0,
+    "minSsim": 1.0
+   }
+  }
+ },
+ "classicHueRotate": {
+  "pass": 1.0,
+  "cases": 84,
+  "medianMae": 0.01,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.0,
+    "minSsim": 1.0
+   },
+   "hueRotate": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.18,
+    "minSsim": 0.9982
+   },
+   "hueScale": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.08,
+    "minSsim": 0.9988
+   },
+   "satScale": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.36,
+    "minSsim": 0.9975
+   }
+  }
+ },
+ "classicLevels": {
+  "pass": 1.0,
+  "cases": 84,
+  "medianMae": 0.0,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "base": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.3,
+    "minSsim": 0.9989
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.0,
+    "minSsim": 1.0
+   },
+   "midpoint": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.24,
+    "minSsim": 0.9989
+   },
+   "ratio": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.38,
+    "minSsim": 0.9972
+   }
+  }
+ },
+ "classicThreshold": {
+  "pass": 0.991,
+  "cases": 114,
+  "medianMae": 0.0,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "alpha": {
+    "cases": 9,
+    "pass": 9,
+    "worstMae": 0.01,
+    "minSsim": 0.9999
+   },
+   "color1": {
+    "cases": 24,
+    "pass": 24,
+    "worstMae": 0.01,
+    "minSsim": 0.9999
+   },
+   "color2": {
+    "cases": 24,
+    "pass": 24,
+    "worstMae": 0.01,
+    "minSsim": 0.9999
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.01,
+    "minSsim": 0.9999
+   },
+   "smoothness": {
+    "cases": 27,
+    "pass": 26,
+    "worstMae": 1.58,
+    "minSsim": 0.9594
+   },
+   "threshold": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.01,
+    "minSsim": 0.9998
+   }
+  }
+ },
+ "classicMirrorQuad": {
+  "pass": 1.0,
+  "cases": 18,
+  "medianMae": 0.03,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.07,
+    "minSsim": 0.9992
+   },
+   "flipX": {
+    "cases": 6,
+    "pass": 6,
+    "worstMae": 0.08,
+    "minSsim": 0.9991
+   },
+   "flipXY": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.08,
+    "minSsim": 0.9991
+   },
+   "flipY": {
+    "cases": 6,
+    "pass": 6,
+    "worstMae": 0.07,
+    "minSsim": 0.9991
+   }
+  }
+ },
+ "classicPolarKaleido": {
+  "pass": 1.0,
+  "cases": 84,
+  "medianMae": 0.02,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "angle": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.05,
+    "minSsim": 0.9982
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.03,
+    "minSsim": 0.9993
+   },
+   "parts": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.1,
+    "minSsim": 0.9957
+   },
+   "rings": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.04,
+    "minSsim": 0.9992
+   }
+  }
+ },
+ "classicEdgeDetection": {
+  "pass": 1.0,
+  "cases": 93,
+  "medianMae": 0.23,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "amount": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.24,
+    "minSsim": 0.9926
+   },
+   "color": {
+    "cases": 24,
+    "pass": 24,
+    "worstMae": 0.26,
+    "minSsim": 0.9926
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 0.24,
+    "minSsim": 0.9926
+   },
+   "mode": {
+    "cases": 6,
+    "pass": 6,
+    "worstMae": 0.37,
+    "minSsim": 0.9926
+   },
+   "multiplier": {
+    "cases": 27,
+    "pass": 27,
+    "worstMae": 0.41,
+    "minSsim": 0.9803
+   },
+   "useColor": {
+    "cases": 6,
+    "pass": 6,
+    "worstMae": 0.38,
+    "minSsim": 0.9926
+   }
+  }
+ },
+ "classicBloom": {
+  "pass": 0.778,
+  "cases": 153,
+  "medianMae": 0.23,
+  "inputs": [
+   "card",
+   "uv",
+   "alpha"
+  ],
+  "byControl": {
+   "amount": {
+    "cases": 27,
+    "pass": 25,
+    "worstMae": 2.18,
+    "minSsim": 0.9758
+   },
+   "default": {
+    "cases": 3,
+    "pass": 3,
+    "worstMae": 1.1,
+    "minSsim": 0.9889
+   },
+   "gaussian": {
+    "cases": 27,
+    "pass": 22,
+    "worstMae": 5.49,
+    "minSsim": 0.9337
+   },
+   "iterations": {
+    "cases": 15,
+    "pass": 12,
+    "worstMae": 31.31,
+    "minSsim": 0.7724
+   },
+   "knee": {
+    "cases": 27,
+    "pass": 16,
+    "worstMae": 24.95,
+    "minSsim": 0.7313
+   },
+   "size": {
+    "cases": 27,
+    "pass": 20,
+    "worstMae": 11.62,
+    "minSsim": 0.8787
+   },
+   "threshold": {
+    "cases": 27,
+    "pass": 21,
+    "worstMae": 7.37,
+    "minSsim": 0.9199
+   }
+  }
+ },
+ "classicStrobe": {
+  "pass": 1.0,
+  "cases": 22,
+  "byControl": {
+   "color": {
+    "cases": 8,
+    "passing": 8
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1
+   },
+   "fade": {
+    "cases": 2,
+    "passing": 2
+   },
+   "fadeFrequency": {
+    "cases": 2,
+    "passing": 2
+   },
+   "frequency": {
+    "cases": 9,
+    "passing": 9
+   }
+  },
+  "levels": {
+   "pass": 1.0,
+   "cases": 19
+  },
+  "method": "Each Strobe sequence against ours sampled every frame over 8 s: the time shift that best lines up our flashes with the reference's (the beat clock's phase at the marker is free), then each reference snapshot agrees when one of our frames between the moment it was asked for and the moment it came has the same flash state (or, with Fade, a level within 8 of it). A case passes when 90 % of its snapshots agree. The on and off levels: our brightest and darkest frames against the reference's.",
+  "perCase": {
+   "color.0": {
+    "agree": 1.0,
+    "shift": 0.192,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "color.1": {
+    "agree": 1.0,
+    "shift": 0.7,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "color.2": {
+    "agree": 1.0,
+    "shift": 0.175,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "color.3": {
+    "agree": 1.0,
+    "shift": 0.65,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "color.4": {
+    "agree": 1.0,
+    "shift": 0.217,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.353,
+      "ssim": 0.998
+     },
+     "off": {
+      "mae": 0.0,
+      "ssim": 1.0
+     }
+    },
+    "levelsPass": true
+   },
+   "color.5": {
+    "agree": 1.0,
+    "shift": 0.7,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "color.6": {
+    "agree": 1.0,
+    "shift": 0.2,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.353,
+      "ssim": 0.998
+     },
+     "off": {
+      "mae": 0.0,
+      "ssim": 1.0
+     }
+    },
+    "levelsPass": true
+   },
+   "color.7": {
+    "agree": 1.0,
+    "shift": 0.758,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "default": {
+    "agree": 1.0,
+    "shift": 0.65,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "fade.0": {
+    "agree": 1.0,
+    "shift": 0.0,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "fade.1": {
+    "agree": 1.0,
+    "shift": 0.242,
+    "pass": true,
+    "levels": null,
+    "levelsPass": true
+   },
+   "fadeFrequency.0": {
+    "agree": 1.0,
+    "shift": 0.975,
+    "pass": true,
+    "levels": null,
+    "levelsPass": true
+   },
+   "fadeFrequency.1": {
+    "agree": 1.0,
+    "shift": 0.0,
+    "pass": true,
+    "levels": null,
+    "levelsPass": true
+   },
+   "frequency.0": {
+    "agree": 1.0,
+    "shift": 0.0,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.353,
+      "ssim": 0.998
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.1": {
+    "agree": 0.92,
+    "shift": 0.4,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.813,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.2": {
+    "agree": 1.0,
+    "shift": 0.0,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.3": {
+    "agree": 1.0,
+    "shift": 0.042,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.4": {
+    "agree": 1.0,
+    "shift": 0.75,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.5": {
+    "agree": 1.0,
+    "shift": 0.308,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.6": {
+    "agree": 1.0,
+    "shift": 0.325,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.7": {
+    "agree": 0.943,
+    "shift": 0.0,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 1.669,
+      "ssim": 0.993
+     }
+    },
+    "levelsPass": true
+   },
+   "frequency.8": {
+    "agree": 1.0,
+    "shift": 0.0,
+    "pass": true,
+    "levels": {
+     "on": {
+      "mae": 0.0,
+      "ssim": 1.0
+     },
+     "off": {
+      "mae": 0.0,
+      "ssim": 1.0
+     }
+    },
+    "levelsPass": true
+   }
+  }
+ },
+ "classicShiftGlitch": {
+  "pass": 1.0,
+  "cases": 43,
+  "byControl": {
+   "blackBG": {
+    "cases": 2,
+    "passing": 2
+   },
+   "default": {
+    "cases": 1,
+    "passing": 1
+   },
+   "frequency": {
+    "cases": 9,
+    "passing": 9
+   },
+   "horizontal": {
+    "cases": 9,
+    "passing": 9
+   },
+   "preset": {
+    "cases": 4,
+    "passing": 4
+   },
+   "size": {
+    "cases": 9,
+    "passing": 9
+   },
+   "vertical": {
+    "cases": 9,
+    "passing": 9
+   }
+  },
+  "shape": {
+   "rows.moved": "41/41",
+   "rows.bands": "40/41",
+   "rows.size": "36/36",
+   "rows.slope": "37/37",
+   "columns.moved": "41/41",
+   "columns.bands": "41/41",
+   "columns.size": "9/9",
+   "columns.slope": "9/9"
+  },
+  "method": "Shift Glitch cases on statistics, snapshots with the logo overlay (even fading) left out. A case passes on the test card's five reference instances against five of ours, the mean share changed (medians within 0.03 or 20 %; ours less what our card changes with no band, Horizontal 0, as its marker sweeps and the reference's card is still), and on the UV probe (still, unlike our card's moving marker) the share of snapshot pairs whose pattern changed (within 0.05 or 20 % of our median). Its band shape is reported apart, from the UV probe's one reference instance against the spread of five of ours: rows and columns each, the moved share, bands per frame and their median size and slope (given 10 bands with a slope), each within the range of ours padded by 0.03, 12.5 % (at least 0.5), 17.5 % + 1 and 17.5 %.",
+  "perCase": {
+   "blackBG.0": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "blackBG.1": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "default": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.0": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.1": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.2": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.3": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.4": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.5": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.6": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "frequency.7": {
+    "pass": true,
+    "shape": false,
+    "off": [
+     "rows.bands"
+    ]
+   },
+   "frequency.8": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.0": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.1": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.2": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.3": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.4": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.5": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.6": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.7": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "horizontal.8": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "preset.Hoirzontal": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "preset.Kapot": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "preset.Lines": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "preset.Vertical": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.0": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.1": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.2": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.3": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.4": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.5": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.6": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.7": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "size.8": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.0": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.1": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.2": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.3": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.4": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.5": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.6": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.7": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   },
+   "vertical.8": {
+    "pass": true,
+    "shape": true,
+    "off": []
+   }
+  }
+ },
+ "classicTrails": {
+  "pass": 0.933,
+  "cases": 15,
+  "byControl": {
+   "default": {
+    "cases": 1,
+    "passing": 1
+   },
+   "feedback": {
+    "cases": 9,
+    "passing": 9
+   },
+   "mode": {
+    "cases": 3,
+    "passing": 2
+   },
+   "modeFeedback": {
+    "cases": 2,
+    "passing": 2
+   }
+  },
+  "frame": {
+   "pass": 1.0,
+   "cases": 12
+  },
+  "method": "Each Trails snapshot after 1.5 s (and 1 s after the reference's clip last stood still; a fading logo overlay left out) against our frame of the same clip time: it passes at MAE <= 2 and SSIM >= 0.98, a case at 90 % of its snapshots; the single-frame check is its snapshot of median MAE. Sequences whose history the reference inherited are checked on what does not depend on it: Feedback 1 holds a still picture in both, and in Luma every pixel lighter than 1 - Feedback stays as it was between the reference's snapshots.",
+  "perCase": {
+   "default": {
+    "pass": true,
+    "snapshots": 32,
+    "passing": 31,
+    "medianMae": 1.69,
+    "worstMae": 2.02,
+    "minSsim": 0.9931,
+    "frame": {
+     "t": 3.4211,
+     "mae": 1.69,
+     "ssim": 0.9953,
+     "pass": true
+    }
+   },
+   "feedback.0": {
+    "pass": true,
+    "snapshots": 32,
+    "passing": 32,
+    "medianMae": 0.9,
+    "worstMae": 0.9,
+    "minSsim": 0.9992,
+    "frame": {
+     "t": 1.6973,
+     "mae": 0.9,
+     "ssim": 0.9992,
+     "pass": true
+    }
+   },
+   "feedback.1": {
+    "pass": true,
+    "snapshots": 33,
+    "passing": 33,
+    "medianMae": 0.98,
+    "worstMae": 1.82,
+    "minSsim": 0.9917,
+    "frame": {
+     "t": 3.2533,
+     "mae": 0.98,
+     "ssim": 0.9957,
+     "pass": true
+    }
+   },
+   "feedback.2": {
+    "pass": true,
+    "snapshots": 32,
+    "passing": 32,
+    "medianMae": 0.9,
+    "worstMae": 1.53,
+    "minSsim": 0.9891,
+    "frame": {
+     "t": 1.5415,
+     "mae": 0.91,
+     "ssim": 0.9982,
+     "pass": true
+    }
+   },
+   "feedback.3": {
+    "pass": true,
+    "snapshots": 33,
+    "passing": 32,
+    "medianMae": 1.01,
+    "worstMae": 2.34,
+    "minSsim": 0.9891,
+    "frame": {
+     "t": 3.45,
+     "mae": 1.01,
+     "ssim": 0.9956,
+     "pass": true
+    }
+   },
+   "feedback.4": {
+    "pass": true,
+    "snapshots": 7,
+    "passing": 7,
+    "medianMae": 1.32,
+    "worstMae": 1.66,
+    "minSsim": 0.993,
+    "frame": {
+     "t": 1.9123,
+     "mae": 1.32,
+     "ssim": 0.9957,
+     "pass": true
+    }
+   },
+   "feedback.5": {
+    "pass": true,
+    "snapshots": 24,
+    "passing": 23,
+    "medianMae": 1.48,
+    "worstMae": 2.29,
+    "minSsim": 0.9911,
+    "frame": {
+     "t": 3.2273,
+     "mae": 1.48,
+     "ssim": 0.9956,
+     "pass": true
+    }
+   },
+   "feedback.6": {
+    "pass": true,
+    "snapshots": 33,
+    "passing": 33,
+    "medianMae": 1.61,
+    "worstMae": 2.0,
+    "minSsim": 0.9923,
+    "frame": {
+     "t": 1.5841,
+     "mae": 1.61,
+     "ssim": 0.996,
+     "pass": true
+    }
+   },
+   "feedback.7": {
+    "pass": true,
+    "snapshots": 34,
+    "passing": 32,
+    "medianMae": 1.71,
+    "worstMae": 2.23,
+    "minSsim": 0.9926,
+    "frame": {
+     "t": 3.2801,
+     "mae": 1.71,
+     "ssim": 0.996,
+     "pass": true
+    }
+   },
+   "feedback.8": {
+    "pass": true,
+    "check": "still picture",
+    "refStill": true,
+    "oursStill": true
+   },
+   "mode.0": {
+    "pass": true,
+    "snapshots": 33,
+    "passing": 33,
+    "medianMae": 1.68,
+    "worstMae": 1.95,
+    "minSsim": 0.9927,
+    "frame": {
+     "t": 3.705,
+     "mae": 1.68,
+     "ssim": 0.9963,
+     "pass": true
+    }
+   },
+   "mode.1": {
+    "pass": true,
+    "check": "lighter pixels kept",
+    "keptShare": 1.0
+   },
+   "mode.2": {
+    "pass": false,
+    "snapshots": 34,
+    "passing": 28,
+    "medianMae": 1.65,
+    "worstMae": 2.86,
+    "minSsim": 0.987,
+    "frame": {
+     "t": 3.7039,
+     "mae": 1.66,
+     "ssim": 0.9956,
+     "pass": true
+    }
+   },
+   "modeFeedback.0": {
+    "pass": true,
+    "check": "lighter pixels kept",
+    "keptShare": 0.99997
+   },
+   "modeFeedback.1": {
+    "pass": true,
+    "snapshots": 34,
+    "passing": 33,
+    "medianMae": 1.33,
+    "worstMae": 2.07,
+    "minSsim": 0.9926,
+    "frame": {
+     "t": 3.5335,
+     "mae": 1.34,
+     "ssim": 0.9978,
+     "pass": true
+    }
+   }
+  },
+  "phase11": {
+   "pass": 1.0,
+   "cases": 5,
+   "inputs": "p11 trails-motion, a fresh effect instance per case, switched on at the reference's clip time",
+   "perCase": {
+    "fresh.default": {
+     "pass": true,
+     "snapshots": 8,
+     "passing": 8,
+     "medianMae": 1.57,
+     "worstMae": 1.73,
+     "minSsim": 0.9945,
+     "frame": {
+      "t": 2.3305,
+      "mae": 1.58,
+      "ssim": 0.9964,
+      "pass": true
+     }
+    },
+    "fresh.feedback.1": {
+     "pass": true,
+     "check": "still picture",
+     "refStill": true,
+     "oursStill": true
+    },
+    "fresh.lighten.0.9": {
+     "pass": true,
+     "snapshots": 31,
+     "passing": 30,
+     "medianMae": 1.46,
+     "worstMae": 2.3,
+     "minSsim": 0.9932,
+     "frame": {
+      "t": 2.12,
+      "mae": 1.46,
+      "ssim": 0.9951,
+      "pass": true
+     }
+    },
+    "fresh.luma.0.5": {
+     "pass": true,
+     "snapshots": 31,
+     "passing": 30,
+     "medianMae": 0.84,
+     "worstMae": 3.42,
+     "minSsim": 0.9865,
+     "frame": {
+      "t": 3.9706,
+      "mae": 0.84,
+      "ssim": 0.9986,
+      "pass": true
+     }
+    },
+    "fresh.luma.0.9": {
+     "pass": true,
+     "snapshots": 31,
+     "passing": 31,
+     "medianMae": 1.25,
+     "worstMae": 1.3,
+     "minSsim": 0.9816,
+     "frame": {
+      "t": 4.8284,
+      "mae": 1.25,
+      "ssim": 0.9821,
+      "pass": true
+     }
+    }
+   }
+  }
+ }
+}

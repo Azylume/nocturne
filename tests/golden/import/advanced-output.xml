@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScreenSetup name="ScreenSetup">
+	<versionInfo name="Resolume Arena" majorVersion="7" minorVersion="26" microVersion="0" revision="6593"/>
+	<CurrentCompositionTextureSize width="1920" height="1080"/>
+	<screens>
+		<Screen name="Screen 1" uniqueId="1779131958994">
+			<Params name="Params">
+				<Param name="Name" T="STRING" default="" value="Screen 1"/>
+			</Params>
+			<guides>
+				<ScreenGuide name="ScreenGuide" type="0"/>
+				<ScreenGuide name="ScreenGuide" type="1"/>
+			</guides>
+			<layers>
+				<Slice uniqueId="1779131958995">
+					<Params name="Common">
+						<Param name="Name" T="STRING" default="Layer" value="Slice"/>
+					</Params>
+					<InputRect orientation="0">
+						<v x="0" y="0"/>
+						<v x="1920" y="0"/>
+						<v x="1920" y="1080"/>
+						<v x="0" y="1080"/>
+					</InputRect>
+					<OutputRect orientation="0">
+						<v x="0" y="0"/>
+						<v x="1920" y="0"/>
+						<v x="1920" y="1080"/>
+						<v x="0" y="1080"/>
+					</OutputRect>
+					<Warper>
+						<BezierWarper controlWidth="4" controlHeight="4">
+							<vertices>
+								<v x="0" y="0"/>
+								<v x="640" y="0"/>
+								<v x="1280" y="0"/>
+								<v x="1920" y="0"/>
+								<v x="0" y="360"/>
+								<v x="640" y="360"/>
+								<v x="1280" y="360"/>
+								<v x="1920" y="360"/>
+								<v x="0" y="720"/>
+								<v x="640" y="720"/>
+								<v x="1280" y="720"/>
+								<v x="1920" y="720"/>
+								<v x="0" y="1080"/>
+								<v x="640" y="1080"/>
+								<v x="1280" y="1080"/>
+								<v x="1920" y="1080"/>
+							</vertices>
+						</BezierWarper>
+						<Homography>
+							<src>
+								<v x="0" y="0"/>
+								<v x="1920" y="0"/>
+								<v x="1920" y="1080"/>
+								<v x="0" y="1080"/>
+							</src>
+							<dst>
+								<v x="0" y="0"/>
+								<v x="1920" y="0"/>
+								<v x="1920" y="1080"/>
+								<v x="0" y="1080"/>
+							</dst>
+						</Homography>
+					</Warper>
+				</Slice>
+			</layers>
+			<OutputDevice>
+				<OutputDeviceVirtual name="Screen 1" deviceId="VirtualScreen 1" idHash="10094742552620344504" width="800" height="600"/>
+			</OutputDevice>
+		</Screen>
+		<DmxScreen name="Lumiverse 1" uniqueId="1781102572826" LumiverseId="0">
+			<Params name="Params">
+				<Param name="Name" T="STRING" default="" value="Lumiverse 1"/>
+				<Param name="Auto Span" T="BOOL" default="1" value="1"/>
+				<Param name="Align Output" T="BOOL" default="1" value="1"/>
+			</Params>
+			<Params name="Output">
+				<ParamRange name="Opacity" T="DOUBLE" default="1" value="0.53009733606557374319">
+					<PhaseSourceStatic name="PhaseSourceStatic"/>
+				</ParamRange>
+				<ParamRange name="Green" T="DOUBLE" default="0" value="-0.23155737704918033515">
+					<PhaseSourceStatic name="PhaseSourceStatic"/>
+				</ParamRange>
+			</Params>
+			<guides>
+				<ScreenGuide name="ScreenGuide" type="0"/>
+				<ScreenGuide name="ScreenGuide" type="1"/>
+			</guides>
+			<layers>
+				<DmxSlice uniqueId="1781102572847">
+					<Params name="Common">
+						<Param name="Name" T="STRING" default="Layer" value="1 - 1806 LED 300"/>
+					</Params>
+					<Params name="Input">
+						<ParamChoice name="Fixture" T="STRING" default="" value="83d2b59141554bccb1e9632080f11aa7" storeChoices="0"/>
+					</Params>
+					<InputRect orientation="0">
+						<v x="0" y="0"/>
+						<v x="1919.9998779296875" y="0"/>
+						<v x="1919.9998779296875" y="1080"/>
+						<v x="0" y="1080"/>
+					</InputRect>
+					<OutputRect orientation="0">
+						<v x="-0.5" y="-0.5"/>
+						<v x="0.5" y="-0.5"/>
+						<v x="0.5" y="0.5"/>
+						<v x="-0.5" y="0.5"/>
+					</OutputRect>
+					<FixtureInstance name="FixtureInstance">
+						<Fixture name="Fixture" uuid="f71061bc039f4ed0ba48957a5dc9cf0a" fixtureName="">
+							<Params name="Params">
+								<ParamFixturePixels storage="0" name="Pixels">
+									<ParamRange name="Width" T="DOUBLE" default="1" value="20">
+										<PhaseSourceStatic name="PhaseSourceStatic"/>
+										<BehaviourDouble name="BehaviourDouble"/>
+										<ValueRange name="defaultRange" min="1" max="512"/>
+										<ValueRange name="minMax" min="1" max="512"/>
+										<ValueRange name="startStop" min="1" max="512"/>
+									</ParamRange>
+									<ParamRange name="Height" T="DOUBLE" default="1" value="30">
+										<PhaseSourceStatic name="PhaseSourceStatic"/>
+										<BehaviourDouble name="BehaviourDouble"/>
+										<ValueRange name="defaultRange" min="1" max="512"/>
+										<ValueRange name="minMax" min="1" max="512"/>
+										<ValueRange name="startStop" min="1" max="512"/>
+									</ParamRange>
+									<ParamChoice name="Color Format" T="STRING" default="rgb" value="rgb" storeChoices="0"/>
+									<ParamChoice name="Distribution" T="INT32" default="170" value="170" storeChoices="0"/>
+									<ParamRange name="Gamma" T="DOUBLE" default="2.5" value="3">
+										<PhaseSourceStatic name="PhaseSourceStatic"/>
+										<BehaviourDouble name="BehaviourDouble"/>
+										<ValueRange name="defaultRange" min="1" max="3"/>
+										<ValueRange name="minMax" min="1" max="3"/>
+										<ValueRange name="startStop" min="1" max="3"/>
+									</ParamRange>
+								</ParamFixturePixels>
+							</Params>
+						</Fixture>
+					</FixtureInstance>
+				</DmxSlice>
+			</layers>
+			<OutputDevice>
+				<OutputDeviceDmx name="Lumiverse" deviceId="Lumiverse" idHash="6362816615335067648">
+					<DmxOutputParams name="Params">
+						<Param name="TargetIP" default="TT_DISABLED" value="TT_BROADCAST"/>
+					</DmxOutputParams>
+				</OutputDeviceDmx>
+			</OutputDevice>
+		</DmxScreen>
+	</screens>
+	<SoftEdging>
+		<Params name="Soft Edge">
+			<ParamRange name="Power" T="DOUBLE" default="2" value="1.999999999999999778">
+				<PhaseSourceStatic name="PhaseSourceStatic"/>
+			</ParamRange>
+		</Params>
+	</SoftEdging>
+</ScreenSetup>
+

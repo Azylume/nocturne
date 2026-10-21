@@ -1,0 +1,368 @@
+{"dj": {"time": 1000.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.0}}, "clock": {"time": 1000.06, "beat": 0.128, "bpm": 128.0}}
+{"dj": {"time": 1000.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1000.31, "beat": 0.66133, "bpm": 128.0}}
+{"dj": {"time": 1000.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1000.56, "beat": 1.19467, "bpm": 128.0}}
+{"dj": {"time": 1000.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1000.81, "beat": 1.728, "bpm": 128.0}}
+{"dj": {"time": 1001.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1001.06, "beat": 2.26133, "bpm": 128.0}}
+{"dj": {"time": 1001.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1001.31, "beat": 2.79467, "bpm": 128.0}}
+{"dj": {"time": 1001.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1001.56, "beat": 3.328, "bpm": 128.0}}
+{"dj": {"time": 1001.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1001.81, "beat": 3.86133, "bpm": 128.0}}
+{"dj": {"time": 1002.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1002.06, "beat": 4.39467, "bpm": 128.0}}
+{"dj": {"time": 1002.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1002.31, "beat": 4.928, "bpm": 128.0}}
+{"dj": {"time": 1002.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1002.56, "beat": 5.46133, "bpm": 128.0}}
+{"dj": {"time": 1002.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1002.81, "beat": 5.99467, "bpm": 128.0}}
+{"dj": {"time": 1003.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1003.06, "beat": 6.528, "bpm": 128.0}}
+{"dj": {"time": 1003.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1003.31, "beat": 7.06133, "bpm": 128.0}}
+{"dj": {"time": 1003.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1003.56, "beat": 7.59467, "bpm": 128.0}}
+{"dj": {"time": 1003.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1003.81, "beat": 8.128, "bpm": 128.0}}
+{"dj": {"time": 1004.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1004.06, "beat": 8.66133, "bpm": 128.0}}
+{"dj": {"time": 1004.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1004.31, "beat": 9.19467, "bpm": 128.0}}
+{"dj": {"time": 1004.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1004.56, "beat": 9.728, "bpm": 128.0}}
+{"dj": {"time": 1004.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1004.81, "beat": 10.26133, "bpm": 128.0}}
+{"dj": {"time": 1005.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1005.06, "beat": 10.79467, "bpm": 128.0}}
+{"dj": {"time": 1005.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1005.31, "beat": 11.328, "bpm": 128.0}}
+{"dj": {"time": 1005.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1005.56, "beat": 11.86133, "bpm": 128.0}}
+{"dj": {"time": 1005.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1005.81, "beat": 12.39467, "bpm": 128.0}}
+{"dj": {"time": 1006.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1006.06, "beat": 12.928, "bpm": 128.0}}
+{"dj": {"time": 1006.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1006.31, "beat": 13.46133, "bpm": 128.0}}
+{"dj": {"time": 1006.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1006.56, "beat": 13.99467, "bpm": 128.0}}
+{"dj": {"time": 1006.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1006.81, "beat": 14.528, "bpm": 128.0}}
+{"dj": {"time": 1007.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1007.06, "beat": 15.06133, "bpm": 128.0}}
+{"dj": {"time": 1007.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1007.31, "beat": 15.59467, "bpm": 128.0}}
+{"dj": {"time": 1007.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1007.56, "beat": 16.128, "bpm": 128.0}}
+{"dj": {"time": 1007.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1007.81, "beat": 16.66133, "bpm": 128.0}}
+{"dj": {"time": 1008.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1008.06, "beat": 17.19467, "bpm": 128.0}}
+{"dj": {"time": 1008.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1008.31, "beat": 17.728, "bpm": 128.0}}
+{"dj": {"time": 1008.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1008.56, "beat": 18.26133, "bpm": 128.0}}
+{"dj": {"time": 1008.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1008.81, "beat": 18.79467, "bpm": 128.0}}
+{"dj": {"time": 1009.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1009.06, "beat": 19.328, "bpm": 128.0}}
+{"dj": {"time": 1009.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1009.31, "beat": 19.86133, "bpm": 128.0}}
+{"dj": {"time": 1009.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1009.56, "beat": 20.39467, "bpm": 128.0}}
+{"dj": {"time": 1009.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1009.81, "beat": 20.928, "bpm": 128.0}}
+{"dj": {"time": 1010.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1010.06, "beat": 21.46133, "bpm": 128.0}}
+{"dj": {"time": 1010.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1010.31, "beat": 21.99467, "bpm": 128.0}}
+{"dj": {"time": 1010.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1010.56, "beat": 22.528, "bpm": 128.0}}
+{"dj": {"time": 1010.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1010.81, "beat": 23.06133, "bpm": 128.0}}
+{"dj": {"time": 1011.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1011.06, "beat": 23.59467, "bpm": 128.0}}
+{"dj": {"time": 1011.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.0}}, "clock": {"time": 1011.31, "beat": 24.128, "bpm": 128.0}}
+{"dj": {"time": 1011.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1011.56, "beat": 24.66133, "bpm": 128.0}}
+{"dj": {"time": 1011.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1011.81, "beat": 25.19467, "bpm": 128.0}}
+{"dj": {"time": 1012.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1012.06, "beat": 25.728, "bpm": 128.0}}
+{"dj": {"time": 1012.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1012.31, "beat": 26.26133, "bpm": 128.0}}
+{"dj": {"time": 1012.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1012.56, "beat": 26.79467, "bpm": 128.0}}
+{"dj": {"time": 1012.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1012.81, "beat": 27.328, "bpm": 128.0}}
+{"dj": {"time": 1013.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1013.06, "beat": 27.86133, "bpm": 128.0}}
+{"dj": {"time": 1013.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1013.31, "beat": 28.39467, "bpm": 128.0}}
+{"dj": {"time": 1013.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1013.56, "beat": 28.928, "bpm": 128.0}}
+{"dj": {"time": 1013.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1013.81, "beat": 29.46133, "bpm": 128.0}}
+{"dj": {"time": 1014.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1014.06, "beat": 29.99467, "bpm": 128.0}}
+{"dj": {"time": 1014.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1014.31, "beat": 30.528, "bpm": 128.0}}
+{"dj": {"time": 1014.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1014.56, "beat": 31.06133, "bpm": 128.0}}
+{"dj": {"time": 1014.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1014.81, "beat": 31.59467, "bpm": 128.0}}
+{"dj": {"time": 1015.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.0}}, "clock": {"time": 1015.06, "beat": 32.128, "bpm": 128.0}}
+{"dj": {"time": 1015.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1015.31, "beat": 32.66133, "bpm": 128.0}}
+{"dj": {"time": 1015.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1015.56, "beat": 33.19467, "bpm": 128.0}}
+{"dj": {"time": 1015.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1015.81, "beat": 33.728, "bpm": 128.0}}
+{"dj": {"time": 1016.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1016.06, "beat": 34.26133, "bpm": 128.0}}
+{"dj": {"time": 1016.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1016.31, "beat": 34.79467, "bpm": 128.0}}
+{"dj": {"time": 1016.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1016.56, "beat": 35.328, "bpm": 128.0}}
+{"dj": {"time": 1016.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1016.81, "beat": 35.86133, "bpm": 128.0}}
+{"dj": {"time": 1017.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1017.06, "beat": 36.39467, "bpm": 128.0}}
+{"dj": {"time": 1017.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1017.31, "beat": 36.928, "bpm": 128.0}}
+{"dj": {"time": 1017.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1017.56, "beat": 37.46133, "bpm": 128.0}}
+{"dj": {"time": 1017.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1017.81, "beat": 37.99467, "bpm": 128.0}}
+{"dj": {"time": 1018.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1018.06, "beat": 38.528, "bpm": 128.0}}
+{"dj": {"time": 1018.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1018.31, "beat": 39.06133, "bpm": 128.0}}
+{"dj": {"time": 1018.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1018.56, "beat": 39.59467, "bpm": 128.0}}
+{"dj": {"time": 1018.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.0}}, "clock": {"time": 1018.81, "beat": 40.128, "bpm": 128.0}}
+{"dj": {"time": 1019.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1019.06, "beat": 40.66133, "bpm": 128.0}}
+{"dj": {"time": 1019.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1019.31, "beat": 41.19467, "bpm": 128.0}}
+{"dj": {"time": 1019.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1019.56, "beat": 41.728, "bpm": 128.0}}
+{"dj": {"time": 1019.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1019.81, "beat": 42.26133, "bpm": 128.0}}
+{"dj": {"time": 1020.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1020.06, "beat": 42.79467, "bpm": 128.0}}
+{"dj": {"time": 1020.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1020.31, "beat": 43.328, "bpm": 128.0}}
+{"dj": {"time": 1020.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1020.56, "beat": 43.86133, "bpm": 128.0}}
+{"dj": {"time": 1020.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1020.81, "beat": 44.39467, "bpm": 128.0}}
+{"dj": {"time": 1021.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1021.06, "beat": 44.928, "bpm": 128.0}}
+{"dj": {"time": 1021.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1021.31, "beat": 45.46133, "bpm": 128.0}}
+{"dj": {"time": 1021.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1021.56, "beat": 45.99467, "bpm": 128.0}}
+{"dj": {"time": 1021.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1021.81, "beat": 46.528, "bpm": 128.0}}
+{"dj": {"time": 1022.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1022.06, "beat": 47.06133, "bpm": 128.0}}
+{"dj": {"time": 1022.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1022.31, "beat": 47.59467, "bpm": 128.0}}
+{"dj": {"time": 1022.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1022.56, "beat": 48.128, "bpm": 128.0}}
+{"dj": {"time": 1022.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1022.81, "beat": 48.66133, "bpm": 128.0}}
+{"dj": {"time": 1023.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1023.06, "beat": 49.19467, "bpm": 128.0}}
+{"dj": {"time": 1023.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1023.31, "beat": 49.728, "bpm": 128.0}}
+{"dj": {"time": 1023.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1023.56, "beat": 50.26133, "bpm": 128.0}}
+{"dj": {"time": 1023.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1023.81, "beat": 50.79467, "bpm": 128.0}}
+{"dj": {"time": 1024.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1024.06, "beat": 51.328, "bpm": 128.0}}
+{"dj": {"time": 1024.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1024.31, "beat": 51.86133, "bpm": 128.0}}
+{"dj": {"time": 1024.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1024.56, "beat": 52.39467, "bpm": 128.0}}
+{"dj": {"time": 1024.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1024.81, "beat": 52.928, "bpm": 128.0}}
+{"dj": {"time": 1025.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1025.06, "beat": 53.46133, "bpm": 128.0}}
+{"dj": {"time": 1025.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1025.31, "beat": 53.99467, "bpm": 128.0}}
+{"dj": {"time": 1025.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1025.56, "beat": 54.528, "bpm": 128.0}}
+{"dj": {"time": 1025.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1025.81, "beat": 55.06133, "bpm": 128.0}}
+{"dj": {"time": 1026.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1026.06, "beat": 55.59467, "bpm": 128.0}}
+{"dj": {"time": 1026.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1026.31, "beat": 56.128, "bpm": 128.0}}
+{"dj": {"time": 1026.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1026.56, "beat": 56.66133, "bpm": 128.0}}
+{"dj": {"time": 1026.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1026.81, "beat": 57.19467, "bpm": 128.0}}
+{"dj": {"time": 1027.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1027.06, "beat": 57.728, "bpm": 128.0}}
+{"dj": {"time": 1027.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1027.31, "beat": 58.26133, "bpm": 128.0}}
+{"dj": {"time": 1027.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1027.56, "beat": 58.79467, "bpm": 128.0}}
+{"dj": {"time": 1027.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1027.81, "beat": 59.328, "bpm": 128.0}}
+{"dj": {"time": 1028.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1028.06, "beat": 59.86133, "bpm": 128.0}}
+{"dj": {"time": 1028.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1028.31, "beat": 60.39467, "bpm": 128.0}}
+{"dj": {"time": 1028.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1028.56, "beat": 60.928, "bpm": 128.0}}
+{"dj": {"time": 1028.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1028.81, "beat": 61.46133, "bpm": 128.0}}
+{"dj": {"time": 1029.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1029.06, "beat": 61.99467, "bpm": 128.0}}
+{"dj": {"time": 1029.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1029.31, "beat": 62.528, "bpm": 128.0}}
+{"dj": {"time": 1029.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1029.56, "beat": 63.06133, "bpm": 128.0}}
+{"dj": {"time": 1029.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1029.81, "beat": 63.59467, "bpm": 128.0}}
+{"dj": {"time": 1030.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1030.06, "beat": 64.128, "bpm": 128.0}}
+{"dj": {"time": 1030.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1030.31, "beat": 64.66133, "bpm": 128.0}}
+{"dj": {"time": 1030.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1030.56, "beat": 65.19467, "bpm": 128.0}}
+{"dj": {"time": 1030.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1030.81, "beat": 65.728, "bpm": 128.0}}
+{"dj": {"time": 1031.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1031.06, "beat": 66.26133, "bpm": 128.0}}
+{"dj": {"time": 1031.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1031.31, "beat": 66.79467, "bpm": 128.0}}
+{"dj": {"time": 1031.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1031.56, "beat": 67.328, "bpm": 128.0}}
+{"dj": {"time": 1031.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1031.81, "beat": 67.86133, "bpm": 128.0}}
+{"dj": {"time": 1032.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1032.06, "beat": 68.39467, "bpm": 128.0}}
+{"dj": {"time": 1032.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1032.31, "beat": 68.928, "bpm": 128.0}}
+{"dj": {"time": 1032.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1032.56, "beat": 69.46133, "bpm": 128.0}}
+{"dj": {"time": 1032.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1032.81, "beat": 69.99467, "bpm": 128.0}}
+{"dj": {"time": 1033.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1033.06, "beat": 70.528, "bpm": 128.0}}
+{"dj": {"time": 1033.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1033.31, "beat": 71.06133, "bpm": 128.0}}
+{"dj": {"time": 1033.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1033.56, "beat": 71.59467, "bpm": 128.0}}
+{"dj": {"time": 1033.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1033.81, "beat": 72.128, "bpm": 128.0}}
+{"dj": {"time": 1034.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1034.06, "beat": 72.66133, "bpm": 128.0}}
+{"dj": {"time": 1034.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1034.31, "beat": 73.19467, "bpm": 128.0}}
+{"dj": {"time": 1034.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1034.56, "beat": 73.728, "bpm": 128.0}}
+{"dj": {"time": 1034.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1034.81, "beat": 74.26133, "bpm": 128.0}}
+{"dj": {"time": 1035.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1035.06, "beat": 74.79467, "bpm": 128.0}}
+{"dj": {"time": 1035.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1035.31, "beat": 75.328, "bpm": 128.0}}
+{"dj": {"time": 1035.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1035.56, "beat": 75.86133, "bpm": 128.0}}
+{"dj": {"time": 1035.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1035.81, "beat": 76.39467, "bpm": 128.0}}
+{"dj": {"time": 1036.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1036.06, "beat": 76.928, "bpm": 128.0}}
+{"dj": {"time": 1036.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.3333}}, "clock": {"time": 1036.31, "beat": 77.46133, "bpm": 128.0}}
+{"dj": {"time": 1036.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.8667}}, "clock": {"time": 1036.56, "beat": 77.99467, "bpm": 128.0}}
+{"dj": {"time": 1036.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.4}}, "clock": {"time": 1036.81, "beat": 78.528, "bpm": 128.0}}
+{"dj": {"time": 1037.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.9333}}, "clock": {"time": 1037.06, "beat": 79.06133, "bpm": 128.0}}
+{"dj": {"time": 1037.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.4667}}, "clock": {"time": 1037.31, "beat": 79.59467, "bpm": 128.0}}
+{"dj": {"time": 1037.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 1.0}}, "clock": {"time": 1037.56, "beat": 80.128, "bpm": 128.0}}
+{"dj": {"time": 1037.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.5333}}, "clock": {"time": 1037.81, "beat": 80.66133, "bpm": 128.0}}
+{"dj": {"time": 1038.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.0667}}, "clock": {"time": 1038.06, "beat": 81.19467, "bpm": 128.0}}
+{"dj": {"time": 1038.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 2, "phase": 0.6}}, "clock": {"time": 1038.31, "beat": 81.728, "bpm": 128.0}}
+{"dj": {"time": 1038.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.1333}}, "clock": {"time": 1038.56, "beat": 82.26133, "bpm": 128.0}}
+{"dj": {"time": 1038.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 3, "phase": 0.6667}}, "clock": {"time": 1038.81, "beat": 82.79467, "bpm": 128.0}}
+{"dj": {"time": 1039.0, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.2}}, "clock": {"time": 1039.06, "beat": 83.328, "bpm": 128.0}}
+{"dj": {"time": 1039.25, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 4, "phase": 0.7333}}, "clock": {"time": 1039.31, "beat": 83.86133, "bpm": 128.0}}
+{"dj": {"time": 1039.5, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.2667}}, "clock": {"time": 1039.56, "beat": 84.39467, "bpm": 128.0}}
+{"dj": {"time": 1039.75, "onAir": 2, "bpm": 128.0, "beat": {"inBar": 1, "phase": 0.8}}, "clock": {"time": 1039.81, "beat": 84.928, "bpm": 128.0}}
+{"dj": {"time": 1040.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.1667}}, "clock": {"time": 1040.06, "beat": 85.49271, "bpm": 159.375}}
+{"dj": {"time": 1040.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.6979}}, "clock": {"time": 1040.31, "beat": 86.15677, "bpm": 159.375}}
+{"dj": {"time": 1040.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.2292}}, "clock": {"time": 1040.56, "beat": 86.82083, "bpm": 159.375}}
+{"dj": {"time": 1040.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.7604}}, "clock": {"time": 1040.81, "beat": 87.4849, "bpm": 159.375}}
+{"dj": {"time": 1041.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.2917}}, "clock": {"time": 1041.06, "beat": 88.14896, "bpm": 159.375}}
+{"dj": {"time": 1041.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.8229}}, "clock": {"time": 1041.31, "beat": 88.81302, "bpm": 159.375}}
+{"dj": {"time": 1041.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.3542}}, "clock": {"time": 1041.56, "beat": 89.47708, "bpm": 159.375}}
+{"dj": {"time": 1041.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.8854}}, "clock": {"time": 1041.81, "beat": 90.14115, "bpm": 159.375}}
+{"dj": {"time": 1042.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.4167}}, "clock": {"time": 1042.06, "beat": 90.80521, "bpm": 159.375}}
+{"dj": {"time": 1042.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.9479}}, "clock": {"time": 1042.31, "beat": 91.46927, "bpm": 159.375}}
+{"dj": {"time": 1042.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.4792}}, "clock": {"time": 1042.56, "beat": 92.13333, "bpm": 159.375}}
+{"dj": {"time": 1042.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.0104}}, "clock": {"time": 1042.81, "beat": 92.7974, "bpm": 159.375}}
+{"dj": {"time": 1043.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.5417}}, "clock": {"time": 1043.06, "beat": 93.46146, "bpm": 159.375}}
+{"dj": {"time": 1043.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.0729}}, "clock": {"time": 1043.31, "beat": 94.12552, "bpm": 159.375}}
+{"dj": {"time": 1043.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.6042}}, "clock": {"time": 1043.56, "beat": 94.73167, "bpm": 127.5}}
+{"dj": {"time": 1043.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.1354}}, "clock": {"time": 1043.81, "beat": 95.26292, "bpm": 127.5}}
+{"dj": {"time": 1044.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.6667}}, "clock": {"time": 1044.06, "beat": 95.79417, "bpm": 127.5}}
+{"dj": {"time": 1044.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.1979}}, "clock": {"time": 1044.31, "beat": 96.32542, "bpm": 127.5}}
+{"dj": {"time": 1044.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.7292}}, "clock": {"time": 1044.56, "beat": 96.85667, "bpm": 127.5}}
+{"dj": {"time": 1044.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.2604}}, "clock": {"time": 1044.81, "beat": 97.38792, "bpm": 127.5}}
+{"dj": {"time": 1045.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.7917}}, "clock": {"time": 1045.06, "beat": 97.91917, "bpm": 127.5}}
+{"dj": {"time": 1045.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.3229}}, "clock": {"time": 1045.31, "beat": 98.45042, "bpm": 127.5}}
+{"dj": {"time": 1045.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.8542}}, "clock": {"time": 1045.56, "beat": 98.98167, "bpm": 127.5}}
+{"dj": {"time": 1045.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.3854}}, "clock": {"time": 1045.81, "beat": 99.51292, "bpm": 127.5}}
+{"dj": {"time": 1046.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.9167}}, "clock": {"time": 1046.06, "beat": 100.04417, "bpm": 127.5}}
+{"dj": {"time": 1046.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.4479}}, "clock": {"time": 1046.31, "beat": 100.57542, "bpm": 127.5}}
+{"dj": {"time": 1046.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.9792}}, "clock": {"time": 1046.56, "beat": 101.10667, "bpm": 127.5}}
+{"dj": {"time": 1046.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.5104}}, "clock": {"time": 1046.81, "beat": 101.63792, "bpm": 127.5}}
+{"dj": {"time": 1047.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.0417}}, "clock": {"time": 1047.06, "beat": 102.16917, "bpm": 127.5}}
+{"dj": {"time": 1047.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.5729}}, "clock": {"time": 1047.31, "beat": 102.70042, "bpm": 127.5}}
+{"dj": {"time": 1047.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.1042}}, "clock": {"time": 1047.56, "beat": 103.23167, "bpm": 127.5}}
+{"dj": {"time": 1047.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.6354}}, "clock": {"time": 1047.81, "beat": 103.76292, "bpm": 127.5}}
+{"dj": {"time": 1048.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.1667}}, "clock": {"time": 1048.06, "beat": 104.29417, "bpm": 127.5}}
+{"dj": {"time": 1048.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.6979}}, "clock": {"time": 1048.31, "beat": 104.82542, "bpm": 127.5}}
+{"dj": {"time": 1048.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.2292}}, "clock": {"time": 1048.56, "beat": 105.35667, "bpm": 127.5}}
+{"dj": {"time": 1048.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 2, "phase": 0.7604}}, "clock": {"time": 1048.81, "beat": 105.88792, "bpm": 127.5}}
+{"dj": {"time": 1049.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.2917}}, "clock": {"time": 1049.06, "beat": 106.41917, "bpm": 127.5}}
+{"dj": {"time": 1049.25, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 3, "phase": 0.8229}}, "clock": {"time": 1049.31, "beat": 106.95042, "bpm": 127.5}}
+{"dj": {"time": 1049.5, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.3542}}, "clock": {"time": 1049.56, "beat": 107.48167, "bpm": 127.5}}
+{"dj": {"time": 1049.75, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 4, "phase": 0.8854}}, "clock": {"time": 1049.81, "beat": 108.01292, "bpm": 127.5}}
+{"dj": {"time": 1050.0, "onAir": 3, "bpm": 127.5, "beat": {"inBar": 1, "phase": 0.4167}}, "clock": {"time": 1050.06, "beat": 108.54417, "bpm": 127.5}}
+{"dj": {"time": 1050.25, "onAir": 3, "bpm": 127.5390625, "beat": {"inBar": 1, "phase": 0.9479}}, "clock": {"time": 1050.31, "beat": 109.07546, "bpm": 127.5390625}}
+{"dj": {"time": 1050.5, "onAir": 3, "bpm": 127.578125, "beat": {"inBar": 2, "phase": 0.4793}}, "clock": {"time": 1050.56, "beat": 109.60691, "bpm": 127.578125}}
+{"dj": {"time": 1050.75, "onAir": 3, "bpm": 127.6171875, "beat": {"inBar": 3, "phase": 0.0109}}, "clock": {"time": 1050.81, "beat": 110.13852, "bpm": 127.6171875}}
+{"dj": {"time": 1051.0, "onAir": 3, "bpm": 127.65625, "beat": {"inBar": 3, "phase": 0.5426}}, "clock": {"time": 1051.06, "beat": 110.6703, "bpm": 127.65625}}
+{"dj": {"time": 1051.25, "onAir": 3, "bpm": 127.6953125, "beat": {"inBar": 4, "phase": 0.0745}}, "clock": {"time": 1051.31, "beat": 111.20224, "bpm": 127.6953125}}
+{"dj": {"time": 1051.5, "onAir": 3, "bpm": 127.734375, "beat": {"inBar": 4, "phase": 0.6066}}, "clock": {"time": 1051.56, "beat": 111.73434, "bpm": 127.734375}}
+{"dj": {"time": 1051.75, "onAir": 3, "bpm": 127.7734375, "beat": {"inBar": 1, "phase": 0.1388}}, "clock": {"time": 1051.81, "beat": 112.26661, "bpm": 127.7734375}}
+{"dj": {"time": 1052.0, "onAir": 3, "bpm": 127.8125, "beat": {"inBar": 1, "phase": 0.6712}}, "clock": {"time": 1052.06, "beat": 112.79904, "bpm": 127.8125}}
+{"dj": {"time": 1052.25, "onAir": 3, "bpm": 127.8515625, "beat": {"inBar": 2, "phase": 0.2038}}, "clock": {"time": 1052.31, "beat": 113.33163, "bpm": 127.8515625}}
+{"dj": {"time": 1052.5, "onAir": 3, "bpm": 127.890625, "beat": {"inBar": 2, "phase": 0.7365}}, "clock": {"time": 1052.56, "beat": 113.86438, "bpm": 127.890625}}
+{"dj": {"time": 1052.75, "onAir": 3, "bpm": 127.9296875, "beat": {"inBar": 3, "phase": 0.2694}}, "clock": {"time": 1052.81, "beat": 114.3973, "bpm": 127.9296875}}
+{"dj": {"time": 1053.0, "onAir": 3, "bpm": 127.96875, "beat": {"inBar": 3, "phase": 0.8024}}, "clock": {"time": 1053.06, "beat": 114.93038, "bpm": 127.96875}}
+{"dj": {"time": 1053.25, "onAir": 3, "bpm": 128.0078125, "beat": {"inBar": 4, "phase": 0.3356}}, "clock": {"time": 1053.31, "beat": 115.46362, "bpm": 128.0078125}}
+{"dj": {"time": 1053.5, "onAir": 3, "bpm": 128.046875, "beat": {"inBar": 4, "phase": 0.869}}, "clock": {"time": 1053.56, "beat": 115.99702, "bpm": 128.046875}}
+{"dj": {"time": 1053.75, "onAir": 3, "bpm": 128.0859375, "beat": {"inBar": 1, "phase": 0.4025}}, "clock": {"time": 1053.81, "beat": 116.53059, "bpm": 128.0859375}}
+{"dj": {"time": 1054.0, "onAir": 3, "bpm": 128.125, "beat": {"inBar": 1, "phase": 0.9362}}, "clock": {"time": 1054.06, "beat": 117.06432, "bpm": 128.125}}
+{"dj": {"time": 1054.25, "onAir": 3, "bpm": 128.1640625, "beat": {"inBar": 2, "phase": 0.4701}}, "clock": {"time": 1054.31, "beat": 117.59822, "bpm": 128.1640625}}
+{"dj": {"time": 1054.5, "onAir": 3, "bpm": 128.203125, "beat": {"inBar": 3, "phase": 0.0041}}, "clock": {"time": 1054.56, "beat": 118.13227, "bpm": 128.203125}}
+{"dj": {"time": 1054.75, "onAir": 3, "bpm": 128.2421875, "beat": {"inBar": 3, "phase": 0.5382}}, "clock": {"time": 1054.81, "beat": 118.66649, "bpm": 128.2421875}}
+{"dj": {"time": 1055.0, "onAir": 3, "bpm": 128.28125, "beat": {"inBar": 4, "phase": 0.0726}}, "clock": {"time": 1055.06, "beat": 119.20087, "bpm": 128.28125}}
+{"dj": {"time": 1055.25, "onAir": 3, "bpm": 128.3203125, "beat": {"inBar": 4, "phase": 0.6071}}, "clock": {"time": 1055.31, "beat": 119.73542, "bpm": 128.3203125}}
+{"dj": {"time": 1055.5, "onAir": 3, "bpm": 128.359375, "beat": {"inBar": 1, "phase": 0.1418}}, "clock": {"time": 1055.56, "beat": 120.27012, "bpm": 128.359375}}
+{"dj": {"time": 1055.75, "onAir": 3, "bpm": 128.3984375, "beat": {"inBar": 1, "phase": 0.6766}}, "clock": {"time": 1055.81, "beat": 120.80499, "bpm": 128.3984375}}
+{"dj": {"time": 1056.0, "onAir": 3, "bpm": 128.4375, "beat": {"inBar": 2, "phase": 0.2116}}, "clock": {"time": 1056.06, "beat": 121.34003, "bpm": 128.4375}}
+{"dj": {"time": 1056.25, "onAir": 3, "bpm": 128.4765625, "beat": {"inBar": 2, "phase": 0.7467}}, "clock": {"time": 1056.31, "beat": 121.87522, "bpm": 128.4765625}}
+{"dj": {"time": 1056.5, "onAir": 3, "bpm": 128.515625, "beat": {"inBar": 3, "phase": 0.2821}}, "clock": {"time": 1056.56, "beat": 122.41058, "bpm": 128.515625}}
+{"dj": {"time": 1056.75, "onAir": 3, "bpm": 128.5546875, "beat": {"inBar": 3, "phase": 0.8175}}, "clock": {"time": 1056.81, "beat": 122.9461, "bpm": 128.5546875}}
+{"dj": {"time": 1057.0, "onAir": 3, "bpm": 128.59375, "beat": {"inBar": 4, "phase": 0.3532}}, "clock": {"time": 1057.06, "beat": 123.48178, "bpm": 128.59375}}
+{"dj": {"time": 1057.25, "onAir": 3, "bpm": 128.6328125, "beat": {"inBar": 4, "phase": 0.889}}, "clock": {"time": 1057.31, "beat": 124.01763, "bpm": 128.6328125}}
+{"dj": {"time": 1057.5, "onAir": 3, "bpm": 128.671875, "beat": {"inBar": 1, "phase": 0.425}}, "clock": {"time": 1057.56, "beat": 124.55364, "bpm": 128.671875}}
+{"dj": {"time": 1057.75, "onAir": 3, "bpm": 128.7109375, "beat": {"inBar": 1, "phase": 0.9611}}, "clock": {"time": 1057.81, "beat": 125.08981, "bpm": 128.7109375}}
+{"dj": {"time": 1058.0, "onAir": 3, "bpm": 128.75, "beat": {"inBar": 2, "phase": 0.4974}}, "clock": {"time": 1058.06, "beat": 125.62615, "bpm": 128.75}}
+{"dj": {"time": 1058.25, "onAir": 3, "bpm": 128.7890625, "beat": {"inBar": 3, "phase": 0.0339}}, "clock": {"time": 1058.31, "beat": 126.16264, "bpm": 128.7890625}}
+{"dj": {"time": 1058.5, "onAir": 3, "bpm": 128.828125, "beat": {"inBar": 3, "phase": 0.5705}}, "clock": {"time": 1058.56, "beat": 126.6993, "bpm": 128.828125}}
+{"dj": {"time": 1058.75, "onAir": 3, "bpm": 128.8671875, "beat": {"inBar": 4, "phase": 0.1073}}, "clock": {"time": 1058.81, "beat": 127.23613, "bpm": 128.8671875}}
+{"dj": {"time": 1059.0, "onAir": 3, "bpm": 128.90625, "beat": {"inBar": 4, "phase": 0.6442}}, "clock": {"time": 1059.06, "beat": 127.77311, "bpm": 128.90625}}
+{"dj": {"time": 1059.25, "onAir": 3, "bpm": 128.9453125, "beat": {"inBar": 1, "phase": 0.1813}}, "clock": {"time": 1059.31, "beat": 128.31026, "bpm": 128.9453125}}
+{"dj": {"time": 1059.5, "onAir": 3, "bpm": 128.984375, "beat": {"inBar": 1, "phase": 0.7186}}, "clock": {"time": 1059.56, "beat": 128.84757, "bpm": 128.984375}}
+{"dj": {"time": 1059.75, "onAir": 3, "bpm": 129.0234375, "beat": {"inBar": 2, "phase": 0.256}}, "clock": {"time": 1059.81, "beat": 129.38505, "bpm": 129.0234375}}
+{"dj": {"time": 1060.0, "onAir": 3, "bpm": 129.0625, "beat": {"inBar": 2, "phase": 0.7936}}, "clock": {"time": 1060.06, "beat": 129.92268, "bpm": 129.0625}}
+{"dj": {"time": 1060.25, "onAir": 3, "bpm": 129.1015625, "beat": {"inBar": 3, "phase": 0.3314}}, "clock": {"time": 1060.31, "beat": 130.46048, "bpm": 129.1015625}}
+{"dj": {"time": 1060.5, "onAir": 3, "bpm": 129.140625, "beat": {"inBar": 3, "phase": 0.8693}}, "clock": {"time": 1060.56, "beat": 130.99844, "bpm": 129.140625}}
+{"dj": {"time": 1060.75, "onAir": 3, "bpm": 129.1796875, "beat": {"inBar": 4, "phase": 0.4074}}, "clock": {"time": 1060.81, "beat": 131.53657, "bpm": 129.1796875}}
+{"dj": {"time": 1061.0, "onAir": 3, "bpm": 129.21875, "beat": {"inBar": 4, "phase": 0.9456}}, "clock": {"time": 1061.06, "beat": 132.07486, "bpm": 129.21875}}
+{"dj": {"time": 1061.25, "onAir": 3, "bpm": 129.2578125, "beat": {"inBar": 1, "phase": 0.484}}, "clock": {"time": 1061.31, "beat": 132.61331, "bpm": 129.2578125}}
+{"dj": {"time": 1061.5, "onAir": 3, "bpm": 129.296875, "beat": {"inBar": 2, "phase": 0.0226}}, "clock": {"time": 1061.56, "beat": 133.15192, "bpm": 129.296875}}
+{"dj": {"time": 1061.75, "onAir": 3, "bpm": 129.3359375, "beat": {"inBar": 2, "phase": 0.5614}}, "clock": {"time": 1061.81, "beat": 133.6907, "bpm": 129.3359375}}
+{"dj": {"time": 1062.0, "onAir": 3, "bpm": 129.375, "beat": {"inBar": 3, "phase": 0.1003}}, "clock": {"time": 1062.06, "beat": 134.22964, "bpm": 129.375}}
+{"dj": {"time": 1062.25, "onAir": 3, "bpm": 129.4140625, "beat": {"inBar": 3, "phase": 0.6393}}, "clock": {"time": 1062.31, "beat": 134.76874, "bpm": 129.4140625}}
+{"dj": {"time": 1062.5, "onAir": 3, "bpm": 129.453125, "beat": {"inBar": 4, "phase": 0.1785}}, "clock": {"time": 1062.56, "beat": 135.308, "bpm": 129.453125}}
+{"dj": {"time": 1062.75, "onAir": 3, "bpm": 129.4921875, "beat": {"inBar": 4, "phase": 0.7179}}, "clock": {"time": 1062.81, "beat": 135.84743, "bpm": 129.4921875}}
+{"dj": {"time": 1063.0, "onAir": 3, "bpm": 129.53125, "beat": {"inBar": 1, "phase": 0.2575}}, "clock": {"time": 1063.06, "beat": 136.38702, "bpm": 129.53125}}
+{"dj": {"time": 1063.25, "onAir": 3, "bpm": 129.5703125, "beat": {"inBar": 1, "phase": 0.7972}}, "clock": {"time": 1063.31, "beat": 136.92677, "bpm": 129.5703125}}
+{"dj": {"time": 1063.5, "onAir": 3, "bpm": 129.609375, "beat": {"inBar": 2, "phase": 0.3371}}, "clock": {"time": 1063.56, "beat": 137.46669, "bpm": 129.609375}}
+{"dj": {"time": 1063.75, "onAir": 3, "bpm": 129.6484375, "beat": {"inBar": 2, "phase": 0.8771}}, "clock": {"time": 1063.81, "beat": 138.00676, "bpm": 129.6484375}}
+{"dj": {"time": 1064.0, "onAir": 3, "bpm": 129.6875, "beat": {"inBar": 3, "phase": 0.4173}}, "clock": {"time": 1064.06, "beat": 138.54701, "bpm": 129.6875}}
+{"dj": {"time": 1064.25, "onAir": 3, "bpm": 129.7265625, "beat": {"inBar": 3, "phase": 0.9577}}, "clock": {"time": 1064.31, "beat": 139.08741, "bpm": 129.7265625}}
+{"dj": {"time": 1064.5, "onAir": 3, "bpm": 129.765625, "beat": {"inBar": 4, "phase": 0.4982}}, "clock": {"time": 1064.56, "beat": 139.62798, "bpm": 129.765625}}
+{"dj": {"time": 1064.75, "onAir": 3, "bpm": 129.8046875, "beat": {"inBar": 1, "phase": 0.0389}}, "clock": {"time": 1064.81, "beat": 140.1687, "bpm": 129.8046875}}
+{"dj": {"time": 1065.0, "onAir": 3, "bpm": 129.84375, "beat": {"inBar": 1, "phase": 0.5798}}, "clock": {"time": 1065.06, "beat": 140.7096, "bpm": 129.84375}}
+{"dj": {"time": 1065.25, "onAir": 3, "bpm": 129.8828125, "beat": {"inBar": 2, "phase": 0.1208}}, "clock": {"time": 1065.31, "beat": 141.25065, "bpm": 129.8828125}}
+{"dj": {"time": 1065.5, "onAir": 3, "bpm": 129.921875, "beat": {"inBar": 2, "phase": 0.6619}}, "clock": {"time": 1065.56, "beat": 141.79187, "bpm": 129.921875}}
+{"dj": {"time": 1065.75, "onAir": 3, "bpm": 129.9609375, "beat": {"inBar": 3, "phase": 0.2033}}, "clock": {"time": 1065.81, "beat": 142.33325, "bpm": 129.9609375}}
+{"dj": {"time": 1066.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.7448}}, "clock": {"time": 1066.06, "beat": 142.87479, "bpm": 130.0}}
+{"dj": {"time": 1066.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.2865}}, "clock": {"time": 1066.31, "beat": 143.41646, "bpm": 130.0}}
+{"dj": {"time": 1066.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.8281}}, "clock": {"time": 1066.56, "beat": 143.95812, "bpm": 130.0}}
+{"dj": {"time": 1066.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.3698}}, "clock": {"time": 1066.81, "beat": 144.49979, "bpm": 130.0}}
+{"dj": {"time": 1067.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.9115}}, "clock": {"time": 1067.06, "beat": 145.04146, "bpm": 130.0}}
+{"dj": {"time": 1067.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.4531}}, "clock": {"time": 1067.31, "beat": 145.58312, "bpm": 130.0}}
+{"dj": {"time": 1067.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.9948}}, "clock": {"time": 1067.56, "beat": 146.12479, "bpm": 130.0}}
+{"dj": {"time": 1067.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.5365}}, "clock": {"time": 1067.81, "beat": 146.66646, "bpm": 130.0}}
+{"dj": {"time": 1068.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.0781}}, "clock": {"time": 1068.06, "beat": 147.20812, "bpm": 130.0}}
+{"dj": {"time": 1068.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.6198}}, "clock": {"time": 1068.31, "beat": 147.74979, "bpm": 130.0}}
+{"dj": {"time": 1068.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.1615}}, "clock": {"time": 1068.56, "beat": 148.29146, "bpm": 130.0}}
+{"dj": {"time": 1068.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.7031}}, "clock": {"time": 1068.81, "beat": 148.83312, "bpm": 130.0}}
+{"dj": {"time": 1069.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.2448}}, "clock": {"time": 1069.06, "beat": 149.37479, "bpm": 130.0}}
+{"dj": {"time": 1069.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.7865}}, "clock": {"time": 1069.31, "beat": 149.91646, "bpm": 130.0}}
+{"dj": {"time": 1069.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.3281}}, "clock": {"time": 1069.56, "beat": 150.45812, "bpm": 130.0}}
+{"dj": {"time": 1069.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.8698}}, "clock": {"time": 1069.81, "beat": 150.99979, "bpm": 130.0}}
+{"dj": {"time": 1070.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.4115}}, "clock": {"time": 1070.06, "beat": 151.54146, "bpm": 130.0}}
+{"dj": {"time": 1070.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.9531}}, "clock": {"time": 1070.31, "beat": 152.08312, "bpm": 130.0}}
+{"dj": {"time": 1070.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.4948}}, "clock": {"time": 1070.56, "beat": 152.62479, "bpm": 130.0}}
+{"dj": {"time": 1070.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.0365}}, "clock": {"time": 1070.81, "beat": 153.16646, "bpm": 130.0}}
+{"dj": {"time": 1071.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.5781}}, "clock": {"time": 1071.06, "beat": 153.70812, "bpm": 130.0}}
+{"dj": {"time": 1071.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.1198}}, "clock": {"time": 1071.31, "beat": 154.24979, "bpm": 130.0}}
+{"dj": {"time": 1071.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.6615}}, "clock": {"time": 1071.56, "beat": 154.79146, "bpm": 130.0}}
+{"dj": {"time": 1071.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.2031}}, "clock": {"time": 1071.81, "beat": 155.33312, "bpm": 130.0}}
+{"dj": {"time": 1072.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.7448}}, "clock": {"time": 1072.06, "beat": 155.87479, "bpm": 130.0}}
+{"dj": {"time": 1072.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.2865}}, "clock": {"time": 1072.31, "beat": 156.41646, "bpm": 130.0}}
+{"dj": {"time": 1072.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.8281}}, "clock": {"time": 1072.56, "beat": 156.95812, "bpm": 130.0}}
+{"dj": {"time": 1072.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.3698}}, "clock": {"time": 1072.81, "beat": 157.49979, "bpm": 130.0}}
+{"dj": {"time": 1073.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.9115}}, "clock": {"time": 1073.06, "beat": 158.04146, "bpm": 130.0}}
+{"dj": {"time": 1073.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.4531}}, "clock": {"time": 1073.31, "beat": 158.58312, "bpm": 130.0}}
+{"dj": {"time": 1073.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.9948}}, "clock": {"time": 1073.56, "beat": 159.12479, "bpm": 130.0}}
+{"dj": {"time": 1073.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.5365}}, "clock": {"time": 1073.81, "beat": 159.66646, "bpm": 130.0}}
+{"dj": {"time": 1074.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.0781}}, "clock": {"time": 1074.06, "beat": 160.20812, "bpm": 130.0}}
+{"dj": {"time": 1074.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 1, "phase": 0.6198}}, "clock": {"time": 1074.31, "beat": 160.74979, "bpm": 130.0}}
+{"dj": {"time": 1074.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.1615}}, "clock": {"time": 1074.56, "beat": 161.29146, "bpm": 130.0}}
+{"dj": {"time": 1074.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 2, "phase": 0.7031}}, "clock": {"time": 1074.81, "beat": 161.83312, "bpm": 130.0}}
+{"dj": {"time": 1075.0, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.2448}}, "clock": {"time": 1075.06, "beat": 162.37479, "bpm": 130.0}}
+{"dj": {"time": 1075.25, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 3, "phase": 0.7865}}, "clock": {"time": 1075.31, "beat": 162.91646, "bpm": 130.0}}
+{"dj": {"time": 1075.5, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.3281}}, "clock": {"time": 1075.56, "beat": 163.45812, "bpm": 130.0}}
+{"dj": {"time": 1075.75, "onAir": 3, "bpm": 130.0, "beat": {"inBar": 4, "phase": 0.8698}}, "clock": {"time": 1075.81, "beat": 163.99979, "bpm": 130.0}}
+{"dj": {"time": 1076.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1076.06, "beat": 164.54146, "bpm": 130.0}}
+{"dj": {"time": 1076.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1076.31, "beat": 165.08312, "bpm": 130.0}}
+{"dj": {"time": 1076.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1076.56, "beat": 165.62479, "bpm": 130.0}}
+{"dj": {"time": 1076.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1076.81, "beat": 166.16646, "bpm": 130.0}}
+{"dj": {"time": 1077.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1077.06, "beat": 166.70812, "bpm": 130.0}}
+{"dj": {"time": 1077.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1077.31, "beat": 167.24979, "bpm": 130.0}}
+{"dj": {"time": 1077.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1077.56, "beat": 167.79146, "bpm": 130.0}}
+{"dj": {"time": 1077.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1077.81, "beat": 168.33312, "bpm": 130.0}}
+{"dj": {"time": 1078.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1078.06, "beat": 168.87479, "bpm": 130.0}}
+{"dj": {"time": 1078.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1078.31, "beat": 169.41646, "bpm": 130.0}}
+{"dj": {"time": 1078.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1078.56, "beat": 169.95812, "bpm": 130.0}}
+{"dj": {"time": 1078.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1078.81, "beat": 170.49979, "bpm": 130.0}}
+{"dj": {"time": 1079.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1079.06, "beat": 171.04146, "bpm": 130.0}}
+{"dj": {"time": 1079.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1079.31, "beat": 171.58312, "bpm": 130.0}}
+{"dj": {"time": 1079.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1079.56, "beat": 172.12479, "bpm": 130.0}}
+{"dj": {"time": 1079.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1079.81, "beat": 172.66646, "bpm": 130.0}}
+{"dj": {"time": 1080.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1080.06, "beat": 173.20812, "bpm": 130.0}}
+{"dj": {"time": 1080.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1080.31, "beat": 173.74979, "bpm": 130.0}}
+{"dj": {"time": 1080.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1080.56, "beat": 174.29146, "bpm": 130.0}}
+{"dj": {"time": 1080.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1080.81, "beat": 174.83312, "bpm": 130.0}}
+{"dj": {"time": 1081.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1081.06, "beat": 175.37479, "bpm": 130.0}}
+{"dj": {"time": 1081.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1081.31, "beat": 175.91646, "bpm": 130.0}}
+{"dj": {"time": 1081.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1081.56, "beat": 176.45812, "bpm": 130.0}}
+{"dj": {"time": 1081.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1081.81, "beat": 176.99979, "bpm": 130.0}}
+{"dj": {"time": 1082.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1082.06, "beat": 177.54146, "bpm": 130.0}}
+{"dj": {"time": 1082.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1082.31, "beat": 178.08312, "bpm": 130.0}}
+{"dj": {"time": 1082.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1082.56, "beat": 178.62479, "bpm": 130.0}}
+{"dj": {"time": 1082.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1082.81, "beat": 179.16646, "bpm": 130.0}}
+{"dj": {"time": 1083.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1083.06, "beat": 179.70812, "bpm": 130.0}}
+{"dj": {"time": 1083.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1083.31, "beat": 180.24979, "bpm": 130.0}}
+{"dj": {"time": 1083.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1083.56, "beat": 180.79146, "bpm": 130.0}}
+{"dj": {"time": 1083.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1083.81, "beat": 181.33312, "bpm": 130.0}}
+{"dj": {"time": 1084.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1084.06, "beat": 181.87479, "bpm": 130.0}}
+{"dj": {"time": 1084.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1084.31, "beat": 182.41646, "bpm": 130.0}}
+{"dj": {"time": 1084.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1084.56, "beat": 182.95812, "bpm": 130.0}}
+{"dj": {"time": 1084.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1084.81, "beat": 183.49979, "bpm": 130.0}}
+{"dj": {"time": 1085.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1085.06, "beat": 184.04146, "bpm": 130.0}}
+{"dj": {"time": 1085.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1085.31, "beat": 184.58312, "bpm": 130.0}}
+{"dj": {"time": 1085.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1085.56, "beat": 185.12479, "bpm": 130.0}}
+{"dj": {"time": 1085.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1085.81, "beat": 185.66646, "bpm": 130.0}}
+{"dj": {"time": 1086.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1086.06, "beat": 186.20812, "bpm": 130.0}}
+{"dj": {"time": 1086.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1086.31, "beat": 186.74979, "bpm": 130.0}}
+{"dj": {"time": 1086.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1086.56, "beat": 187.29146, "bpm": 130.0}}
+{"dj": {"time": 1086.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1086.81, "beat": 187.83312, "bpm": 130.0}}
+{"dj": {"time": 1087.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1087.06, "beat": 188.37479, "bpm": 130.0}}
+{"dj": {"time": 1087.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1087.31, "beat": 188.91646, "bpm": 130.0}}
+{"dj": {"time": 1087.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1087.56, "beat": 189.45812, "bpm": 130.0}}
+{"dj": {"time": 1087.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1087.81, "beat": 189.99979, "bpm": 130.0}}
+{"dj": {"time": 1088.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1088.06, "beat": 190.54146, "bpm": 130.0}}
+{"dj": {"time": 1088.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1088.31, "beat": 191.08312, "bpm": 130.0}}
+{"dj": {"time": 1088.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1088.56, "beat": 191.62479, "bpm": 130.0}}
+{"dj": {"time": 1088.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1088.81, "beat": 192.16646, "bpm": 130.0}}
+{"dj": {"time": 1089.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1089.06, "beat": 192.70812, "bpm": 130.0}}
+{"dj": {"time": 1089.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1089.31, "beat": 193.24979, "bpm": 130.0}}
+{"dj": {"time": 1089.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1089.56, "beat": 193.79146, "bpm": 130.0}}
+{"dj": {"time": 1089.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1089.81, "beat": 194.33312, "bpm": 130.0}}
+{"dj": {"time": 1090.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1090.06, "beat": 194.87479, "bpm": 130.0}}
+{"dj": {"time": 1090.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1090.31, "beat": 195.41646, "bpm": 130.0}}
+{"dj": {"time": 1090.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1090.56, "beat": 195.95812, "bpm": 130.0}}
+{"dj": {"time": 1090.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1090.81, "beat": 196.49979, "bpm": 130.0}}
+{"dj": {"time": 1091.0, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1091.06, "beat": 197.04146, "bpm": 130.0}}
+{"dj": {"time": 1091.25, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1091.31, "beat": 197.58312, "bpm": 130.0}}
+{"dj": {"time": 1091.5, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1091.56, "beat": 198.12479, "bpm": 130.0}}
+{"dj": {"time": 1091.75, "onAir": 0, "bpm": null, "beat": null}, "clock": {"time": 1091.81, "beat": 198.66646, "bpm": 130.0}}

@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixed sample values in tests: the RFC 6455 Sec-WebSocket-Key and a fake pairing token"
+regexes = ['''dGhlIHNhbXBsZSBub25jZQ==''', '''(0123456789abcdef){4}''']

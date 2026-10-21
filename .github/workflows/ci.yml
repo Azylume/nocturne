@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES=arm64
+      - name: Build
+        run: cmake --build build -j4
+      - name: Test
+        env:
+          NOCTURNE_NO_AUDIO_INPUT: "1"
+        run: |
+          skip=$(grep -v '^#' .github/realtime-tests.txt | sed 's/,/\\,/g' | paste -sd, -)
+          build/nocturne_tests --test-case-exclude="$skip"
+          tests/mini_host_test.sh
+          build/src/ui/nocturne_ui_tests --test-case-exclude="$skip"
+
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Every commit is signed off by its author
+        run: |
+          status=0
+          for c in $(git rev-list --no-merges origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}); do
+            author="$(git log -1 --format='%an <%ae>' "$c")"
+            if ! git log -1 --format=%B "$c" | grep -qxF "Signed-off-by: $author"; then
+              echo "::error::$(git log -1 --format='%h %s' "$c") has no 'Signed-off-by: $author' (git commit -s)"
+              status=1
+            fi
+          done
+          exit $status

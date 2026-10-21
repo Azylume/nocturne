@@ -1,0 +1,298 @@
+{
+  "composition": {
+    "bpm": 124.0,
+    "column": 1,
+    "columnAutopilot": {
+      "bars": 8,
+      "hold": 16,
+      "mode": "next"
+    },
+    "deck": 1,
+    "decks": [
+      {
+        "columns": [
+          {
+            "id": 1,
+            "name": "Column 1"
+          },
+          {
+            "id": 2,
+            "name": "Column 2"
+          },
+          {
+            "id": 3,
+            "name": "Column 3"
+          },
+          {
+            "id": 4,
+            "name": "Column 4"
+          }
+        ],
+        "id": 1,
+        "name": "First show"
+      }
+    ],
+    "effects": [],
+    "guides": [],
+    "layers": [
+      {
+        "armed": [],
+        "autopilot": {
+          "bars": 4,
+          "mode": "off"
+        },
+        "blend": "normal",
+        "bypass": false,
+        "clip": {
+          "effects": [],
+          "hash": "91d28d0daee32db1c6f5dc09257c9572dcf6077cbcc4418027db70b752ff57b0",
+          "name": "serpentine.mp4",
+          "step": 0,
+          "transition": null,
+          "transport": {
+            "beats": 0,
+            "jumpDistance": 2.0,
+            "jumpInterval": 8.0,
+            "playMode": "loop",
+            "sync": "bpm"
+          }
+        },
+        "clips": {
+          "1": {
+            "effects": [],
+            "hash": "91d28d0daee32db1c6f5dc09257c9572dcf6077cbcc4418027db70b752ff57b0",
+            "name": "serpentine.mp4",
+            "path": "serpentine.mp4",
+            "size": 18142299,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          },
+          "2": {
+            "effects": [],
+            "hash": "55f201abea255576993ee654b2df7a8e9b4674583b432ebe24408671e20d37db",
+            "name": "diagonale.mp4",
+            "path": "diagonale.mp4",
+            "size": 330532,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          },
+          "3": {
+            "effects": [],
+            "hash": "a254c1559e7c6cdbbeec3e04684e21ea41578984a59f86154513055a8151b457",
+            "name": "opus3.mp4",
+            "path": "opus3.mp4",
+            "size": 748126,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          },
+          "4": {
+            "effects": [],
+            "hash": "3ef227af4b02442b630d890b47e951ddec22f5839fe05aaeae63142fe3ce7bbf",
+            "name": "moon.mp4",
+            "path": "moon.mp4",
+            "size": 6694375,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          }
+        },
+        "effects": [],
+        "id": 1,
+        "name": "Films",
+        "opacity": 1.0,
+        "playing": {
+          "beat": null,
+          "column": 1
+        },
+        "solo": false,
+        "transition": {
+          "beats": 2.0,
+          "mode": "alpha"
+        }
+      },
+      {
+        "armed": [],
+        "autopilot": {
+          "bars": 4,
+          "mode": "off"
+        },
+        "blend": "screen",
+        "bypass": false,
+        "clip": {
+          "effects": [],
+          "hash": "195712d67831d5d4a66ddc9a65d38f72dca2ae0e520a13d395ed6900639cbf25",
+          "name": "beeple_scream.mp4",
+          "step": 0,
+          "transition": null,
+          "transport": {
+            "beats": 0,
+            "jumpDistance": 2.0,
+            "jumpInterval": 8.0,
+            "playMode": "loop",
+            "sync": "bpm"
+          }
+        },
+        "clips": {
+          "1": {
+            "effects": [],
+            "hash": "195712d67831d5d4a66ddc9a65d38f72dca2ae0e520a13d395ed6900639cbf25",
+            "name": "beeple_scream.mp4",
+            "path": "beeple_scream.mp4",
+            "size": 11291566,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          },
+          "2": {
+            "effects": [],
+            "hash": "8be9267067b61cd423cdc507ddc03f926ba988ccb8d7f296ab4cc57a3d5a108a",
+            "name": "beeple_jahara.mp4",
+            "path": "beeple_jahara.mp4",
+            "size": 42481205,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          },
+          "3": {
+            "effects": [],
+            "hash": "a3196210ce28e84b39addb80028555fd537ef5cb514a7e83ad7df924c68e4223",
+            "name": "beeple_narrow_gultch.mp4",
+            "path": "beeple_narrow_gultch.mp4",
+            "size": 27810599,
+            "step": 0,
+            "transition": null,
+            "transport": {
+              "beats": 0,
+              "jumpDistance": 2.0,
+              "jumpInterval": 8.0,
+              "playMode": "loop",
+              "sync": "bpm"
+            }
+          }
+        },
+        "effects": [],
+        "id": 2,
+        "name": "Loops",
+        "opacity": 0.55,
+        "playing": {
+          "beat": null,
+          "column": 1
+        },
+        "solo": false,
+        "transition": {
+          "beats": 2.0,
+          "mode": "alpha"
+        }
+      }
+    ],
+    "macros": [],
+    "modulators": [],
+    "quantise": 4,
+    "screens": [
+      {
+        "color": {
+          "blue": 0.0,
+          "brightness": 0.0,
+          "contrast": 0.0,
+          "green": 0.0,
+          "red": 0.0
+        },
+        "display": "window-1",
+        "id": 1,
+        "masks": [],
+        "name": "Screen 1",
+        "slices": [
+          {
+            "color": {
+              "blue": 0.0,
+              "brightness": 0.0,
+              "contrast": 0.0,
+              "green": 0.0,
+              "red": 0.0
+            },
+            "corners": [
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              1.0,
+              1.0,
+              0.0,
+              1.0
+            ],
+            "id": 1,
+            "input": 0,
+            "inputRect": [
+              0.0,
+              0.0,
+              1.0,
+              1.0
+            ],
+            "masks": [],
+            "name": "Slice 1",
+            "softEdge": {
+              "bottom": 0.0,
+              "gamma": 2.2,
+              "left": 0.0,
+              "luminance": 0.5,
+              "power": 2.0,
+              "right": 0.0,
+              "top": 0.0
+            },
+            "warp": {
+              "bezier": false,
+              "patches": [
+                1,
+                1
+              ],
+              "points": []
+            }
+          }
+        ],
+        "testCard": false
+      }
+    ],
+    "testCard": false
+  },
+  "format": "nocturne.composition",
+  "version": 1
+}

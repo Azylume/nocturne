@@ -1,0 +1,1 @@
+{"type": "settings", "op": "state", "profile": "smooth", "protectTransitions": false, "frameCacheMB": 2048, "preloadMB": 3072, "clipPreviews": 8, "bakeStatic": false, "renderScale": 100, "use": {"frameCacheMB": 812, "preloadMB": 330, "clipPreviews": 0, "clipPreviewKB": 0}, "overridden": {}, "sections": ["audio", "displays", "performance", "caches"]}

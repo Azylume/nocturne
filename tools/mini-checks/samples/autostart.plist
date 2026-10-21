@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.azylume.nocturne</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/USER/Nocturne/Nocturne.app/Contents/MacOS/nocturne-supervisor</string>
+        <string>--state</string>
+        <string>/Users/USER/Library/Application Support/Nocturne/State</string>
+        <string>--logs</string>
+        <string>/Users/USER/Library/Logs/Nocturne</string>
+        <string>--</string>
+        <string>--audio-log</string>
+        <string>/Users/USER/Library/Logs/Nocturne/audio.jsonl</string>
+        <string>--stats-json</string>
+        <string>/Users/USER/Library/Logs/Nocturne/stats.jsonl</string>
+        <string>--audio-input</string>
+        <string>off</string>
+        <string>--composition</string>
+        <string>/Users/USER/Nocturne/shows/show.json</string>
+        <string>--media-root</string>
+        <string>/Users/USER/Nocturne/media</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>

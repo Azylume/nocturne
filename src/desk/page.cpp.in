@@ -1,0 +1,7 @@
+#include "desk/desk_server.hpp"
+
+namespace azl {
+
+const char* const kDeskPage = R"deskpage(@desk_page@)deskpage";
+
+} // namespace azl

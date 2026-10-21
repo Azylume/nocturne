@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSUIElement</key>
+	<true/>
+	<key>CFBundleExecutable</key>
+	<string>nocturne</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.azylume.nocturne</string>
+	<key>CFBundleName</key>
+	<string>Nocturne</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Nocturne analyses the system's or an app's audio so visuals can react to the music.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Nocturne analyses the audio input so visuals can react to the music.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Nocturne reads the effect presets other VJ apps keep in Documents when you import them.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Nocturne connects to its control clients and other Nocturne machines on the local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_nocturne._tcp</string>
+	</array>
+</dict>
+</plist>

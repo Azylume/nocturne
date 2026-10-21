@@ -1,0 +1,737 @@
+{
+  "report": {
+    "approximated": [
+      "screen Turned / slice Slice: input rect turned 30 degrees: Nocturne input rects cannot turn, so it is imported as its bounding box with an inverted slice mask over the turned rect and the corner pin solved for it",
+      "screen Quarter / slice Slice: input rect turned 90 degrees: Nocturne input rects cannot turn, so the warp grid is turned instead",
+      "screen Quarter / slice Slice: Flip 1 read as 1 horizontal, 2 vertical (no saved sample to confirm) and imported by mirroring the warp grid",
+      "screen Quarter / slice Slice: soft edge off: its input rect is turned (Resolume turns it off then too)",
+      "soft edging: fade widths come from where soft-edged slices' input rects overlap, by Nocturne's rule"
+    ],
+    "ignored": [],
+    "mapped": [
+      "screen Warp / slice Slice: input rect 0,0 1x1, 2x1 Bezier warp, corners 0.1 0.1 0.9 0.05 0.95 0.95 0.05 0.9",
+      "screen Warp: 1 slice(s), output OutputDeviceVirtual 'Warp' 1920x1080 (VirtualWarp) -> display VirtualWarp",
+      "screen Left / slice Slice: input rect 0,0 0.6x1",
+      "screen Left: 1 slice(s), output OutputDeviceVirtual 'Left' 1920x1080 (VirtualLeft) -> display VirtualLeft",
+      "screen Right / slice Slice: input rect 0.4,0 0.6x1",
+      "screen Right: 1 slice(s), output OutputDeviceVirtual 'Right' 1920x1080 (VirtualRight) -> display VirtualRight",
+      "screen Turned / slice Slice: input rect 0.261,0.1344 0.478x0.7312, corners -0.145 0.2441 0.7458 -0.6426 1.1154 0.7921 0.314 1.3794, 1 mask(s)",
+      "screen Turned: 1 slice(s), output OutputDeviceVirtual 'Turned' 1920x1080 (VirtualTurned) -> display VirtualTurned",
+      "screen Quarter / slice Slice: input rect 0.1458,0.2222 0.2083x0.5556, 2x2 linear warp",
+      "screen Quarter: 1 slice(s), output OutputDeviceVirtual 'Quarter' 1280x720 (VirtualQuarter) -> display VirtualQuarter",
+      "screen Colour / slice Slice: input rect 0,0 1x1, colour",
+      "screen Colour: 1 slice(s), output OutputDeviceVirtual 'Colour' 1920x1080 (VirtualColour) -> display VirtualColour",
+      "soft edge on 2 slice(s): power 3, luminance 0.5, gamma 2.2",
+      "test card off on every screen: Advanced Output files do not save one"
+    ],
+    "unsupported": []
+  },
+  "screens": [
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualWarp",
+      "id": 1,
+      "masks": [],
+      "name": "Warp",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.1,
+            0.1,
+            0.9,
+            0.05,
+            0.9500000000000001,
+            0.95,
+            0.049999999999999996,
+            0.9
+          ],
+          "id": 1,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": true,
+            "patches": [
+              2,
+              1
+            ],
+            "points": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                0.16666666666666666,
+                0.16666666666666666
+              ],
+              [
+                0.3333333333333333,
+                0.16666666666666666
+              ],
+              [
+                0.5,
+                0.1111111111111111
+              ],
+              [
+                0.6666666666666666,
+                0.0
+              ],
+              [
+                0.8333333333333334,
+                0.0
+              ],
+              [
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.3333333333333333
+              ],
+              [
+                0.17708333333333334,
+                0.41975308641975306
+              ],
+              [
+                0.3541666666666667,
+                0.39506172839506176
+              ],
+              [
+                0.53125,
+                0.3333333333333333
+              ],
+              [
+                0.6909722222222221,
+                0.28806584362139914
+              ],
+              [
+                0.8506944444444444,
+                0.3168724279835391
+              ],
+              [
+                1.0,
+                0.3333333333333333
+              ],
+              [
+                0.0,
+                0.6666666666666666
+              ],
+              [
+                0.15625,
+                0.7098765432098765
+              ],
+              [
+                0.3125,
+                0.6975308641975309
+              ],
+              [
+                0.46875,
+                0.6666666666666666
+              ],
+              [
+                0.6527777777777778,
+                0.6502057613168724
+              ],
+              [
+                0.8368055555555556,
+                0.6707818930041153
+              ],
+              [
+                1.0,
+                0.6666666666666666
+              ],
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.16666666666666666,
+                1.0
+              ],
+              [
+                0.3333333333333333,
+                1.0
+              ],
+              [
+                0.5,
+                1.0
+              ],
+              [
+                0.6666666666666666,
+                1.0
+              ],
+              [
+                0.8333333333333334,
+                1.0
+              ],
+              [
+                0.96875,
+                0.9629629629629629
+              ]
+            ]
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualLeft",
+      "id": 2,
+      "masks": [],
+      "name": "Left",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 2,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            0.6,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 3.0,
+            "right": 0.33333333333333326,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualRight",
+      "id": 3,
+      "masks": [],
+      "name": "Right",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 3,
+          "input": 0,
+          "inputRect": [
+            0.4,
+            0.0,
+            0.6,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.33333333333333326,
+            "luminance": 0.5,
+            "power": 3.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualTurned",
+      "id": 4,
+      "masks": [],
+      "name": "Turned",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            -0.14498140825245082,
+            0.24407611586197395,
+            0.7457954926897915,
+            -0.6425649366562408,
+            1.11544265742129,
+            0.7921212294797824,
+            0.31404091325582123,
+            1.3793973222276958
+          ],
+          "id": 4,
+          "input": 0,
+          "inputRect": [
+            0.26098429087824193,
+            0.13439285569305676,
+            0.4780314182435162,
+            0.7312142886138864
+          ],
+          "masks": [
+            {
+              "id": 1,
+              "invert": true,
+              "name": "Turned input",
+              "points": [
+                [
+                  0.37817179087824193,
+                  0.13439285569305676
+                ],
+                [
+                  0.7390157091217582,
+                  0.504763226063427
+                ],
+                [
+                  0.6218282091217582,
+                  0.8656071443069432
+                ],
+                [
+                  0.26098429087824193,
+                  0.49523677393657284
+                ]
+              ]
+            }
+          ],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualQuarter",
+      "id": 5,
+      "masks": [],
+      "name": "Quarter",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 5,
+          "input": 0,
+          "inputRect": [
+            0.14583333333333334,
+            0.2222222222222222,
+            0.20833333333333334,
+            0.5555555555555556
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              2,
+              2
+            ],
+            "points": [
+              [
+                1.0,
+                1.0
+              ],
+              [
+                1.0,
+                0.8333333333333334
+              ],
+              [
+                1.0,
+                0.6666666666666666
+              ],
+              [
+                1.0,
+                0.5
+              ],
+              [
+                1.0,
+                0.3333333333333333
+              ],
+              [
+                1.0,
+                0.16666666666666669
+              ],
+              [
+                1.0,
+                0.0
+              ],
+              [
+                0.8333333333333334,
+                1.0
+              ],
+              [
+                0.8437499999999998,
+                0.824074074074074
+              ],
+              [
+                0.854166666666667,
+                0.6481481481481481
+              ],
+              [
+                0.8645833333333334,
+                0.4722222222222222
+              ],
+              [
+                0.8541666666666667,
+                0.3148148148148148
+              ],
+              [
+                0.84375,
+                0.15740740740740747
+              ],
+              [
+                0.8333333333333334,
+                0.0
+              ],
+              [
+                0.6666666666666667,
+                1.0
+              ],
+              [
+                0.6874999999999999,
+                0.8148148148148151
+              ],
+              [
+                0.7083333333333335,
+                0.6296296296296297
+              ],
+              [
+                0.7291666666666667,
+                0.4444444444444444
+              ],
+              [
+                0.7083333333333334,
+                0.29629629629629634
+              ],
+              [
+                0.6875,
+                0.1481481481481482
+              ],
+              [
+                0.6666666666666667,
+                0.0
+              ],
+              [
+                0.5,
+                1.0
+              ],
+              [
+                0.53125,
+                0.8055555555555556
+              ],
+              [
+                0.5625,
+                0.6111111111111112
+              ],
+              [
+                0.59375,
+                0.4166666666666667
+              ],
+              [
+                0.5625,
+                0.2777777777777778
+              ],
+              [
+                0.53125,
+                0.1388888888888889
+              ],
+              [
+                0.5,
+                0.0
+              ],
+              [
+                0.33333333333333337,
+                1.0
+              ],
+              [
+                0.35416666666666663,
+                0.8148148148148149
+              ],
+              [
+                0.37500000000000006,
+                0.6296296296296297
+              ],
+              [
+                0.39583333333333337,
+                0.4444444444444444
+              ],
+              [
+                0.37499999999999994,
+                0.2962962962962963
+              ],
+              [
+                0.3541666666666667,
+                0.14814814814814817
+              ],
+              [
+                0.33333333333333337,
+                0.0
+              ],
+              [
+                0.16666666666666669,
+                1.0
+              ],
+              [
+                0.17708333333333337,
+                0.8240740740740742
+              ],
+              [
+                0.18750000000000003,
+                0.6481481481481481
+              ],
+              [
+                0.19791666666666669,
+                0.4722222222222222
+              ],
+              [
+                0.18750000000000006,
+                0.3148148148148148
+              ],
+              [
+                0.17708333333333334,
+                0.1574074074074074
+              ],
+              [
+                0.16666666666666669,
+                0.0
+              ],
+              [
+                0.0,
+                1.0
+              ],
+              [
+                0.0,
+                0.8333333333333334
+              ],
+              [
+                0.0,
+                0.6666666666666666
+              ],
+              [
+                0.0,
+                0.5
+              ],
+              [
+                0.0,
+                0.3333333333333333
+              ],
+              [
+                0.0,
+                0.16666666666666669
+              ],
+              [
+                0.0,
+                0.0
+              ]
+            ]
+          }
+        }
+      ],
+      "testCard": false
+    },
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.05,
+        "contrast": 0.1,
+        "green": 0.15,
+        "red": 0.0
+      },
+      "display": "VirtualColour",
+      "id": 6,
+      "masks": [],
+      "name": "Colour",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.3,
+            "brightness": 0.1,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": -0.2
+          },
+          "corners": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "id": 6,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    }
+  ]
+}

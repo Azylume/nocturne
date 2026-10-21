@@ -1,0 +1,43 @@
+# Test cases CI skips: they need a real GPU, real displays, a hardware video encoder, real-time scheduling or engine
+# processes started under the supervisor, which GitHub's macOS runners do not provide. They run in the full local
+# suite (`ctest`) and on the show machine.
+*--composition starts the engine on the file*
+*a disconnected display parks its output*
+*a full disk stops the recording cleanly*
+*a hung or crashed UI leaves rendering*
+*a layer whose decoder gets stuck in a read*
+*a live recording rolls over without a dropped frame*
+*a node follows the main engine's beat clock*
+*a projector power-cycled five times*
+*a restart keeps the show file the saved state belongs to*
+*a show held at start-up misses no frames*
+*a slowed output does not affect the other outputs*
+*after a restart*screens find their displays by identity*
+*desk: killing the desk process leaves the engine's frames running*
+*displays: a projector back under a new id*
+*displays: macOS mirroring displays*
+*djlink: the simulator's scenario drives the beat clock*
+*for a minute of selections*
+*on a slow decoder*
+*once locked*every output shows each rendered frame*
+*recording never stalls rendering*
+*return audio: a Director that stops reading*
+*the frame guard still halves a previewed layer*
+*the machine status names each output's state*
+*the selected clip's preview never costs the show*
+*under GPU overload the render rate degrades evenly*
+*watching the return video*
+*with --realtime-frames*
+*Autopilot resumes on the clip it had stepped to*
+*a clip that crashed the engine while opening*
+*a hung engine is killed after 2 s without a frame*
+*a killed engine restarts and resumes the same clip*
+*a restart asked for over the protocol comes back with the same show*
+*crashes on another thread while a clip opens*
+*ctl's venue lines*
+*parity: a trigger on an Autopiloted layer shows manual*
+*safe mode asked for over the protocol is entered*
+*the Machines tab watches the machine only while it is visible*
+*the Show lock refuses restart and safe mode*
+*the audio input picked at runtime is open again*
+*the recording settings set at runtime are kept*

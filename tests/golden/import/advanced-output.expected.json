@@ -1,0 +1,81 @@
+{
+  "report": {
+    "approximated": [],
+    "ignored": [
+      "soft edging settings: no slice has soft edge on"
+    ],
+    "mapped": [
+      "screen Screen 1 / slice Slice: input rect 0,0 1x1, corners 0 0 2.4 0 2.4 1.8 0 1.8",
+      "screen Screen 1: 1 slice(s), output OutputDeviceVirtual 'Screen 1' 800x600 (VirtualScreen 1) -> display VirtualScreen 1",
+      "test card off on every screen: Advanced Output files do not save one"
+    ],
+    "unsupported": [
+      "screen setup / DMX screen Lumiverse 1: not imported with its 1 fixture slice(s) (lumiverse 0): Nocturne has no DMX output",
+      "screen setup / DMX screen Lumiverse 1 / DmxSlice '1 - 1806 LED 300': not imported"
+    ]
+  },
+  "screens": [
+    {
+      "color": {
+        "blue": 0.0,
+        "brightness": 0.0,
+        "contrast": 0.0,
+        "green": 0.0,
+        "red": 0.0
+      },
+      "display": "VirtualScreen 1",
+      "id": 1,
+      "masks": [],
+      "name": "Screen 1",
+      "slices": [
+        {
+          "color": {
+            "blue": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "green": 0.0,
+            "red": 0.0
+          },
+          "corners": [
+            0.0,
+            0.0,
+            2.4,
+            0.0,
+            2.4,
+            1.8,
+            0.0,
+            1.8
+          ],
+          "id": 1,
+          "input": 0,
+          "inputRect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "masks": [],
+          "name": "Slice",
+          "softEdge": {
+            "bottom": 0.0,
+            "gamma": 2.2,
+            "left": 0.0,
+            "luminance": 0.5,
+            "power": 2.0,
+            "right": 0.0,
+            "top": 0.0
+          },
+          "warp": {
+            "bezier": false,
+            "patches": [
+              1,
+              1
+            ],
+            "points": []
+          }
+        }
+      ],
+      "testCard": false
+    }
+  ]
+}

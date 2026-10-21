@@ -1,0 +1,1 @@
+{"type": "audio", "op": "input", "requested": "Voyager", "channels": [1, 2], "uid": "AppleUSBAudioEngine:Voyager", "name": "Voyager", "sampleRate": 48000, "state": "running", "permission": "authorized", "restarts": 0}
