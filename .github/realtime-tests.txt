@@ -41,3 +41,9 @@
 *the Show lock refuses restart and safe mode*
 *the audio input picked at runtime is open again*
 *the recording settings set at runtime are kept*
+*GPU time per built-in ISF shader at 1080p*
+*GPU time per generator at 1080p*
+*displays per machine: the gig show's screen stays on the Dell*
+*djlink: the receiver hears a loopback feed*
+*two live engines over loopback agree on the beat*
+*without counter sampling the preview timer falls back*
