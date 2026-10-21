@@ -78,7 +78,7 @@ open "build/Nocturne UI.app"                # the UI, connects to the engine on 
 build/nocturne-ctl watch                    # a command-line client: prints the composition and every change
 ```
 
-![The Perform view](docs/screenshots/22-smoke-perform.png)
+![The Map view: one show across three projectors with a corner pin and a soft edge](docs/map.webp)
 
 The engine serves its composition over WebSocket on port 7400; the UI and `nocturne-ctl` are clients, so the UI can run
 on another machine (`--args --host NAME`). A client on another machine needs the engine machine's pairing token
