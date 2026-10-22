@@ -255,10 +255,19 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
 
     Impl(DocumentServer& d, Pairing p) : document(d), pairing(std::move(p)) {}
 
+    size_t unpairedCount() const
+    {
+        return std::count_if(peers.begin(), peers.end(), [](const auto& entry) { return !entry.second->paired; });
+    }
+
     void accept(nw_connection_t connection)
     {
-        auto peer = std::make_shared<Peer>(connection, Encoding::MessagePack);
         const bool loopback = pairing.trustLoopback && fromLoopback(connection);
+        if (!loopback && unpairedCount() >= pairing.maxUnpaired) {
+            nw_connection_cancel(connection);
+            return;
+        }
+        auto peer = std::make_shared<Peer>(connection, Encoding::MessagePack);
         peer->paired = loopback;
         const ClientId id = document.connect([weakPeer = std::weak_ptr<Peer>(peer)](const Message& message) {
             auto p = weakPeer.lock();
@@ -286,6 +295,15 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
                 self->drop(id);
         });
         nw_connection_start(connection);
+        std::weak_ptr<Peer> weakPeer = peer;
+        if (!loopback)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, std::chrono::nanoseconds(pairing.helloTimeout).count()),
+                           queue, ^{
+                               auto self = weak.lock();
+                               auto p = weakPeer.lock();
+                               if (self && !self->stopped && p && !p->paired)
+                                   nw_connection_cancel(connection);
+                           });
         receiveLoop(peer, [weak, id, peer = std::weak_ptr<Peer>(peer)](const std::optional<Message>& message) {
             auto self = weak.lock();
             auto p = peer.lock();

@@ -430,6 +430,35 @@ TEST_CASE("a handler that throws answers its client with an error and the connec
     socket.client.send({{"type", "whoami"}});
     CHECK(socket.next() == Message{{"type", "whoami"}, {"loopback", false}});
 }
+
+TEST_CASE("a client from another machine that does not pair in time is closed, and only so many may wait at once")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    azl::WebSocketServer remote(harness.document(), 0,
+                                {.token = kToken, .trustLoopback = false, .helloTimeout = std::chrono::milliseconds(300),
+                                 .maxUnpaired = 2});
+    SUBCASE("silent")
+    {
+        Socket socket(remote.port());
+        CHECK(socket.closedWithin(3.0));
+    }
+    SUBCASE("paired in time")
+    {
+        Socket socket(remote.port());
+        socket.client.send(msg::hello(kToken));
+        CHECK(socket.next()["type"] == "snapshot");
+        CHECK_FALSE(socket.closedWithin(1.0));
+    }
+    SUBCASE("too many waiting")
+    {
+        RawSocket first(remote.port());
+        RawSocket second(remote.port());
+        CHECK(first.upgraded());
+        CHECK(second.upgraded());
+        CHECK_FALSE(RawSocket(remote.port()).upgraded());
+    }
+}
+
 TEST_CASE("MessagePack with a string that is not UTF-8 is refused as undecodable")
 {
     azl::EngineHarness harness({.width = 160, .height = 90});

@@ -3,6 +3,7 @@
 #include "protocol/document_server.hpp"
 #include "protocol/messages.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -26,6 +27,9 @@ struct Pairing {
     std::string token;
     // Clients from loopback addresses need no token; tests turn this off to stand in for another machine.
     bool trustLoopback = true;
+    // A client that has not paired by then is closed; more unpaired clients than this at once are turned away.
+    std::chrono::milliseconds helloTimeout{10000};
+    size_t maxUnpaired = 32;
 };
 
 // Serves a document over WebSocket, one protocol message per WebSocket message. Each client is answered in the
