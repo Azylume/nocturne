@@ -62,7 +62,7 @@ juce_add_gui_app(nocturne-ui
   PRODUCT_NAME "Nocturne UI"
   BUNDLE_ID com.azylume.nocturne.ui
   COMPANY_NAME Azylume
-  VERSION 0.1
+  VERSION 0.1.1
   PLIST_TO_MERGE "<plist><dict><key>LSUIElement</key><true/><key>NSLocalNetworkUsageDescription</key><string>Nocturne UI connects to Nocturne engines on the local network.</string><key>NSBonjourServices</key><array><string>_nocturne._tcp</string></array><key>LSMinimumSystemVersion</key><string>14.0</string></dict></plist>")
 target_sources(nocturne-ui PRIVATE app/main.cpp)
 target_link_libraries(nocturne-ui PRIVATE nocturne_ui_components juce::juce_recommended_config_flags)
