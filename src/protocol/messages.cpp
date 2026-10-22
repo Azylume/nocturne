@@ -3,6 +3,8 @@
 #include "effects/effect_registry.hpp"
 #include "protocol/build_info.hpp"
 
+#include <algorithm>
+
 namespace azl {
 
 namespace msg {
@@ -133,12 +135,34 @@ bool shallowMsgpack(const uint8_t* data, size_t size)
     return true;
 }
 
+bool utf8(const std::string& text)
+{
+    try {
+        return !Message(text).dump().empty();
+    } catch (const Message::type_error&) {
+        return false;
+    }
+}
+
+bool allUtf8(const Message& m)
+{
+    if (m.is_string())
+        return utf8(m.get_ref<const std::string&>());
+    if (m.is_object())
+        for (auto it = m.begin(); it != m.end(); ++it)
+            if (!utf8(it.key()) || !allUtf8(it.value()))
+                return false;
+    if (m.is_array())
+        return std::all_of(m.begin(), m.end(), allUtf8);
+    return true;
+}
+
 std::optional<Message> decodeMsgpack(const uint8_t* data, size_t size)
 {
     if (!shallowMsgpack(data, size))
         return std::nullopt;
     Message m = Message::from_msgpack(data, data + size, true, false);
-    if (m.is_discarded())
+    if (m.is_discarded() || !allUtf8(m))
         return std::nullopt;
     return m;
 }
@@ -166,7 +190,7 @@ std::vector<uint8_t> encode(const Message& message, Encoding encoding)
 {
     if (encoding == Encoding::MessagePack)
         return Message::to_msgpack(message);
-    const std::string text = message.dump();
+    const std::string text = message.dump(-1, ' ', false, Message::error_handler_t::replace);
     return {text.begin(), text.end()};
 }
 

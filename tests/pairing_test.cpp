@@ -430,3 +430,17 @@ TEST_CASE("a handler that throws answers its client with an error and the connec
     socket.client.send({{"type", "whoami"}});
     CHECK(socket.next() == Message{{"type", "whoami"}, {"loopback", false}});
 }
+TEST_CASE("MessagePack with a string that is not UTF-8 is refused as undecodable")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    answerWhoami(harness.document());
+    azl::WebSocketServer local(harness.document(), 0);
+    RawSocket raw(local.port());
+    REQUIRE(raw.upgraded());
+    sayHello(raw);
+    raw.send({0x82, 0xa4, 't', 'y', 'p', 'e', 0xa6, 'w', 'h', 'o', 'a', 'm', 'i', 0xa4, 'n', 'a', 'm', 'e', 0xa1, 0xff});
+    CHECK(isError(raw.next(), "undecodable"));
+    raw.send({0x82, 0xa4, 't', 'y', 'p', 'e', 0xa6, 'w', 'h', 'o', 'a', 'm', 'i', 0xa4, 'n', 'a', 'm', 'e', 0xa2, 0xc3,
+              0xa9});
+    CHECK(raw.next() == Message{{"type", "whoami"}, {"loopback", true}});
+}

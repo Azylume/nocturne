@@ -289,6 +289,17 @@ TEST_CASE("desk: no Gig tonight shows the live deck and no lineup; an engine awa
     CHECK(Message::parse(away.body)["connected"] == false);
 }
 
+TEST_CASE("desk: a status with a name that is not UTF-8 still gets an answer")
+{
+    Desk desk;
+    desk.harness.document().handle("desk", [](const Message&, const azl::DocumentServer::Sink& reply) {
+        reply({{"type", "desk"}, {"op", "status"}, {"deck", 1}, {"name", "caf\xe9"}});
+    });
+    const HttpReply reply = httpGet(desk.server.port(), "/state");
+    CHECK((reply.status == 200 || reply.status == 503));
+    CHECK_NOTHROW(Message::parse(reply.body));
+}
+
 TEST_CASE("desk: the page draws a button per slot and marks the live one, in a web view no window shows")
 {
     Desk desk;

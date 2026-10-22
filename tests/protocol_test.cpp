@@ -404,3 +404,36 @@ TEST_CASE("a batch applies its edits as one change and one undo step, or none of
     a.send(msg::undo());
     CHECK(layer().opacity == 0.5);
 }
+
+TEST_CASE("decode reads MessagePack and JSON up to 64 levels deep and in UTF-8 only")
+{
+    const auto decoded = [](const std::vector<uint8_t>& bytes, azl::Encoding encoding) {
+        return azl::decode(bytes.data(), bytes.size(), encoding).has_value();
+    };
+    const auto nested = [](size_t depth, azl::Encoding encoding) {
+        Message m = Message::array();
+        for (size_t i = 1; i < depth; ++i)
+            m = Message::array({m});
+        return azl::encode({{"type", "x"}, {"deep", m}, {"bin", Message::binary({1, 2, 3}, 9)}, {"n", -1.5}}, encoding);
+    };
+    for (const azl::Encoding encoding : {azl::Encoding::MessagePack, azl::Encoding::Json}) {
+        CHECK(decoded(nested(63, encoding), encoding));
+        CHECK_FALSE(decoded(nested(64, encoding), encoding));
+    }
+
+    std::vector<uint8_t> deep{0x81, 0xa1, 'a'};
+    deep.insert(deep.end(), 500000, 0x91);
+    deep.push_back(0xc0);
+    CHECK_FALSE(decoded(deep, azl::Encoding::MessagePack));
+    const std::string text = "{\"a\":" + std::string(500000, '[') + std::string(500000, ']') + "}";
+    CHECK_FALSE(decoded({text.begin(), text.end()}, azl::Encoding::Json));
+    CHECK_FALSE(decoded({0x81, 0xa1, 'a', 0xdd, 0xff, 0xff, 0xff, 0xff}, azl::Encoding::MessagePack));
+
+    CHECK(decoded(Message::to_msgpack({{"type", "caf\xc3\xa9"}}), azl::Encoding::MessagePack));
+    CHECK_FALSE(decoded(Message::to_msgpack({{"type", "caf\xe9"}}), azl::Encoding::MessagePack));
+    CHECK_FALSE(decoded(Message::to_msgpack({{"type", "x"}, {"\xff", 1}}), azl::Encoding::MessagePack));
+    CHECK_FALSE(decoded(Message::to_msgpack({{"type", "x"}, {"list", {1, "\xc3"}}}), azl::Encoding::MessagePack));
+
+    const std::vector<uint8_t> json = azl::encode({{"type", "caf\xe9"}}, azl::Encoding::Json);
+    CHECK(std::string(json.begin(), json.end()) == "{\"type\":\"caf\xef\xbf\xbd\"}");
+}

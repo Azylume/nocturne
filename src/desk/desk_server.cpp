@@ -261,7 +261,7 @@ DeskServer::Response DeskServer::respond(const std::string& method, const std::s
     (*status)["connected"] = true;
     status->erase("type");
     status->erase("op");
-    return {200, "application/json", status->dump()};
+    return {200, "application/json", status->dump(-1, ' ', false, Message::error_handler_t::replace)};
 }
 
 std::optional<Message> DeskServer::engineStatus()
