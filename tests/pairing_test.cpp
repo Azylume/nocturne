@@ -186,3 +186,17 @@ TEST_CASE("nocturne-ctl presents --token or NOCTURNE_TOKEN, and says why the eng
                                 " snapshot > /dev/null 2>&1";
     CHECK(std::system(withEnv.c_str()) == 0);
 }
+
+TEST_CASE("a hello whose type is not a string is refused for the token, and the engine keeps serving")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    azl::WebSocketServer remote(harness.document(), 0, {kToken, false});
+    {
+        Socket socket(remote.port());
+        socket.client.send({{"type", 1}, {"token", kToken}});
+        CHECK(refusedForToken(socket));
+    }
+    Socket socket(remote.port());
+    socket.client.send(msg::hello(kToken));
+    CHECK(socket.next()["type"] == "snapshot");
+}

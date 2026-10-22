@@ -133,9 +133,16 @@ Message unpaired()
                         "nocturne-ctl token on the engine's machine"}};
 }
 
+// Empty when the message has no "type" or it is not a string.
+std::string typeOf(const Message& message)
+{
+    const auto type = message.find("type");
+    return type != message.end() && type->is_string() ? type->get<std::string>() : "";
+}
+
 bool presentsToken(const std::optional<Message>& message, const std::string& token)
 {
-    if (!message || !message->is_object() || message->value("type", "") != "hello")
+    if (!message || typeOf(*message) != "hello")
         return false;
     const auto presented = message->find("token");
     return presented != message->end() && presented->is_string() && sameToken(presented->get<std::string>(), token);
@@ -231,7 +238,7 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
         peer->paired = loopback;
         const ClientId id = document.connect([weakPeer = std::weak_ptr<Peer>(peer)](const Message& message) {
             auto p = weakPeer.lock();
-            const std::string type = message.value("type", "");
+            const std::string type = typeOf(message);
             if (!p || (p->pending > kMaxPendingSends && type == "change") ||
                 (p->pending > kMaxPendingPreviews && type == "preview" && message.contains("jpeg")))
                 return;
