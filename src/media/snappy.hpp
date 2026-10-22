@@ -9,7 +9,8 @@ namespace azl {
 
 // The raw Snappy format (google/snappy format_description.txt), without the framing format.
 
-// The uncompressed length a compressed block declares; none when the preamble is malformed.
+// The uncompressed length a compressed block declares; none when the preamble is malformed or declares more than the
+// block can hold.
 std::optional<size_t> snappyLength(const uint8_t* data, size_t size);
 // Decompresses into exactly `outSize` bytes. False when the data is malformed or does not fill `outSize` exactly.
 bool snappyDecompress(const uint8_t* data, size_t size, uint8_t* out, size_t outSize);

@@ -150,4 +150,28 @@ TEST_CASE("layers nested past one group level are refused without reading them, 
     CHECK_THROWS_AS(Message::parse(R"({"layers": 3})").get<azl::Layer>(), azl::ProtocolError);
 }
 
+TEST_CASE("a HAP frame of an impossible size is refused before anything is allocated for it")
+{
+    std::vector<azl::HapImage> images;
+    const std::vector<uint8_t> empty{0, 0, 0, 0xab, 0, 0, 0, 0};
+    for (const auto& [w, h] : std::vector<std::pair<int, int>>{{-4, 4}, {4, -4}, {0, 4}, {20000, 4}, {4, 65535}})
+        CHECK_FALSE(azl::decodeHapFrame(empty.data(), empty.size(), w, h, images).empty());
+    CHECK(azl::pictureSizeOk(16384, 16384));
+    CHECK_FALSE(azl::pictureSizeOk(16385, 16));
+
+    const std::vector<uint8_t> rgba(size_t(16) * 16 * 4, 128);
+    const std::vector<uint8_t> frame = azl::encodeHapFrame(rgba.data(), 16, 16, azl::HapCodec::Hap);
+    CHECK(azl::decodeHapFrame(frame.data(), frame.size(), 16, 16, images).empty());
+    CHECK_FALSE(azl::decodeHapFrame(frame.data(), frame.size(), 16000, 16000, images).empty());
+}
+
+TEST_CASE("a Snappy block declaring more than its bytes can hold has no length")
+{
+    const std::vector<uint8_t> claims{0xff, 0xff, 0xff, 0xff, 0x0f, 0x00};
+    CHECK_FALSE(azl::snappyLength(claims.data(), claims.size()));
+    std::vector<uint8_t> zeros(1 << 20, 0);
+    const std::vector<uint8_t> packed = azl::snappyCompress(zeros.data(), zeros.size());
+    CHECK(azl::snappyLength(packed.data(), packed.size()) == zeros.size());
+}
+
 TEST_SUITE_END();

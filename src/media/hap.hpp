@@ -17,6 +17,10 @@ struct HapImage {
     std::vector<uint8_t> blocks;
 };
 
+// The largest side of a picture a movie may declare: Metal's texture limit.
+inline constexpr int kMaxPictureSide = 16384;
+bool pictureSizeOk(int width, int height);
+
 // Bytes of a `texture` of that size: 4x4 blocks, the last row and column padded.
 size_t hapTextureBytes(HapTexture texture, int width, int height);
 
