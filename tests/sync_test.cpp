@@ -511,3 +511,23 @@ TEST_CASE("a node without fetching, as a UI's preview follower, mirrors the comp
     const auto entry = follower.library().find(hash);
     CHECK((!entry || entry->status == azl::MediaStatus::Missing));
 }
+
+TEST_CASE("a node shrugs off a message whose type is not a string")
+{
+    azl::EngineHarness main(kSize, kFps);
+    std::atomic<bool> answered = false;
+    main.document().handle("node", [&](const Message&, const azl::DocumentServer::Sink& reply) {
+        reply({{"type", 1}});
+        answered = true;
+    });
+    azl::WebSocketServer server(main.document(), 0);
+
+    azl::EngineHarness follower(kSize, kFps);
+    azl::NodeSync node(
+        follower.document(), follower.engine(), follower.library(), [&] { return follower.time(); },
+        [&]() -> std::optional<azl::Endpoint> { return azl::Endpoint{"main", "127.0.0.1", server.port()}; },
+        [](const azl::Endpoint&, uint16_t) { return std::make_unique<FixedClock>(0.0); }, false);
+    REQUIRE(waitUntil([&] { return answered.load(); }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(node.status().connected);
+}

@@ -316,8 +316,8 @@ void NodeSync::receive(const Message& message)
     if (!session_ || !session_->client)
         return;
     session_->heard = std::chrono::steady_clock::now();
-    const std::string type = message.value("type", "");
     try {
+        const std::string type = message.value("type", "");
         if (type == "snapshot" || type == "change")
             return mirror(message);
         if (type == "beat") {

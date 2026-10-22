@@ -152,6 +152,11 @@ Message unpaired()
                         "nocturne-ctl token on the engine's machine"}};
 }
 
+Message failed(const std::exception& e)
+{
+    return {{"type", "error"}, {"message", e.what()}};
+}
+
 // Empty when the message has no "type" or it is not a string.
 std::string typeOf(const Message& message)
 {
@@ -286,17 +291,27 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
             auto p = peer.lock();
             if (!self || self->stopped || !p || p->refused)
                 return;
-            if (!p->paired && !presentsToken(message, self->pairing.token)) {
-                p->refused = true;
-                send(p, unpaired(), true);
-                return;
+            try {
+                self->receive(id, p, message);
+            } catch (const std::exception& e) {
+                p->refused = !p->paired;
+                send(p, failed(e), p->refused);
             }
-            p->paired = true;
-            if (message)
-                self->document.receive(id, *message);
-            else
-                send(p, undecodable());
         });
+    }
+
+    void receive(ClientId id, const std::shared_ptr<Peer>& peer, const std::optional<Message>& message)
+    {
+        if (!peer->paired && !presentsToken(message, pairing.token)) {
+            peer->refused = true;
+            send(peer, unpaired(), true);
+            return;
+        }
+        peer->paired = true;
+        if (message)
+            document.receive(id, *message);
+        else
+            send(peer, undecodable());
     }
 
     void drop(ClientId id)

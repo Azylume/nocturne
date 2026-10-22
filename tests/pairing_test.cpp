@@ -413,3 +413,20 @@ TEST_CASE("a handshake with an Origin header, as every web page's has, is refuse
     CHECK_FALSE(RawSocket(local.port(), "origin: null\r\n").upgraded());
     CHECK(RawSocket(local.port()).upgraded());
 }
+
+TEST_CASE("a handler that throws answers its client with an error and the connection stays open")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    answerWhoami(harness.document());
+    harness.document().handle("picky", [](const Message& m, const azl::DocumentServer::Sink& reply) {
+        reply({{"type", "picky"}, {"name", m.value("name", "")}});
+    });
+    azl::WebSocketServer remote(harness.document(), 0, {kToken, false});
+    Socket socket(remote.port());
+    socket.client.send(msg::hello(kToken));
+    REQUIRE(socket.next()["type"] == "snapshot");
+    socket.client.send({{"type", "picky"}, {"name", 1}});
+    CHECK(isError(socket.next(), "type must be string"));
+    socket.client.send({{"type", "whoami"}});
+    CHECK(socket.next() == Message{{"type", "whoami"}, {"loopback", false}});
+}
