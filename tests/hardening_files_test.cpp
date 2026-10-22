@@ -223,4 +223,19 @@ TEST_CASE("the pointwise checks read a shader of the largest file size on a thre
     CHECK(std::holds_alternative<std::string>(parsedTransition));
 }
 
+TEST_CASE("XML nested deeper than 256 elements is malformed, however deep")
+{
+    CHECK(azl::parseXml(nested("<a>", "", "</a>", 256))->children.size() == 1);
+    CHECK_THROWS_AS(azl::parseXml(nested("<a>", "", "</a>", 257)), std::runtime_error);
+    CHECK_THROWS_AS(azl::parseXml(nested("<a>", "", "</a>", 200000)), std::runtime_error);
+}
+
+TEST_CASE("XML character references that are no character are malformed")
+{
+    CHECK(azl::parseXml(R"(<a b="&#65;&#x42;"/>)")->attr("b") == "AB");
+    for (const char* bad : {R"(<a b="&#;"/>)", R"(<a b="&#x;"/>)", R"(<a b="&#99999999999999999999;"/>)",
+                            R"(<a b="&#x110000;"/>)", R"(<a b="&#12a;"/>)"})
+        CHECK_THROWS_AS(azl::parseXml(bad), std::runtime_error);
+}
+
 TEST_SUITE_END();

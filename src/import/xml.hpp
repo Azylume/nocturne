@@ -24,7 +24,7 @@ struct XmlNode {
     const XmlNode* at(const std::string& path) const;
 };
 
-// Throws std::runtime_error on malformed input.
+// Throws std::runtime_error on malformed input, and on elements nested more than 256 deep.
 std::unique_ptr<XmlNode> parseXml(const std::string& text);
 std::unique_ptr<XmlNode> parseXmlFile(const std::string& path);
 
