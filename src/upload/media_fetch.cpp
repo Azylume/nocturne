@@ -1,5 +1,6 @@
 #include "upload/media_fetch.hpp"
 
+#include "media/keep_local.hpp"
 #include "media/media_library.hpp"
 
 #include <algorithm>
@@ -27,6 +28,8 @@ bool holds(const fs::path& file, const std::string& hash)
 
 fs::path fetchedFile(const fs::path& folder, const std::string& hash)
 {
+    if (!isMediaHash(hash))
+        throw std::runtime_error("not a media hash: " + hash.substr(0, 80));
     return folder / (hash + ".mp4");
 }
 
@@ -86,6 +89,8 @@ MediaFetcher::~MediaFetcher()
 
 void MediaFetcher::want(const std::string& hash)
 {
+    if (!isMediaHash(hash))
+        return;
     {
         std::lock_guard lock(mutex_);
         if (fetching_ == hash || std::ranges::find(queue_, hash) != queue_.end())

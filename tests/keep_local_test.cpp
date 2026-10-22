@@ -121,6 +121,15 @@ TEST_CASE("a fetch by hash comes down in chunks, resumes after a drop and reject
     }
 }
 
+TEST_CASE("a fetched file is named only by a content hash")
+{
+    TempDir dir;
+    CHECK(azl::fetchedFile(dir.path, kA) == dir.path / (std::string(kA) + ".mp4"));
+    CHECK_THROWS(azl::fetchedFile(dir.path, "../escape"));
+    CHECK_THROWS(azl::fetchedFile(dir.path, "/etc/passwd"));
+    CHECK_THROWS(azl::fetchedFile(dir.path, std::string(kA).substr(0, 63) + "/"));
+}
+
 TEST_CASE("the fetcher brings wanted media one at a time, keeps a failure until wanted again")
 {
     FakeS3 s3;

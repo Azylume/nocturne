@@ -52,10 +52,12 @@ azl::Composition twoDecks(const std::string& a, const std::string& b, const std:
 
 // A venue engine whose composition needs three files, all in the fake bucket, and its media sync on a fake clock.
 struct Venue {
-    Venue()
+    // `firstClip` replaces the first clip's hash in the composition.
+    explicit Venue(const std::string& firstClip = "")
         : objects{readAll(mediaDir() / "count_100.mp4"), readAll(mediaDir() / "count_240.mp4"), bytes(4500)},
           hashes{azl::sha256Hex(objects[0]), azl::sha256Hex(objects[1]), azl::sha256Hex(objects[2])},
-          harness({.width = 320, .height = 180}, 60.0, dir.path / "library", twoDecks(hashes[0], hashes[1], hashes[2]))
+          harness({.width = 320, .height = 180}, 60.0, dir.path / "library",
+                  twoDecks(firstClip.empty() ? hashes[0] : firstClip, hashes[1], hashes[2]))
     {
         for (size_t i = 0; i < objects.size(); ++i)
             s3.putObject(hashes[i], objects[i]);
@@ -272,6 +274,18 @@ TEST_CASE("a corrupted object is discarded and fetched again; one that never ver
     CHECK(bad.status()["error"].get<std::string>().find("arrived with another hash 2 times") != std::string::npos);
     CHECK(bad.status()["missing"] == 1);
     CHECK_FALSE(bad.harness.library().find(bad.hashes[0]));
+}
+
+TEST_CASE("a clip whose hash is not a content hash is never downloaded or used as a file name")
+{
+    Venue venue("../escape");
+    venue.start();
+    REQUIRE(waitFor([&] { return venue.status()["state"] == "error"; }));
+    CHECK(venue.status()["error"].get<std::string>().find("has no media hash") != std::string::npos);
+    CHECK_FALSE(fs::exists(venue.dir.path / "escape.part"));
+    CHECK_FALSE(fs::exists(venue.dir.path / "escape"));
+    for (const auto& entry : fs::recursive_directory_iterator(venue.dir.path))
+        CHECK(entry.path().filename().string().find("escape") == std::string::npos);
 }
 
 TEST_CASE("a download cut off midway resumes where it stopped")
