@@ -268,8 +268,12 @@ std::optional<Message> DeskServer::engineStatus()
 {
     std::lock_guard lock(engineMutex_);
     if (link_) {
-        std::lock_guard inbox(link_->mutex);
-        if (link_->closed)
+        bool closed = false;
+        {
+            std::lock_guard inbox(link_->mutex);
+            closed = link_->closed;
+        }
+        if (closed)
             link_.reset();
     }
     if (!link_) {

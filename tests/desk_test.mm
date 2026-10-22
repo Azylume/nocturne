@@ -289,6 +289,21 @@ TEST_CASE("desk: no Gig tonight shows the live deck and no lineup; an engine awa
     CHECK(Message::parse(away.body)["connected"] == false);
 }
 
+TEST_CASE("desk: an engine that closes the desk's connection gets a new one on the next request")
+{
+    azl::EngineHarness harness(kSize, 15.0, {}, withNight());
+    auto engine = std::make_unique<azl::WebSocketServer>(harness.document(), 0);
+    const uint16_t enginePort = engine->port();
+    azl::DeskServer desk{{.port = 0, .enginePort = enginePort, .loopbackOnly = true}};
+    for (int round = 0; round < 3; ++round) {
+        REQUIRE(httpGet(desk.port(), "/state").status == 200);
+        engine.reset();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(httpGet(desk.port(), "/state").status == 503);
+        engine = std::make_unique<azl::WebSocketServer>(harness.document(), enginePort);
+    }
+}
+
 TEST_CASE("desk: the page draws a button per slot and marks the live one, in a web view no window shows")
 {
     Desk desk;
