@@ -136,4 +136,18 @@ TEST_CASE("a node presents its main's pairing token only to a main it was told t
     CHECK(azl::presentsToken(false, "localhost"));
 }
 
+TEST_CASE("layers nested past one group level are refused without reading them, however deep")
+{
+    const Message group = Message::parse(R"({"group": true, "layers": [{"name": "a"}, {"name": "b"}]})");
+    const azl::Layer parsed = group.get<azl::Layer>();
+    REQUIRE(parsed.layers.size() == 2);
+    CHECK(parsed.layers[1].name == "b");
+
+    const Message three = Message::parse(R"({"group": true, "layers": [{"group": true, "layers": [{}]}]})");
+    CHECK_THROWS_AS(three.get<azl::Layer>(), azl::ProtocolError);
+    const Message deep = Message::parse(nested(R"({"group": true, "layers": [)", "{}", "]}", 200000));
+    CHECK_THROWS_AS(deep.get<azl::Layer>(), azl::ProtocolError);
+    CHECK_THROWS_AS(Message::parse(R"({"layers": 3})").get<azl::Layer>(), azl::ProtocolError);
+}
+
 TEST_SUITE_END();
