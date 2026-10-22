@@ -363,4 +363,9 @@ add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_hos
 target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
+option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, built with Homebrew LLVM" OFF)
+if(NOCTURNE_FUZZ)
+  add_custom_target(fuzz COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/build.sh" "${CMAKE_BINARY_DIR}" USES_TERMINAL)
+endif()
+
 add_subdirectory(src/ui)
