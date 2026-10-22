@@ -92,7 +92,7 @@ struct Chunk {
     size_t outSize = 0;
 };
 
-std::string decodeChunked(const Section& s, std::vector<uint8_t>& out)
+std::string decodeChunked(const Section& s, size_t expected, std::vector<uint8_t>& out)
 {
     const std::optional<Section> instructions = section(s.data, s.data + s.size);
     if (!instructions || instructions->type != kInstructions)
@@ -140,11 +140,14 @@ std::string decodeChunked(const Section& s, std::vector<uint8_t>& out)
         } else {
             return "unknown chunk compressor";
         }
+        if (c.outSize > expected - total)
+            return "chunks hold more than the texture's " + std::to_string(expected) + " bytes";
         c.outOffset = total;
         total += c.outSize;
     }
-    if (total != out.size())
-        return "chunks hold " + std::to_string(total) + " bytes, the texture needs " + std::to_string(out.size());
+    if (total != expected)
+        return "chunks hold " + std::to_string(total) + " bytes, the texture needs " + std::to_string(expected);
+    out.resize(expected);
     std::atomic<bool> failed{false};
     auto decode = [&](size_t i) {
         const Chunk& c = chunks[i];
@@ -170,17 +173,19 @@ std::string decodeImage(const Section& s, int width, int height, HapImage& image
         return "unsupported texture format " + std::to_string(format);
     image.texture = HapTexture(format);
     const size_t expected = hapTextureBytes(image.texture, width, height);
-    image.blocks.resize(expected);
     switch (compressor) {
     case kNone:
         if (s.size != expected)
             return "uncompressed texture of " + std::to_string(s.size) + " bytes, expected " + std::to_string(expected);
-        std::memcpy(image.blocks.data(), s.data, expected);
+        image.blocks.assign(s.data, s.data + expected);
         return "";
     case kSnappy:
+        if (snappyLength(s.data, s.size) != expected)
+            return "malformed Snappy data";
+        image.blocks.resize(expected);
         return snappyDecompress(s.data, s.size, image.blocks.data(), expected) ? "" : "malformed Snappy data";
     case kChunked:
-        return decodeChunked(s, image.blocks);
+        return decodeChunked(s, expected, image.blocks);
     }
     return "unknown section type " + std::to_string(s.type);
 }
@@ -418,8 +423,15 @@ size_t hapTextureBytes(HapTexture texture, int width, int height)
     return blocks * (texture == HapTexture::BC1 || texture == HapTexture::BC4 ? 8 : 16);
 }
 
+bool pictureSizeOk(int width, int height)
+{
+    return width > 0 && height > 0 && width <= kMaxPictureSide && height <= kMaxPictureSide;
+}
+
 std::string decodeHapFrame(const uint8_t* data, size_t size, int width, int height, std::vector<HapImage>& images)
 {
+    if (!pictureSizeOk(width, height))
+        return "a picture of " + std::to_string(width) + "x" + std::to_string(height);
     const std::optional<Section> top = section(data, data + size);
     if (!top)
         return "truncated HAP frame";

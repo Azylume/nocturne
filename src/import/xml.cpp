@@ -57,6 +57,8 @@ const XmlNode* XmlNode::at(const std::string& path) const
 
 namespace {
 
+constexpr int kMaxDepth = 256;
+
 class Parser {
 public:
     explicit Parser(const std::string& text) : s_(text) {}
@@ -67,7 +69,7 @@ public:
         while (skipMisc()) {
             if (root)
                 fail("more than one root element");
-            root = element();
+            root = element(1);
         }
         if (!root)
             fail("no root element");
@@ -152,11 +154,16 @@ private:
         return out;
     }
 
-    static void appendUtf8(std::string& out, const std::string& entity)
+    void appendUtf8(std::string& out, const std::string& entity) const
     {
-        const unsigned long c = entity.size() > 1 && (entity[1] == 'x' || entity[1] == 'X')
-                                    ? std::stoul(entity.substr(2), nullptr, 16)
-                                    : std::stoul(entity.substr(1));
+        const bool hex = entity.size() > 1 && (entity[1] == 'x' || entity[1] == 'X');
+        const std::string digits = entity.substr(hex ? 2 : 1);
+        const size_t valid = digits.find_first_not_of(hex ? "0123456789abcdefABCDEF" : "0123456789");
+        if (digits.empty() || valid != std::string::npos || digits.size() > 8)
+            fail("bad character reference &" + entity + ";");
+        const unsigned long c = std::stoul(digits, nullptr, hex ? 16 : 10);
+        if (c > 0x10FFFF)
+            fail("bad character reference &" + entity + ";");
         if (c < 0x80) {
             out += char(c);
         } else if (c < 0x800) {
@@ -174,8 +181,10 @@ private:
         }
     }
 
-    std::unique_ptr<XmlNode> element()
+    std::unique_ptr<XmlNode> element(int depth)
     {
+        if (depth > kMaxDepth)
+            fail("elements nested deeper than " + std::to_string(kMaxDepth));
         ++i_;
         auto node = std::make_unique<XmlNode>();
         node->name = name();
@@ -207,7 +216,7 @@ private:
             i_ = end + 1;
         }
         while (skipMisc())
-            node->children.push_back(element());
+            node->children.push_back(element(depth + 1));
         if (!starts("</"))
             fail("unterminated element " + node->name);
         i_ += 2;

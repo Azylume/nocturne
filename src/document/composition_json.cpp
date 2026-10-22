@@ -2,6 +2,7 @@
 #include "document/json_fields.hpp"
 
 #include "document/cue_edits.hpp"
+#include "document/edit_support.hpp"
 #include "document/id_pool.hpp"
 #include "document/mapping_edits.hpp"
 #include "document/modulation_edits.hpp"
@@ -72,6 +73,8 @@ void to_json(nlohmann::json& j, const ClipRef& clip)
 void from_json(const nlohmann::json& j, ClipRef& clip)
 {
     clip.hash = j.at("hash").get<std::string>();
+    if (!clip.hash.empty() && !edits::isContentHash(clip.hash))
+        throw ProtocolError("clip hash must be 64 lowercase hex digits (SHA-256)");
     clip.name = j.at("name").get<std::string>();
     clip.transport = transportFromJson(j.value("transport", nlohmann::json()));
     clip.step = j.value("step", 0);
@@ -218,8 +221,9 @@ std::optional<Play> playFromJson(const nlohmann::json& j)
     return play;
 }
 
-// Missing fields take their defaults, so a client can add a layer by giving only what it cares about.
-void from_json(const nlohmann::json& j, Layer& layer)
+namespace {
+
+void layerFields(const nlohmann::json& j, Layer& layer)
 {
     layer = Layer{};
     layer.id = j.value("id", uint64_t(0));
@@ -232,7 +236,6 @@ void from_json(const nlohmann::json& j, Layer& layer)
     layer.group = j.value("group", false);
     layer.outputOnly = layer.group && j.value("outputOnly", false);
     layer.fullResolution = j.value("fullResolution", false);
-    layer.layers = j.value("layers", std::vector<Layer>{});
     layer.clips = clipsFromJson(j.value("clips", nlohmann::json::object()));
     layer.playing = playFromJson(j.value("playing", nlohmann::json()));
     layer.armed = j.value("armed", std::set<uint64_t>{});
@@ -248,6 +251,31 @@ void from_json(const nlohmann::json& j, Layer& layer)
             transition->value("params", std::map<std::string, std::map<std::string, double>>{});
     }
     layer.decks = deckLayersFromJson(j.value("decks", nlohmann::json::object()), "deck");
+}
+
+const nlohmann::json& innerLayers(const nlohmann::json& j)
+{
+    static const nlohmann::json none = nlohmann::json::array();
+    const auto layers = j.find("layers");
+    if (layers == j.end())
+        return none;
+    if (!layers->is_array())
+        throw ProtocolError("layers must be an array");
+    return *layers;
+}
+
+} // namespace
+
+// Missing fields take their defaults, so a client can add a layer by giving only what it cares about. Groups do not
+// nest: a layer inside a layer inside a layer is refused before it is read.
+void from_json(const nlohmann::json& j, Layer& layer)
+{
+    layerFields(j, layer);
+    for (const nlohmann::json& inner : innerLayers(j)) {
+        if (!innerLayers(inner).empty())
+            throw ProtocolError("groups do not nest");
+        layerFields(inner, layer.layers.emplace_back());
+    }
 }
 
 void to_json(nlohmann::json& j, const DeckLayer& settings)

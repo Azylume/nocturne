@@ -14,7 +14,7 @@ azl::Composition threeLayers()
         azl::Edit add = azl::AddLayer{0, std::nullopt, azl::Layer{.id = id, .name = "Layer " + std::to_string(id)}};
         azl::applyEdit(c, add);
     }
-    c.layers[1].clips[1] = azl::ClipRef{"aaaa", "one"};
+    c.layers[1].clips[1] = azl::ClipRef{std::string(64, 'a'), "one"};
     return c;
 }
 

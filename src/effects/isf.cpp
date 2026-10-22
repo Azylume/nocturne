@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <mutex>
 #include <optional>
 #include <regex>
@@ -50,9 +51,15 @@ double component(const json& j, const char* key, size_t i, double fallback)
     return j[key][i].get<double>();
 }
 
+std::string text(const json& j, const char* key)
+{
+    const auto it = j.find(key);
+    return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+
 std::string labelOf(const json& input)
 {
-    return input.value("LABEL", std::string());
+    return text(input, "LABEL");
 }
 
 std::string suffixed(const std::string& label, const char* suffix)
@@ -79,19 +86,32 @@ void addBool(const json& input, const std::string& name, IsfShader& shader)
     shader.inputs.push_back({name, IsfInputType::Bool});
 }
 
+int whole(double value, const std::string& name)
+{
+    if (!(std::abs(value) <= 1e9))
+        throw std::string("input " + name + " has a value out of range");
+    return int(value);
+}
+
 std::vector<int> longValues(const json& input, const std::string& name)
 {
     std::vector<int> values;
     if (input.contains("VALUES") && input["VALUES"].is_array()) {
         for (const json& v : input["VALUES"])
             if (v.is_number())
-                values.push_back(int(v.get<double>()));
+                values.push_back(whole(v.get<double>(), name));
     } else if (input.contains("MIN") && input.contains("MAX")) {
-        for (int v = int(number(input, "MIN", 0.0)); v <= int(number(input, "MAX", 0.0)); ++v)
+        const int min = whole(number(input, "MIN", 0.0), name);
+        const int max = whole(number(input, "MAX", 0.0), name);
+        if (max - min >= int(kMaxLongValues))
+            throw std::string("input " + name + " offers more than " + std::to_string(kMaxLongValues) + " values");
+        for (int v = min; v <= max; ++v)
             values.push_back(v);
     }
     if (values.size() < 2)
         throw std::string("input " + name + " offers fewer than two values");
+    if (values.size() > kMaxLongValues)
+        throw std::string("input " + name + " offers more than " + std::to_string(kMaxLongValues) + " values");
     return values;
 }
 
@@ -104,7 +124,7 @@ void addLong(const json& input, const std::string& name, IsfShader& shader)
                               input["LABELS"][i].is_string();
         labels.push_back(labelled ? input["LABELS"][i].get<std::string>() : std::to_string(values[i]));
     }
-    const int fallback = int(number(input, "DEFAULT", values[0]));
+    const int fallback = whole(number(input, "DEFAULT", values[0]), name);
     const auto at = std::find(values.begin(), values.end(), fallback);
     const double index = at == values.end() ? 0.0 : double(at - values.begin());
     shader.params.push_back({.name = name, .min = 0.0, .max = double(values.size() - 1), .defaultValue = index,
@@ -149,8 +169,10 @@ bool pictureInput(IsfKind kind, const std::string& name)
 
 void addInput(const json& input, IsfShader& shader)
 {
-    const std::string name = input.value("NAME", std::string());
-    const std::string type = input.value("TYPE", std::string());
+    if (!input.is_object())
+        throw std::string("an input is not a JSON object");
+    const std::string name = text(input, "NAME");
+    const std::string type = text(input, "TYPE");
     if (name.empty())
         throw std::string("an input has no NAME");
     if (pictureInput(shader.kind, name) || (shader.kind == IsfKind::Transition && name == "progress"))
@@ -173,8 +195,8 @@ IsfKind kindOf(const json& inputs)
 {
     std::set<std::string> images;
     for (const json& input : inputs)
-        if (input.value("TYPE", std::string()) == "image")
-            images.insert(input.value("NAME", std::string()));
+        if (input.is_object() && text(input, "TYPE") == "image")
+            images.insert(text(input, "NAME"));
     if (images.count("startImage") && images.count("endImage"))
         return IsfKind::Transition;
     return images.count("inputImage") ? IsfKind::Effect : IsfKind::Generator;
@@ -298,7 +320,9 @@ std::string userIsfType(const std::string& name)
     return type.size() > 3 ? "user" + type.substr(3) : std::string();
 }
 
-std::variant<IsfShader, std::string> parseIsf(const IsfSource& source)
+namespace {
+
+std::variant<IsfShader, std::string> parse(const IsfSource& source)
 {
     auto split = splitHeader(source.text);
     if (auto* error = std::get_if<std::string>(&split))
@@ -328,6 +352,17 @@ std::variant<IsfShader, std::string> parseIsf(const IsfSource& source)
             return std::string("a transition must read both pictures at its own pixel only");
     }
     return shader;
+}
+
+} // namespace
+
+std::variant<IsfShader, std::string> parseIsf(const IsfSource& source)
+{
+    try {
+        return parse(source);
+    } catch (const std::exception& e) {
+        return std::string("malformed: ") + e.what();
+    }
 }
 
 EffectDef isfEffect(const IsfShader& shader)

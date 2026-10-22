@@ -6,6 +6,9 @@ namespace azl {
 
 namespace {
 
+// A three-byte copy makes at most 64 bytes: no block decompresses to more than 22 times its size.
+constexpr size_t kMostPerByte = 22;
+
 std::optional<size_t> varint(const uint8_t*& p, const uint8_t* end)
 {
     uint64_t value = 0;
@@ -86,7 +89,10 @@ void putCopy(std::vector<uint8_t>& out, size_t offset, size_t length)
 std::optional<size_t> snappyLength(const uint8_t* data, size_t size)
 {
     const uint8_t* p = data;
-    return varint(p, data + size);
+    const std::optional<size_t> length = varint(p, data + size);
+    if (length && *length / kMostPerByte > size)
+        return std::nullopt;
+    return length;
 }
 
 bool snappyDecompress(const uint8_t* data, size_t size, uint8_t* out, size_t outSize)

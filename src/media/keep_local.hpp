@@ -22,6 +22,8 @@ std::string showKey(const std::string& venue, const std::string& showFile);
 
 // A media hash as it names objects and files: 64 lowercase hex digits.
 bool isMediaHash(const std::string& text);
+// The extension of `name` for a file named by its hash: "." and 1 to 8 letters or digits, else empty.
+std::string mediaExtension(const std::string& name);
 
 // Which media the Director keeps on its own disk. Per clip a choice (keep or not) wins over the per-show one; a kept
 // show keeps every media hash it was last seen to use. Kept as JSON in `file` (empty: in memory only). Not

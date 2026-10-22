@@ -250,7 +250,8 @@ TEST_CASE("the Machines tab shows the venue's media readiness by deck and the al
 {
     azl::Composition composition = fourScreens();
     composition.decks = {{1, "Opening", {{1, "A"}}}, {2, "Headliner", {{2, "B"}}}};
-    composition.layers[0].clips = {{1, {.hash = "aa", .name = "a.mp4"}}, {2, {.hash = "bb", .name = "b.mp4"}}};
+    composition.layers[0].clips = {{1, {.hash = std::string(64, 'a'), .name = "a.mp4"}},
+                                     {2, {.hash = std::string(64, 'b'), .name = "b.mp4"}}};
     composition.gigs = {{"2026-10-16", 22 * 60, 5 * 60}};
     azl::EngineHarness harness({.width = 640, .height = 360}, 60.0, {}, composition);
     const auto utc = [](int64_t) { return 0; };

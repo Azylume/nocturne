@@ -207,7 +207,7 @@ std::vector<uint8_t> readHapPicture(const std::filesystem::path& file, double fr
         auto format = (__bridge CMFormatDescriptionRef)track.formatDescriptions.firstObject;
         const CMVideoDimensions size = CMVideoFormatDescriptionGetDimensions(format);
         AVAssetReader* reader = [AVAssetReader assetReaderWithAsset:asset error:nil];
-        if (!reader)
+        if (!reader || !pictureSizeOk(size.width, size.height))
             return {};
         AVAssetReaderTrackOutput* output = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track
                                                                                       outputSettings:nil];

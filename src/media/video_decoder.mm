@@ -218,6 +218,9 @@ Track openTrack(const std::string& path)
     t.matrix = matrixOf(format);
     t.hap = hapCodecOf(CMFormatDescriptionGetMediaSubType(format));
     const CMVideoDimensions size = CMVideoFormatDescriptionGetDimensions(format);
+    if (!pictureSizeOk(size.width, size.height))
+        throw MediaError(MediaStatus::Unsupported,
+                         "a picture of " + std::to_string(size.width) + "x" + std::to_string(size.height));
     t.width = size.width;
     t.height = size.height;
     const CGAffineTransform rotation = t.track.preferredTransform;

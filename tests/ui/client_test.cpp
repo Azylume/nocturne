@@ -97,8 +97,8 @@ Message change(const azl::Edit& edit, uint64_t number)
 azl::Composition gridComposition()
 {
     azl::Composition composition = azl::defaultComposition();
-    composition.layers[0].clips[1] = azl::ClipRef{"aaaa", "one"};
-    composition.layers[0].clips[2] = azl::ClipRef{"bbbb", "two"};
+    composition.layers[0].clips[1] = azl::ClipRef{std::string(64, 'a'), "one"};
+    composition.layers[0].clips[2] = azl::ClipRef{std::string(64, 'b'), "two"};
     return composition;
 }
 

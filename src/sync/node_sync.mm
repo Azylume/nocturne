@@ -1,5 +1,6 @@
 #include "sync/node_sync.hpp"
 
+#include "media/keep_local.hpp"
 #include "net/websocket.hpp"
 #include "protocol/document_mirror.hpp"
 
@@ -50,7 +51,7 @@ std::map<std::string, std::string> mediaOf(const Composition& composition)
     std::map<std::string, std::string> media;
     forEachLayer(composition.layers, [&](const Layer& layer) {
         for (const auto& [column, clip] : layer.clips)
-            if (!clip.hash.empty())
+            if (isMediaHash(clip.hash))
                 media.emplace(clip.hash, clip.name);
     });
     return media;
@@ -467,7 +468,7 @@ void NodeSync::fetchNext()
         std::filesystem::create_directories(folder, ec);
         Session::Fetch& fetch = session_->fetch.emplace();
         fetch.hash = hash;
-        fetch.file = folder / (hash + std::filesystem::path(named->second).extension().string());
+        fetch.file = folder / (hash + mediaExtension(named->second));
         fetch.part = fetch.file.string() + ".part";
         fetch.out.open(fetch.part, std::ios::binary | std::ios::trunc);
         if (!fetch.out) {

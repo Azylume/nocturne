@@ -626,15 +626,16 @@ std::string mainToken()
     return token ? token : "";
 }
 
-// The main engine a node follows: the one advertised as --follow MAIN, else the first engine advertising itself as main;
-// a --follow that names no advertised engine is HOST[:PORT].
+// The main engine a node follows: the one advertised as --follow MAIN, else the first engine advertising itself as main,
+// which gets no token unless it is on this machine; a --follow that names no advertised engine is HOST[:PORT].
 std::optional<azl::Endpoint> locateMain(const azl::Browser& browser, const std::string& follow, const std::string& self,
                                         uint16_t port)
 {
     for (const azl::Service& s : browser.services()) {
         auto role = s.txt.find("role");
         if (s.name != self && role != s.txt.end() && role->second == "main" && (follow.empty() || s.name == follow))
-            return azl::Endpoint{s.name, s.host, s.port, mainToken()};
+            return azl::Endpoint{s.name, s.host, s.port,
+                                 azl::presentsToken(!follow.empty(), s.host) ? mainToken() : std::string()};
     }
     if (follow.empty())
         return std::nullopt;

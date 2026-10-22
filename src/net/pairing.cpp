@@ -1,5 +1,7 @@
 #include "net/pairing.hpp"
 
+#include "net/lan.hpp"
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -93,6 +95,11 @@ bool sameToken(const std::string& presented, const std::string& token)
     for (size_t i = 0; i < token.size(); ++i)
         differ |= static_cast<unsigned char>(presented[i] ^ token[i]);
     return differ == 0;
+}
+
+bool presentsToken(bool named, const std::string& host)
+{
+    return named || host == "localhost" || loopbackAddress(host);
 }
 
 } // namespace azl
