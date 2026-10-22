@@ -49,6 +49,8 @@ struct IsfSource {
 
 // The most parameter values a transition takes: they travel in its mix uniforms.
 inline constexpr size_t kMaxTransitionParams = 16;
+// The most values a long input offers.
+inline constexpr size_t kMaxLongValues = 256;
 
 // The shader or what is wrong with it.
 std::variant<IsfShader, std::string> parseIsf(const IsfSource& source);

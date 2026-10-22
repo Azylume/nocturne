@@ -60,6 +60,17 @@ bool same(const UserIsfShader& a, const UserIsfShader& b)
     return a.file == b.file && a.type == b.type && a.error == b.error && a.text == b.text;
 }
 
+IsfMetal translation(const IsfShader& shader, const fs::path& cacheDir)
+{
+    try {
+        return translateIsf(shader, cacheDir);
+    } catch (const std::exception& e) {
+        IsfMetal failed;
+        failed.error = e.what();
+        return failed;
+    }
+}
+
 } // namespace
 
 UserIsfLibrary::UserIsfLibrary(fs::path folder, fs::path cacheDir)
@@ -108,7 +119,7 @@ bool UserIsfLibrary::scan()
             shaders.push_back(std::move(entry));
             continue;
         }
-        const IsfMetal metal = translateIsf(shader, cacheDir_);
+        const IsfMetal metal = translation(shader, cacheDir_);
         entry.error = metal.error.substr(0, metal.error.find_last_not_of('\n') + 1);
         if (!utf8(entry.error))
             entry.error = "the shader does not translate";

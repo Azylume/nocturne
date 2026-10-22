@@ -174,4 +174,53 @@ TEST_CASE("a Snappy block declaring more than its bytes can hold has no length")
     CHECK(azl::snappyLength(packed.data(), packed.size()) == zeros.size());
 }
 
+TEST_CASE("malformed ISF inputs are an error of that shader, never an exception or a huge allocation")
+{
+    CHECK_FALSE(errorOf(parsedInputs("[5]")).empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"([{"NAME": 3, "TYPE": "float"}])")).empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": ["float"]}])")).empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"(["inputImage"])")).empty());
+    CHECK(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "float", "LABEL": 7}])")).empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "long", "MIN": -2147483648, "MAX": 2147483647}])"))
+                    .empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "long", "MIN": 0, "MAX": 1e300}])")).empty());
+    CHECK_FALSE(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "long", "MIN": 0, "MAX": 256}])")).empty());
+    CHECK(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "long", "MIN": 0, "MAX": 255, "DEFAULT": 1e300}])"))
+              .find("range") != std::string::npos);
+    CHECK(errorOf(parsedInputs(R"([{"NAME": "a", "TYPE": "long", "MIN": 0, "MAX": 255}])")).empty());
+}
+
+TEST_CASE("one malformed shader in the user ISF folder is listed with its error; the others load")
+{
+    TempDir dir;
+    std::ofstream(dir.path / "bad.fs") << R"(/*{"INPUTS": [{"NAME": {"x": 1}, "TYPE": "float"}, 7]}*/ void main() {})";
+    std::ofstream(dir.path / "good.fs")
+        << "/*{\"INPUTS\": []}*/\nvoid main() { gl_FragColor = vec4(isf_FragNormCoord, 0.0, 1.0); }\n";
+    azl::UserIsfLibrary library(dir.path, dir.path / "cache");
+    const std::vector<azl::UserIsfShader> shaders = library.shaders();
+    REQUIRE(shaders.size() == 2);
+    CHECK_FALSE(shaders[0].error.empty());
+    CHECK(shaders[1].error.empty());
+}
+
+TEST_CASE("the pointwise checks read a shader of the largest file size on a thread's small stack")
+{
+    const size_t n = azl::UserIsfLibrary::kMaxFileBytes - 400;
+    const std::string effect = R"(/*{"INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/)"
+                               "void main() { gl_FragColor = IMG_THIS_PIXEL(" +
+                               std::string(n, ' ') + "inputImage); }\n";
+    const std::string transition =
+        R"(/*{"INPUTS": [{"NAME": "startImage", "TYPE": "image"}, {"NAME": "endImage", "TYPE": "image"}]}*/)"
+        "vec4 transition(vec2 uv) { return getFromColor(" +
+        std::string(n, 'a') + ") + getToColor(uv); }\n";
+    std::variant<azl::IsfShader, std::string> parsedEffect, parsedTransition;
+    std::thread([&] {
+        parsedEffect = azl::parseIsf({"Long", effect, true});
+        parsedTransition = azl::parseIsf({"Long", transition, true});
+    }).join();
+    REQUIRE(std::holds_alternative<azl::IsfShader>(parsedEffect));
+    CHECK(std::get<azl::IsfShader>(parsedEffect).pointwise);
+    CHECK(std::holds_alternative<std::string>(parsedTransition));
+}
+
 TEST_SUITE_END();
