@@ -19,5 +19,8 @@ std::string machineToken(const std::filesystem::path& file);
 std::string readToken(const std::filesystem::path& file);
 // Both are the same nonempty token; compared in a time that does not depend on where they differ.
 bool sameToken(const std::string& presented, const std::string& token);
+// Whether a node presents its main engine's token to `host`: only to a main it was told to follow (`named`), or on
+// this machine (a loopback address or localhost). A main it found by itself over Bonjour may be anyone's.
+bool presentsToken(bool named, const std::string& host);
 
 } // namespace azl

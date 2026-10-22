@@ -125,4 +125,15 @@ TEST_CASE("a node never makes, truncates or removes a file named by a rogue main
     CHECK(readText(victim.string() + ".part") == "keep me too");
 }
 
+TEST_CASE("a node presents its main's pairing token only to a main it was told to follow, or on this machine")
+{
+    CHECK(azl::presentsToken(true, "mini.local"));
+    CHECK(azl::presentsToken(true, "192.168.1.20"));
+    CHECK_FALSE(azl::presentsToken(false, "mini.local"));
+    CHECK_FALSE(azl::presentsToken(false, "192.168.1.20"));
+    CHECK(azl::presentsToken(false, "127.0.0.1"));
+    CHECK(azl::presentsToken(false, "::1"));
+    CHECK(azl::presentsToken(false, "localhost"));
+}
+
 TEST_SUITE_END();
