@@ -79,4 +79,50 @@ TEST_CASE("a still or thumbnail asked for by anything but a content hash names n
     }
 }
 
+TEST_CASE("a clip's hash is a content hash or empty when it comes in as JSON")
+{
+    const std::string hash(64, 'a');
+    CHECK(Message{{"hash", hash}, {"name", "a.mp4"}}.get<azl::ClipRef>().hash == hash);
+    CHECK(Message{{"hash", ""}, {"name", "Hello"}}.get<azl::ClipRef>().hash.empty());
+    for (const std::string& bad :
+         {std::string("/etc/passwd"), std::string("../media/x"), std::string(64, 'A'), hash + "/x"})
+        CHECK_THROWS_AS(Message({{"hash", bad}, {"name", "a.mp4"}}).get<azl::ClipRef>(), azl::ProtocolError);
+}
+
+TEST_CASE("media files named by hash keep only a plain extension of the clip's name")
+{
+    CHECK(azl::mediaExtension("clip.mp4") == ".mp4");
+    CHECK(azl::mediaExtension("Clip.MOV") == ".MOV");
+    CHECK(azl::mediaExtension("clip").empty());
+    CHECK(azl::mediaExtension("a.mp4/../../x").empty());
+    CHECK(azl::mediaExtension("a." + std::string(12, 'm')).empty());
+    CHECK(azl::mediaExtension(std::string("a.mp4\0x", 7)).empty());
+    CHECK(azl::mediaExtension("a.m p4").empty());
+}
+
+TEST_CASE("a node never makes, truncates or removes a file named by a rogue main's clip hash")
+{
+    TempDir dir;
+    const fs::path victim = dir.path / "victim";
+    std::ofstream(victim) << "keep me";
+    std::ofstream(victim.string() + ".part") << "keep me too";
+    azl::Composition rogue = azl::defaultComposition();
+    rogue.layers[0].clips[1] = azl::ClipRef{victim.string(), "victim"};
+    azl::EngineHarness main(kSize, 30.0, dir.path / "main", rogue);
+    azl::SyncRole role(main.document(), main.engine(), main.library(), [&] { return main.time(); },
+                       {.role = azl::Role::Main, .name = "main"});
+    azl::WebSocketServer server(main.document(), 0);
+    const uint16_t port = server.port();
+
+    azl::EngineHarness follower(kSize, 30.0, dir.path / "node");
+    azl::NodeSync node(
+        follower.document(), follower.engine(), follower.library(), [&] { return follower.time(); },
+        [&]() -> std::optional<azl::Endpoint> { return azl::Endpoint{"main", "127.0.0.1", port}; },
+        [](const azl::Endpoint&, uint16_t) { return std::make_unique<FixedClock>(); });
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    CHECK(node.status().files == 0);
+    CHECK(readText(victim) == "keep me");
+    CHECK(readText(victim.string() + ".part") == "keep me too");
+}
+
 TEST_SUITE_END();

@@ -2,6 +2,7 @@
 #include "document/json_fields.hpp"
 
 #include "document/cue_edits.hpp"
+#include "document/edit_support.hpp"
 #include "document/id_pool.hpp"
 #include "document/mapping_edits.hpp"
 #include "document/modulation_edits.hpp"
@@ -72,6 +73,8 @@ void to_json(nlohmann::json& j, const ClipRef& clip)
 void from_json(const nlohmann::json& j, ClipRef& clip)
 {
     clip.hash = j.at("hash").get<std::string>();
+    if (!clip.hash.empty() && !edits::isContentHash(clip.hash))
+        throw ProtocolError("clip hash must be 64 lowercase hex digits (SHA-256)");
     clip.name = j.at("name").get<std::string>();
     clip.transport = transportFromJson(j.value("transport", nlohmann::json()));
     clip.step = j.value("step", 0);

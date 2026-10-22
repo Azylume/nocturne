@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -55,6 +56,15 @@ bool isMediaHash(const std::string& text)
 {
     return text.size() == 64 &&
            std::ranges::all_of(text, [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+}
+
+std::string mediaExtension(const std::string& name)
+{
+    const std::string extension = fs::path(name).extension().string();
+    if (extension.size() < 2 || extension.size() > 9 ||
+        !std::all_of(extension.begin() + 1, extension.end(), [](unsigned char c) { return std::isalnum(c); }))
+        return {};
+    return extension;
 }
 
 KeepLocal::KeepLocal(fs::path file) : file_(std::move(file))

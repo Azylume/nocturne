@@ -1,6 +1,7 @@
 #include "upload/media_sync.hpp"
 
 #include "document/composition_file.hpp"
+#include "media/keep_local.hpp"
 #include "upload/media_upload.hpp"
 
 #include <pthread/qos.h>
@@ -34,7 +35,7 @@ SyncOverride loadMode(const fs::path& file)
 
 std::string extensionOf(const std::string& name)
 {
-    const std::string extension = fs::path(name).extension().string();
+    const std::string extension = mediaExtension(name);
     return extension.empty() ? ".mp4" : extension;
 }
 
@@ -312,6 +313,10 @@ MediaSync::Outcome MediaSync::download(const NeededMedia& media)
 {
     if (const auto stop = forbidden())
         return *stop;
+    if (!isMediaHash(media.hash)) {
+        setState("error", shortName(media) + " has no media hash");
+        return Outcome::Failed;
+    }
     setState("downloading");
     try {
         const std::optional<uint64_t> size = options_.client->head(media.hash);
