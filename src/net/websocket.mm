@@ -28,16 +28,24 @@ constexpr int kMaxPendingPreviews = 4;
 constexpr int64_t kSetupTimeout = 5 * int64_t(NSEC_PER_SEC);
 // Room for the largest message a client sends, a 1 MiB bundle chunk, even as JSON.
 constexpr size_t kMaxMessageBytes = size_t(16) << 20;
+// Before pairing a client gets no further than hello, which is small.
+constexpr size_t kMaxUnpairedMessageBytes = size_t(64) << 10;
 
-bool fromLoopback(nw_connection_t connection)
+std::string remoteAddress(nw_connection_t connection)
 {
     nw_endpoint_t endpoint = nw_connection_copy_endpoint(connection);
     if (!endpoint || nw_endpoint_get_type(endpoint) != nw_endpoint_type_address)
-        return false;
+        return {};
     char* text = nw_endpoint_copy_address_string(endpoint);
-    const bool loopback = text && loopbackAddress(text);
+    std::string address = text ? text : "";
     free(text);
-    return loopback;
+    return address;
+}
+
+bool fromLoopback(nw_connection_t connection)
+{
+    const std::string address = remoteAddress(connection);
+    return !address.empty() && loopbackAddress(address);
 }
 
 nw_parameters_t webSocketParameters(nw_protocol_options_t ws = nw_ws_create_options(nw_ws_version_13))
@@ -77,6 +85,7 @@ struct Peer {
     // came first); refused, it is being closed.
     bool paired = true;
     bool refused = false;
+    std::string address;
 
     Peer(nw_connection_t c, Encoding e) : connection(c), encoding(e) {}
 };
@@ -120,9 +129,9 @@ std::optional<Message> decodeData(dispatch_data_t content, Encoding encoding)
     return decode(static_cast<const uint8_t*>(bytes), size, encoding);
 }
 
-using OnReceived = std::function<void(const std::optional<Message>&)>;
+using OnReceived = std::function<void(dispatch_data_t)>;
 
-// Hands every received message to `onReceived` (null when undecodable) until the connection closes, then cancels it.
+// Hands every received message's bytes to `onReceived` until the connection closes, then cancels it.
 void receiveLoop(std::shared_ptr<Peer> peer, OnReceived onReceived)
 {
     nw_connection_receive_message(
@@ -134,7 +143,7 @@ void receiveLoop(std::shared_ptr<Peer> peer, OnReceived onReceived)
             }
             if (content) {
                 peer->encoding = op == nw_ws_opcode_text ? Encoding::Json : Encoding::MessagePack;
-                onReceived(decodeData(content, peer->encoding));
+                onReceived(content);
             }
             receiveLoop(peer, onReceived);
         });
@@ -260,15 +269,25 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
         return std::count_if(peers.begin(), peers.end(), [](const auto& entry) { return !entry.second->paired; });
     }
 
+    size_t unpairedFrom(const std::string& address) const
+    {
+        return std::count_if(peers.begin(), peers.end(), [&](const auto& entry) {
+            return !entry.second->paired && entry.second->address == address;
+        });
+    }
+
     void accept(nw_connection_t connection)
     {
         const bool loopback = pairing.trustLoopback && fromLoopback(connection);
-        if (!loopback && unpairedCount() >= pairing.maxUnpaired) {
+        const std::string address = remoteAddress(connection);
+        if (!loopback && (unpairedCount() >= pairing.maxUnpaired ||
+                          unpairedFrom(address) >= pairing.maxUnpairedPerHost)) {
             nw_connection_cancel(connection);
             return;
         }
         auto peer = std::make_shared<Peer>(connection, Encoding::MessagePack);
         peer->paired = loopback;
+        peer->address = address;
         const ClientId id = document.connect([weakPeer = std::weak_ptr<Peer>(peer)](const Message& message) {
             auto p = weakPeer.lock();
             const std::string type = typeOf(message);
@@ -304,13 +323,13 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
                                if (self && !self->stopped && p && !p->paired)
                                    nw_connection_cancel(connection);
                            });
-        receiveLoop(peer, [weak, id, peer = std::weak_ptr<Peer>(peer)](const std::optional<Message>& message) {
+        receiveLoop(peer, [weak, id, peer = std::weak_ptr<Peer>(peer)](dispatch_data_t content) {
             auto self = weak.lock();
             auto p = peer.lock();
             if (!self || self->stopped || !p || p->refused)
                 return;
             try {
-                self->receive(id, p, message);
+                self->receive(id, p, content);
             } catch (const std::exception& e) {
                 p->refused = !p->paired;
                 send(p, failed(e), p->refused);
@@ -318,8 +337,14 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
         });
     }
 
-    void receive(ClientId id, const std::shared_ptr<Peer>& peer, const std::optional<Message>& message)
+    void receive(ClientId id, const std::shared_ptr<Peer>& peer, dispatch_data_t content)
     {
+        if (!peer->paired && dispatch_data_get_size(content) > kMaxUnpairedMessageBytes) {
+            peer->refused = true;
+            send(peer, unpaired(), true);
+            return;
+        }
+        const std::optional<Message> message = decodeData(content, peer->encoding);
         if (!peer->paired && !presentsToken(message, pairing.token)) {
             peer->refused = true;
             send(peer, unpaired(), true);
@@ -432,9 +457,12 @@ WebSocketClient::WebSocketClient(const std::string& host, uint16_t port, Encodin
             onClose();
     });
     nw_connection_start(connection);
-    receiveLoop(impl->peer, [weak, onMessage](const std::optional<Message>& message) {
+    receiveLoop(impl->peer, [weak, onMessage, peer = std::weak_ptr<Peer>(impl->peer)](dispatch_data_t content) {
         auto self = weak.lock();
-        if (self && !self->stopped && message)
+        auto p = peer.lock();
+        if (!self || self->stopped || !p)
+            return;
+        if (const std::optional<Message> message = decodeData(content, p->encoding))
             onMessage(*message);
     });
 

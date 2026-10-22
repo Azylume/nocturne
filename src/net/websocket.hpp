@@ -27,9 +27,11 @@ struct Pairing {
     std::string token;
     // Clients from loopback addresses need no token; tests turn this off to stand in for another machine.
     bool trustLoopback = true;
-    // A client that has not paired by then is closed; more unpaired clients than this at once are turned away.
+    // A client that has not paired by then is closed; more unpaired clients than this at once, overall or from one
+    // address, are turned away. Before pairing a message may be 64 KiB at most.
     std::chrono::milliseconds helloTimeout{10000};
     size_t maxUnpaired = 32;
+    size_t maxUnpairedPerHost = 4;
 };
 
 // Serves a document over WebSocket, one protocol message per WebSocket message. Each client is answered in the

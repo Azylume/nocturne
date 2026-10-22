@@ -459,6 +459,37 @@ TEST_CASE("a client from another machine that does not pair in time is closed, a
     }
 }
 
+TEST_CASE("before pairing a client from another machine may send 64 KiB at most, even a hello with the token")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    answerWhoami(harness.document());
+    azl::WebSocketServer remote(harness.document(), 0, {kToken, false});
+
+    Socket padded(remote.port());
+    Message hello = msg::hello(kToken);
+    hello["pad"] = std::string(size_t(65) << 10, 'x');
+    padded.client.send(hello);
+    CHECK(padded.closedWithin(5.0));
+
+    Socket paired(remote.port());
+    paired.client.send(msg::hello(kToken));
+    REQUIRE(paired.next()["type"] == "snapshot");
+    paired.client.send({{"type", "whoami"}, {"data", std::string(size_t(1) << 20, 'x')}});
+    CHECK(paired.next() == Message{{"type", "whoami"}, {"loopback", false}});
+}
+
+TEST_CASE("one address may hold only so many unpaired connections")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    azl::WebSocketServer remote(harness.document(), 0,
+                                {.token = kToken, .trustLoopback = false, .maxUnpairedPerHost = 2});
+    RawSocket first(remote.port());
+    RawSocket second(remote.port());
+    CHECK(first.upgraded());
+    CHECK(second.upgraded());
+    CHECK_FALSE(RawSocket(remote.port()).upgraded());
+}
+
 TEST_CASE("MessagePack with a string that is not UTF-8 is refused as undecodable")
 {
     azl::EngineHarness harness({.width = 160, .height = 90});
