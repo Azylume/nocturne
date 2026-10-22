@@ -349,7 +349,7 @@ add_executable(nocturne_tests tests/main.cpp tests/harness_test.cpp tests/golden
   tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
   tests/hap_test.cpp tests/hap_codec_test.cpp tests/hap_playback_test.cpp
-  tests/hap_transcode_test.cpp tests/hap_golden_test.cpp)
+  tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media" NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"

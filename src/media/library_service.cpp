@@ -1,5 +1,6 @@
 #include "media/library_service.hpp"
 
+#include "media/keep_local.hpp"
 #include "media/stills.hpp"
 
 #include <algorithm>
@@ -22,6 +23,8 @@ struct Request {
 // Stills are kept next to the library index, one file per hash and width.
 std::vector<uint8_t> still(MediaLibrary& library, const std::string& hash, uint32_t width, StillCounts& counts)
 {
+    if (!isMediaHash(hash))
+        throw std::runtime_error("not a media hash");
     const std::filesystem::path cached = library.root() / "stills" / (hash + "-" + std::to_string(width) + ".jpg");
     if (std::ifstream in{cached, std::ios::binary})
         return {std::istreambuf_iterator<char>(in), {}};
