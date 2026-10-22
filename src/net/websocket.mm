@@ -25,6 +25,8 @@ constexpr int kMaxPendingSends = 256;
 // Preview pictures are dropped sooner: the next one replaces them anyway.
 constexpr int kMaxPendingPreviews = 4;
 constexpr int64_t kSetupTimeout = 5 * int64_t(NSEC_PER_SEC);
+// Room for the largest message a client sends, a 1 MiB bundle chunk, even as JSON.
+constexpr size_t kMaxMessageBytes = size_t(16) << 20;
 
 bool fromLoopback(nw_connection_t connection)
 {
@@ -37,15 +39,21 @@ bool fromLoopback(nw_connection_t connection)
     return loopback;
 }
 
-nw_parameters_t webSocketParameters()
+nw_parameters_t webSocketParameters(nw_protocol_options_t ws = nw_ws_create_options(nw_ws_version_13))
 {
     nw_parameters_t params =
         nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-    nw_protocol_options_t ws = nw_ws_create_options(nw_ws_version_13);
     nw_ws_options_set_auto_reply_ping(ws, true);
     nw_protocol_stack_t stack = nw_parameters_copy_default_protocol_stack(params);
     nw_protocol_stack_prepend_application_protocol(stack, ws);
     return params;
+}
+
+nw_parameters_t serverParameters()
+{
+    nw_protocol_options_t ws = nw_ws_create_options(nw_ws_version_13);
+    nw_ws_options_set_maximum_message_size(ws, kMaxMessageBytes);
+    return webSocketParameters(ws);
 }
 
 // One open WebSocket, on either side.
@@ -304,7 +312,7 @@ WebSocketServer::WebSocketServer(DocumentServer& document, uint16_t port, Pairin
 {
     Impl* impl = impl_.get();
     std::weak_ptr<Impl> weak = impl_;
-    impl->listener = nw_listener_create_with_port(std::to_string(port).c_str(), webSocketParameters());
+    impl->listener = nw_listener_create_with_port(std::to_string(port).c_str(), serverParameters());
     if (!impl->listener)
         throw std::runtime_error("cannot create a listener on port " + std::to_string(port));
 
