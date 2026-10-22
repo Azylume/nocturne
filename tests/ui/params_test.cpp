@@ -14,7 +14,7 @@ Composition panelComposition()
     Composition composition = defaultComposition();
     composition.layers[0].opacity = 0.25;
     composition.layers[0].effects = {{3, "transform", {{"scale", 2.0}, {"mix", 1.0}}}};
-    composition.layers[0].clips[1] = ClipRef{"aaaa", "one", {}, 0, std::nullopt,
+    composition.layers[0].clips[1] = ClipRef{std::string(64, 'a'), "one", {}, 0, std::nullopt,
                                              {{4, "colorize", {{"hue", 0.0}, {"saturation", 1.0}, {"mix", 1.0}}}}};
     return composition;
 }
