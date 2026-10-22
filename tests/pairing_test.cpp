@@ -404,3 +404,12 @@ TEST_CASE("a message over the engine's size limit closes the connection; four bu
     std::unique_lock lock(mutex);
     CHECK(arrived.wait_for(lock, std::chrono::seconds(5), [&] { return answered; }));
 }
+
+TEST_CASE("a handshake with an Origin header, as every web page's has, is refused; one without gets in")
+{
+    azl::EngineHarness harness({.width = 160, .height = 90});
+    azl::WebSocketServer local(harness.document(), 0);
+    CHECK_FALSE(RawSocket(local.port(), "Origin: http://example.com\r\n").upgraded());
+    CHECK_FALSE(RawSocket(local.port(), "origin: null\r\n").upgraded());
+    CHECK(RawSocket(local.port()).upgraded());
+}

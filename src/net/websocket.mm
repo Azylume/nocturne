@@ -9,6 +9,7 @@
 
 #include <ifaddrs.h>
 #include <netdb.h>
+#include <strings.h>
 
 #include <algorithm>
 #include <atomic>
@@ -49,10 +50,20 @@ nw_parameters_t webSocketParameters(nw_protocol_options_t ws = nw_ws_create_opti
     return params;
 }
 
-nw_parameters_t serverParameters()
+// Browsers send Origin on every WebSocket handshake and native clients never do: refusing it keeps web pages the
+// user opens from reaching the engine through loopback.
+nw_parameters_t serverParameters(dispatch_queue_t queue)
 {
     nw_protocol_options_t ws = nw_ws_create_options(nw_ws_version_13);
     nw_ws_options_set_maximum_message_size(ws, kMaxMessageBytes);
+    nw_ws_options_set_client_request_handler(ws, queue, ^nw_ws_response_t(nw_ws_request_t request) {
+        __block bool origin = false;
+        nw_ws_request_enumerate_additional_headers(request, ^bool(const char* name, const char*) {
+            origin = strcasecmp(name, "Origin") == 0;
+            return !origin;
+        });
+        return nw_ws_response_create(origin ? nw_ws_response_status_reject : nw_ws_response_status_accept, nullptr);
+    });
     return webSocketParameters(ws);
 }
 
@@ -312,7 +323,7 @@ WebSocketServer::WebSocketServer(DocumentServer& document, uint16_t port, Pairin
 {
     Impl* impl = impl_.get();
     std::weak_ptr<Impl> weak = impl_;
-    impl->listener = nw_listener_create_with_port(std::to_string(port).c_str(), serverParameters());
+    impl->listener = nw_listener_create_with_port(std::to_string(port).c_str(), serverParameters(impl->queue));
     if (!impl->listener)
         throw std::runtime_error("cannot create a listener on port " + std::to_string(port));
 

@@ -21,6 +21,7 @@ bool onThisMachine(const std::string& host);
 
 // Who the server lets in. A client on another machine must present `token` in its first message, a hello; anything
 // else is answered with an error and the connection closed. Without a token no client from another machine gets in.
+// A handshake with an Origin header, which every web page's has, is refused whatever its address.
 struct Pairing {
     std::string token;
     // Clients from loopback addresses need no token; tests turn this off to stand in for another machine.
