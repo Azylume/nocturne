@@ -15,6 +15,12 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
 
+option(NOCTURNE_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(NOCTURNE_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined -fno-sanitize=vptr)
+endif()
+
 execute_process(COMMAND ${CMAKE_COMMAND} -E env TZ=UTC git log -1 --format=%cd-%h --date=format-local:%Y%m%d%H%M%S
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE NOCTURNE_BUILD_ID OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND git rev-parse --absolute-git-dir
