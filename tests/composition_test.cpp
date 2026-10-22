@@ -7,6 +7,7 @@
 #include <fstream>
 #include <set>
 #include <spawn.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 extern char** environ;
@@ -318,6 +319,25 @@ TEST_CASE("missing media and unknown effects load as empty cells and skipped eff
     std::ofstream(dir.path / "media/torn.json") << "{\"format\": \"azy";
     client.send({{"type", "composition"}, {"op", "load"}, {"path", (dir.path / "media/torn.json").string()}});
     CHECK(client.next()["type"] == "error");
+}
+
+TEST_CASE("a clip path naming a device, a FIFO or a link to one loads as missing media without opening it")
+{
+    TempDir dir;
+    Authored authored(dir.path / "media");
+    const fs::path fifo = dir.path / "fifo";
+    REQUIRE(mkfifo(fifo.c_str(), 0600) == 0);
+    fs::create_symlink("/dev/zero", dir.path / "media/zero.mp4");
+    Client client(authored.harness.document());
+    for (const std::string& path : {std::string("/dev/zero"), fifo.string(), std::string("zero.mp4")}) {
+        Message file = readJson(dir.path / "media/show.json");
+        file["composition"]["layers"][0]["clips"]["3"] = {
+            {"hash", std::string(64, 'e')}, {"name", "special"}, {"path", path}, {"size", 0}};
+        writeJson(dir.path / "media/special.json", file);
+        const Message reply = composition(client, "load", dir.path / "media/special.json");
+        CHECK_MESSAGE(mentions(reply, "special: missing"), path);
+        CHECK_FALSE(snapshot(client)["layers"][0]["clips"].contains("3"));
+    }
 }
 
 TEST_CASE("Bloom and Classic Bloom drop out of a show with every macro target, modulator and Cue step on them")
