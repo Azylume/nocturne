@@ -21,7 +21,10 @@ Nocturne is built to run on a trusted LAN or a tailnet. What a machine exposes:
   keeps as `token` in its state folder (default `~/Library/Application Support/Nocturne/State`), readable by its user
   alone; `nocturne-ctl token` on that machine prints it. Clients from a loopback address (127.0.0.1, ::1) need no token,
   so the local UI, the local `nocturne-ctl`, the venue desk and anything reaching the engine through an ssh tunnel get
-  in without setup; anyone who can run a process on the machine is trusted. A paired client from another machine
+  in without setup; anyone who can run a process on the machine is trusted. A WebSocket handshake that carries an
+  `Origin` header, as every web page's does, is refused, so a page open in a browser cannot borrow that trust. A
+  client from another machine that has not paired within 10 seconds is closed, and a message over 16 MiB closes the
+  connection. A paired client from another machine
   names files only inside the shows folder (`~/Nocturne/shows`), the media folders (`~/Nocturne/media`, `--media-root`),
   the Media Library folder, the recording folder and the state folder: composition save and load, the shows list,
   library add and relink, the recording folder and its browser, and preset import refuse any other path, a `..` part
