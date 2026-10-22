@@ -162,7 +162,7 @@ private:
         if (digits.empty() || valid != std::string::npos || digits.size() > 8)
             fail("bad character reference &" + entity + ";");
         const unsigned long c = std::stoul(digits, nullptr, hex ? 16 : 10);
-        if (c > 0x10FFFF)
+        if (c == 0 || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF))
             fail("bad character reference &" + entity + ";");
         if (c < 0x80) {
             out += char(c);

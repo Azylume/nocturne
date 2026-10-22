@@ -234,7 +234,8 @@ TEST_CASE("XML character references that are no character are malformed")
 {
     CHECK(azl::parseXml(R"(<a b="&#65;&#x42;"/>)")->attr("b") == "AB");
     for (const char* bad : {R"(<a b="&#;"/>)", R"(<a b="&#x;"/>)", R"(<a b="&#99999999999999999999;"/>)",
-                            R"(<a b="&#x110000;"/>)", R"(<a b="&#12a;"/>)"})
+                            R"(<a b="&#x110000;"/>)", R"(<a b="&#12a;"/>)", R"(<a b="&#0;"/>)",
+                            R"(<a b="&#xD800;"/>)", R"(<a b="&#xdfff;"/>)", R"(<a b="&#55296;"/>)"})
         CHECK_THROWS_AS(azl::parseXml(bad), std::runtime_error);
 }
 
