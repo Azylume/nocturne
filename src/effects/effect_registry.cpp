@@ -308,6 +308,250 @@ EffectDef trails()
 )"}}};
 }
 
+constexpr const char* kSlicerGlobals = R"(
+constant uint kSlicerGlyphs[26] = {
+    0xe8fe31u, 0x1e8fa3eu, 0xf8420fu, 0x1e8c63eu, 0x1f87a1fu, 0x1f87a10u, 0xf84e2fu, 0x118fe31u, 0x1f2109fu,
+    0x710a4cu, 0x12a6292u, 0x108421fu, 0x11dd631u, 0x11cd671u, 0xe8c62eu, 0x1e8fa10u, 0xe8d64du, 0x1e8fa51u,
+    0xf8383eu, 0x1f21084u, 0x118c62eu, 0x118c544u, 0x118d771u, 0x1151151u, 0x1151084u, 0x1f1111fu};
+
+constant float3 kSlicerThermal[6] = {float3(0.0, 0.0, 0.1), float3(0.15, 0.1, 0.9), float3(0.85, 0.1, 0.75),
+                                     float3(1.0, 0.15, 0.1), float3(1.0, 0.85, 0.1), float3(1.0)};
+
+float slicerLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+float slicerRand(uint a, uint b) { return float(pcg(a * 0x9e3779b9u ^ pcg(b)) >> 8u) / 16777215.0; }
+
+// The slot of u (0..1) among n slots of random widths, and its distance to the nearest cut between two slots.
+float2 slicerSlot(float u, int n, uint base, uint tick, float spread, float glide)
+{
+    float w[17];
+    float total = 0.0;
+    for (int i = 0; i < n; ++i) {
+        float r = mix(slicerRand(base ^ pcg(tick), uint(i)), slicerRand(base ^ pcg(tick + 1u), uint(i)), glide);
+        w[i] = 1.0 + spread * 1.8 * (r - 0.5);
+        total += w[i];
+    }
+    float at = 0.0;
+    for (int i = 0; i < n; ++i) {
+        float end = at + w[i] / total;
+        if (u < end || i == n - 1)
+            return float2(float(i), min(i > 0 ? u - at : 1e4, i < n - 1 ? end - u : 1e4));
+        at = end;
+    }
+    return float2(0.0, 1e4);
+}
+
+float3 slicerRamp(float y, float3 accent)
+{
+    return y < 0.5 ? accent * (y * 2.0) : mix(accent, float3(1.0), y * 2.0 - 1.0);
+}
+
+float slicerSobel(texture2d<float> t, float2 px, float s)
+{
+    float k[9];
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 3; ++i)
+            k[j * 3 + i] = slicerLuma(t.sample(pix, px + float2(i - 1, j - 1) * s).rgb);
+    float gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
+    float gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
+    return sqrt(gx * gx + gy * gy);
+}
+
+float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 accent, float colour, float pick,
+                   float time, float2 size)
+{
+    float y = slicerLuma(c.rgb);
+    switch (style) {
+    case 1: {
+        float x = saturate(y) * 5.0;
+        int i = min(int(x), 4);
+        return mix(slicerRamp(y, accent), mix(kSlicerThermal[i], kSlicerThermal[i + 1], x - float(i)), colour);
+    }
+    case 2: {
+        uint n = pcg(uint(px.x) * 1973u + uint(px.y) * 9277u + uint(time * 24.0) * 26699u);
+        return float3(float(n >> 8u) / 16777215.0 < smoothstep(0.05, 0.6, y) ? 1.0 : 0.0);
+    }
+    case 3: {
+        float g = max(10.0, floor(size.y / 45.0));
+        float2 cell = floor(px / g);
+        float yc = slicerLuma(t.sample(pix, (cell + 0.5) * g).rgb);
+        int2 b = int2(floor((px - cell * g) / g * 7.0)) - 1;
+        if (yc < 0.12 || any(b < 0) || any(b > 4))
+            return float3(0.0);
+        uint ch = pcg(uint(cell.x) * 0x8da6b343u ^ uint(cell.y) * 0xd8163841u ^ uint(time * 6.0) * 0xcb1ab31fu) % 26u;
+        bool on = ((kSlicerGlyphs[ch] >> uint(24 - b.y * 5 - b.x)) & 1u) != 0u;
+        return on ? float3(smoothstep(0.12, 0.5, yc)) : float3(0.0);
+    }
+    case 4:
+        return mix(float3(1.0 - y), 1.0 - c.rgb, colour);
+    case 5: {
+        float g = max(6.0, floor(size.y / 70.0));
+        float2 centre = (floor(px / g) + 0.5) * g;
+        float r = sqrt(saturate(slicerLuma(t.sample(pix, centre).rgb) * 1.5)) * 0.5 * g;
+        return (pick < 0.5 ? float3(1.0) : accent) * saturate(r - length(px - centre) + 0.5);
+    }
+    case 6:
+        return mix(accent, float3(1.0), 0.35) * saturate(slicerSobel(t, px, 1.0) * 3.0);
+    case 7:
+        return mix(accent * 0.3, float3(1.0), smoothstep(0.2, 0.8, y));
+    case 8: {
+        float r = max(3.0, size.y / 240.0);
+        bool lit = y > 0.3;
+        for (int k = 0; k < 8; ++k) {
+            float a = float(k) * (M_PI_F / 4.0);
+            if ((slicerLuma(t.sample(pix, px + r * float2(cos(a), sin(a))).rgb) > 0.3) != lit)
+                return mix(accent, float3(1.0), 0.15);
+        }
+        return float3(0.0);
+    }
+    default:
+        return c.rgb;
+    }
+}
+)";
+
+// Cuts the picture into cells of random sizes and draws each cell in a style of its own: thermal false colour,
+// grain, letters, inverted, dots, edges, duotone or an outline, or as it is. `count` cuts along `direction`: vertical or
+// horizontal strips, a grid whose columns each split into rows of their own, or rings cut by spokes. `spread` varies
+// the cell sizes; `amount` is the share of cells that get a style. Every `rate` beats the cells reshuffle: Pulse cuts
+// anew at once, Slide glides the cuts there and only steps the styles. Lines of `lines` pixels mark the cuts. The
+// accent colour of `hue` tints the edges, dots, duotone and outline; `colour` takes the thermal and inverted cells from
+// the accent ramp and grey to full colour.
+EffectDef slicer()
+{
+    EffectDef def{"slicer",
+                  StageKind::Neighbourhood,
+                  {in(units::whole, {"count", 1.0, 16.0, 3.0}),
+                   in(units::whole, options({"direction", 0.0, 3.0, 2.0}, {"Vertical", "Horizontal", "Grid", "Radial"})),
+                   in(units::whole, options({"animation", 0.0, 2.0, 1.0}, {"Static", "Pulse", "Slide"})),
+                   in(units::beats, {"rate", 0.0, 16.0, 1.0, ParamDrive::Beats}),
+                   percent({"spread", 0.0, 1.0, 0.6}),
+                   percent({"amount", 0.0, 1.0, 0.85}),
+                   in(units::whole, {"seed", 0.0, 99.0, 0.0}),
+                   in({" px", 1.0, 1}, {"lines", 0.0, 8.0, 1.5}),
+                   wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
+                   percent({"colour", 0.0, 1.0, 1.0})},
+                  false,
+                  R"(
+    float4 c = t.sample(pix, px);
+    int n = clamp(int(p[0]), 1, 16);
+    int direction = int(p[1] + 0.5);
+    int animation = int(p[2] + 0.5);
+    float clock = animation == 0 ? 0.0 : max(p[3], 0.0);
+    uint tick = uint(floor(clock));
+    float glide = animation == 2 ? smoothstep(0.0, 1.0, fract(clock)) : 0.0;
+    uint seed = pcg(uint(p[6]) + 1u);
+    uint cell;
+    float edge;
+    if (direction == 3) {
+        float2 d = px - h.size * 0.5;
+        float rmax = length(h.size * 0.5);
+        float2 ring = slicerSlot(length(d) / rmax, n, seed, tick, p[4], glide);
+        uint r = uint(ring.x);
+        float offset = mix(slicerRand(seed ^ r, tick), slicerRand(seed ^ r, tick + 1u), glide);
+        float turn = fract(atan2(d.y, d.x) / (2.0 * M_PI_F) + 0.5 + offset);
+        float2 spoke = slicerSlot(turn, n + 2, seed ^ (r * 0x632be5abu + 7u), tick, p[4], glide);
+        cell = r * 64u + uint(spoke.x);
+        edge = min(ring.y * rmax, min(spoke.y, min(turn, 1.0 - turn)) * 2.0 * M_PI_F * length(d));
+    } else {
+        float2 uv = px / h.size;
+        float2 x = direction != 1 ? slicerSlot(uv.x, n + 1, seed, tick, p[4], glide) : float2(0.0, 1e4);
+        float2 y = direction != 0 ? slicerSlot(uv.y, direction == 1 ? n + 1 : n, seed ^ (uint(x.x) * 0x632be5abu + 0x2fu),
+                                               tick, p[4], glide)
+                                  : float2(0.0, 1e4);
+        cell = uint(x.x) * 64u + uint(y.x);
+        edge = min(x.y * h.size.x, y.y * h.size.y);
+    }
+    uint key = seed + cell * 0x9e3779b9u;
+    int style = slicerRand(key, tick * 3u + 1u) < p[5] ? 1 + int(slicerRand(key, tick * 3u + 2u) * 8.0) % 8 : 0;
+    float3 accent = saturate(abs(fract(p[8] + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    float3 o = slicerStyle(style, t, px, c, accent, p[9], slicerRand(key, tick * 3u + 3u), h.time, h.size);
+    float line = p[7] > 0.0 ? saturate(p[7] * 0.5 + 0.5 - edge) : 0.0;
+    return float4(mix(o, float3(1.0), line), max(c.a, line));
+)",
+                  {}};
+    def.globals = kSlicerGlobals;
+    return def;
+}
+
+constexpr const char* kCursorGlobals = R"(
+constant float2 kCursorShape[7] = {float2(0.0, 0.0),     float2(0.0, 0.842),   float2(0.21, 0.632), float2(0.368, 1.0),
+                                   float2(0.474, 0.947), float2(0.316, 0.579), float2(0.579, 0.579)};
+
+// Signed distance to the arrow pointer, in pointer heights, with its tip at the origin and +y down.
+float cursorDistance(float2 q)
+{
+    float d = 1e4;
+    bool inside = false;
+    for (int i = 0, j = 6; i < 7; j = i++) {
+        float2 a = kCursorShape[i], b = kCursorShape[j];
+        float2 e = b - a, w = q - a;
+        float2 x = w - e * saturate(dot(w, e) / dot(e, e));
+        d = min(d, dot(x, x));
+        if ((a.y > q.y) != (b.y > q.y) && q.x < e.x * (q.y - a.y) / e.y + a.x)
+            inside = !inside;
+    }
+    return inside ? -sqrt(d) : sqrt(d);
+}
+)";
+
+// Draws arrow pointers over the picture. They sit in a grid of cells three pointers high, `density` of the cells hold
+// one, and the grid drifts toward `direction` (degrees, 0 = right) at `speed` cells per second. `wander` turns each
+// pointer away from the direction and lets it wobble around its place. `accent` of them take the colour of `hue`, the
+// rest are white; `outline` draws a black border.
+EffectDef cursors()
+{
+    EffectDef def{"cursors",
+                  StageKind::Pointwise,
+                  {percent({"density", 0.0, 1.0, 0.35}),
+                   percent({"size", 0.005, 0.1, 0.03}),
+                   in(units::cellsPerSecond, {"speed", -4.0, 4.0, 0.5, ParamDrive::Phase}),
+                   wrapping(units::degrees, {"direction", -180.0, 180.0, 30.0}),
+                   percent({"wander", 0.0, 1.0, 0.5}),
+                   percent({"accent", 0.0, 1.0, 0.15}),
+                   wrapping(units::turns, {"hue", 0.0, 1.0, 0.33}),
+                   percent({"outline", 0.0, 1.0, 1.0})},
+                  false,
+                  R"(
+    if (p[0] == 0.0)
+        return c;
+    float size = max(p[1] * h.size.y, 2.0);
+    float a = p[3] * (M_PI_F / 180.0);
+    float2 q = px / (size * 3.0) - float2(cos(a), -sin(a)) * p[2];
+    float2 base = floor(q);
+    float3 accent = saturate(abs(fract(p[6] + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    float fill = 0.0, border = 0.0;
+    float3 ink = float3(1.0);
+    for (int j = -1; j <= 1; ++j)
+        for (int i = -1; i <= 1; ++i) {
+            float2 cell = base + float2(i, j);
+            uint n = pcg(uint(int(cell.x)) * 0x8da6b343u ^ uint(int(cell.y)) * 0xd8163841u);
+            if (float(n & 0xffffu) / 65535.0 >= p[0])
+                continue;
+            uint m = pcg(n);
+            float4 r = float4(float((n >> 16u) & 0xffu), float(n >> 24u), float(m & 0xffu), float((m >> 8u) & 0xffu)) / 255.0;
+            float wobble = h.time * (0.6 + r.z);
+            float2 centre = cell + 0.5 + (r.xy - 0.5) * 0.4 +
+                            p[4] * 0.25 * float2(sin(wobble + r.w * 6.28), cos(wobble * 1.3 + r.x * 6.28));
+            float turn = a + (r.z - 0.5) * 2.0 * M_PI_F * p[4] + 0.4 * p[4] * sin(wobble * 0.7 + r.y * 6.28);
+            float height = size * (0.75 + 0.5 * r.w);
+            float2 d = (q - centre) * (size * 3.0 / height);
+            float s = sin(turn), k = cos(turn);
+            float sd = cursorDistance(float2(k * d.x - s * d.y, s * d.x + k * d.y) + float2(0.25, 0.5)) * height;
+            float f = saturate(0.5 - sd);
+            if (f > fill)
+                ink = float(m >> 24u) / 255.0 < p[5] ? accent : float3(1.0);
+            fill = max(fill, f);
+            border = max(border, saturate(0.5 - sd + max(1.0, 0.08 * height)) * p[7]);
+        }
+    float3 o = mix(mix(c.rgb, float3(0.0), border), ink, fill);
+    return float4(o, max(c.a, max(fill, border)));
+)",
+                  {}};
+    def.globals = kCursorGlobals;
+    return def;
+}
+
 // Classic effects keep the reference's controls: its labels, order, defaults and stored value domain (0..1 where it
 // saves values normalized), so its presets map by identity. docs/research/classic-controls.json lists them.
 ParamDef classic(std::string name, std::string label, double defaultValue, ParamDrive drive = ParamDrive::Value,
@@ -1449,7 +1693,7 @@ Registry& registry()
 {
     static Registry effects{.effects = withIsf(withVariants(
         {withMix(transform()), withMix(colorize()), withMix(edgeDetection()), withMix(stripper()),
-         withMix(trails()), withMix(reveal()), withMix(classicStripper()), withMix(classicColorize()),
+         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(cursors()), withMix(classicStripper()), withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
          withMix(classicAutoMask()), withMix(classicBrightnessContrast()), withMix(classicLevels()),
          withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
