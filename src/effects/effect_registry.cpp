@@ -308,17 +308,104 @@ EffectDef trails()
 )"}}};
 }
 
-constexpr const char* kSlicerGlobals = R"(
-constant uint kSlicerGlyphs[26] = {
+// Shader functions the picture styles share: Slicer draws its cells with them, and each style is an effect of its own.
+// Every effect that uses them carries them in its globals, and the guard keeps one copy in a pass.
+constexpr const char* kStyleGlobals = R"(
+#ifndef NOCTURNE_STYLES
+#define NOCTURNE_STYLES
+constant uint kStyleGlyphs[26] = {
     0xe8fe31u, 0x1e8fa3eu, 0xf8420fu, 0x1e8c63eu, 0x1f87a1fu, 0x1f87a10u, 0xf84e2fu, 0x118fe31u, 0x1f2109fu,
     0x710a4cu, 0x12a6292u, 0x108421fu, 0x11dd631u, 0x11cd671u, 0xe8c62eu, 0x1e8fa10u, 0xe8d64du, 0x1e8fa51u,
     0xf8383eu, 0x1f21084u, 0x118c62eu, 0x118c544u, 0x118d771u, 0x1151151u, 0x1151084u, 0x1f1111fu};
 
-constant float3 kSlicerThermal[6] = {float3(0.0, 0.0, 0.1), float3(0.15, 0.1, 0.9), float3(0.85, 0.1, 0.75),
-                                     float3(1.0, 0.15, 0.1), float3(1.0, 0.85, 0.1), float3(1.0)};
+constant float3 kStyleThermal[6] = {float3(0.0, 0.0, 0.1), float3(0.15, 0.1, 0.9), float3(0.85, 0.1, 0.75),
+                                    float3(1.0, 0.15, 0.1), float3(1.0, 0.85, 0.1), float3(1.0)};
 
-float slicerLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+float styleLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+float3 styleAccent(float hue) { return saturate(abs(fract(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0); }
+
+float3 styleRamp(float y, float3 accent)
+{
+    return y < 0.5 ? accent * (y * 2.0) : mix(accent, float3(1.0), y * 2.0 - 1.0);
+}
+
+float styleSobel(texture2d<float> t, float2 px, float s)
+{
+    float k[9];
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 3; ++i)
+            k[j * 3 + i] = styleLuma(t.sample(pix, px + 0.5 + float2(i - 1, j - 1) * s).rgb);
+    float gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
+    float gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
+    return sqrt(gx * gx + gy * gy);
+}
+
+float3 styleThermal(float y, float3 accent, float colour)
+{
+    float x = saturate(y) * 5.0;
+    int i = min(int(x), 4);
+    return mix(styleRamp(y, accent), mix(kStyleThermal[i], kStyleThermal[i + 1], x - float(i)), colour);
+}
+
+float3 styleGrain(float2 px, float y, float time)
+{
+    uint n = pcg(uint(px.x) * 1973u + uint(px.y) * 9277u + uint(time * 24.0) * 26699u);
+    return float3(float(n >> 8u) / 16777215.0 < smoothstep(0.05, 0.6, y) ? 1.0 : 0.0);
+}
+
+float3 styleLetters(texture2d<float> t, float2 px, float rows, float time, float2 size)
+{
+    float g = max(6.0, floor(size.y / rows));
+    float2 cell = floor(px / g);
+    float yc = styleLuma(t.sample(pix, (cell + 0.5) * g).rgb);
+    int2 b = int2(floor((px - cell * g) / g * 7.0)) - 1;
+    if (yc < 0.12 || any(b < 0) || any(b > 4))
+        return float3(0.0);
+    uint ch = pcg(uint(cell.x) * 0x8da6b343u ^ uint(cell.y) * 0xd8163841u ^ uint(time * 6.0) * 0xcb1ab31fu) % 26u;
+    bool on = ((kStyleGlyphs[ch] >> uint(24 - b.y * 5 - b.x)) & 1u) != 0u;
+    return on ? float3(smoothstep(0.12, 0.5, yc)) : float3(0.0);
+}
+
+float3 styleInvert(float4 c, float colour)
+{
+    return mix(float3(1.0 - styleLuma(c.rgb)), 1.0 - c.rgb, colour);
+}
+
+float3 styleDots(texture2d<float> t, float2 px, float rows, float3 ink, float2 size)
+{
+    float g = max(4.0, floor(size.y / rows));
+    float2 centre = (floor(px / g) + 0.5) * g;
+    float r = sqrt(saturate(styleLuma(t.sample(pix, centre).rgb) * 1.5)) * 0.5 * g;
+    return ink * saturate(r - length(px - centre) + 0.5);
+}
+
+float3 styleEdges(texture2d<float> t, float2 px, float3 accent, float2 size)
+{
+    return mix(accent, float3(1.0), 0.35) * saturate((styleSobel(t, px, max(1.0, size.y / 540.0)) - 0.1) * 3.0);
+}
+
+float3 styleDuotone(float y, float3 accent)
+{
+    return mix(accent * 0.3, float3(1.0), smoothstep(0.2, 0.8, y));
+}
+
+float3 styleOutline(texture2d<float> t, float2 px, float3 accent, float2 size)
+{
+    float r = max(3.0, size.y / 240.0);
+    float lit = smoothstep(0.25, 0.35, styleLuma(t.sample(pix, px + 0.5).rgb));
+    float hit = 0.0;
+    for (int k = 0; k < 8; ++k) {
+        float a = float(k) * (M_PI_F / 4.0);
+        float2 q = px + 0.5 + r * float2(cos(a), sin(a));
+        hit = max(hit, abs(smoothstep(0.25, 0.35, styleLuma(t.sample(pix, q).rgb)) - lit));
+    }
+    return mix(accent, float3(1.0), 0.15) * hit;
+}
+#endif
+)";
+
+constexpr const char* kSlicerGlobals = R"(
 float slicerRand(uint a, uint b) { return float(pcg(a * 0x9e3779b9u ^ pcg(b)) >> 8u) / 16777215.0; }
 
 // The slot of u (0..1) among n slots of random widths, and its distance to the nearest cut between two slots.
@@ -341,83 +428,38 @@ float2 slicerSlot(float u, int n, uint base, uint tick, float spread, float glid
     return float2(0.0, 1e4);
 }
 
-float3 slicerRamp(float y, float3 accent)
-{
-    return y < 0.5 ? accent * (y * 2.0) : mix(accent, float3(1.0), y * 2.0 - 1.0);
-}
-
-float slicerSobel(texture2d<float> t, float2 px, float s)
-{
-    float k[9];
-    for (int j = 0; j < 3; ++j)
-        for (int i = 0; i < 3; ++i)
-            k[j * 3 + i] = slicerLuma(t.sample(pix, px + 0.5 + float2(i - 1, j - 1) * s).rgb);
-    float gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
-    float gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
-    return sqrt(gx * gx + gy * gy);
-}
-
 float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 accent, float colour, float pick,
                    float time, float2 size)
 {
-    float y = slicerLuma(c.rgb);
+    float y = styleLuma(c.rgb);
     switch (style) {
-    case 1: {
-        float x = saturate(y) * 5.0;
-        int i = min(int(x), 4);
-        return mix(slicerRamp(y, accent), mix(kSlicerThermal[i], kSlicerThermal[i + 1], x - float(i)), colour);
-    }
-    case 2: {
-        uint n = pcg(uint(px.x) * 1973u + uint(px.y) * 9277u + uint(time * 24.0) * 26699u);
-        return float3(float(n >> 8u) / 16777215.0 < smoothstep(0.05, 0.6, y) ? 1.0 : 0.0);
-    }
-    case 3: {
-        float g = max(10.0, floor(size.y / 45.0));
-        float2 cell = floor(px / g);
-        float yc = slicerLuma(t.sample(pix, (cell + 0.5) * g).rgb);
-        int2 b = int2(floor((px - cell * g) / g * 7.0)) - 1;
-        if (yc < 0.12 || any(b < 0) || any(b > 4))
-            return float3(0.0);
-        uint ch = pcg(uint(cell.x) * 0x8da6b343u ^ uint(cell.y) * 0xd8163841u ^ uint(time * 6.0) * 0xcb1ab31fu) % 26u;
-        bool on = ((kSlicerGlyphs[ch] >> uint(24 - b.y * 5 - b.x)) & 1u) != 0u;
-        return on ? float3(smoothstep(0.12, 0.5, yc)) : float3(0.0);
-    }
-    case 4:
-        return mix(float3(1.0 - y), 1.0 - c.rgb, colour);
-    case 5: {
-        float g = max(6.0, floor(size.y / 70.0));
-        float2 centre = (floor(px / g) + 0.5) * g;
-        float r = sqrt(saturate(slicerLuma(t.sample(pix, centre).rgb) * 1.5)) * 0.5 * g;
-        return (pick < 0.5 ? float3(1.0) : accent) * saturate(r - length(px - centre) + 0.5);
-    }
-    case 6:
-        return mix(accent, float3(1.0), 0.35) * saturate((slicerSobel(t, px, max(1.0, size.y / 540.0)) - 0.1) * 3.0);
-    case 7:
-        return mix(accent * 0.3, float3(1.0), smoothstep(0.2, 0.8, y));
-    case 8: {
-        float r = max(3.0, size.y / 240.0);
-        float lit = smoothstep(0.25, 0.35, slicerLuma(t.sample(pix, px + 0.5).rgb));
-        float hit = 0.0;
-        for (int k = 0; k < 8; ++k) {
-            float a = float(k) * (M_PI_F / 4.0);
-            float2 q = px + 0.5 + r * float2(cos(a), sin(a));
-            hit = max(hit, abs(smoothstep(0.25, 0.35, slicerLuma(t.sample(pix, q).rgb)) - lit));
-        }
-        return mix(accent, float3(1.0), 0.15) * hit;
-    }
-    default:
-        return c.rgb;
+    case 1: return styleThermal(y, accent, colour);
+    case 2: return styleGrain(px, y, time);
+    case 3: return styleLetters(t, px, 45.0, time, size);
+    case 4: return styleInvert(c, colour);
+    case 5: return styleDots(t, px, 70.0, pick < 0.5 ? float3(1.0) : accent, size);
+    case 6: return styleEdges(t, px, accent, size);
+    case 7: return styleDuotone(y, accent);
+    case 8: return styleOutline(t, px, accent, size);
+    default: return c.rgb;
     }
 }
 )";
 
-// Cuts the picture into cells of random sizes and draws each cell in a style of its own: thermal false colour,
-// grain, letters, inverted, dots, edges, duotone or an outline, or as it is. `count` cuts along `direction`: vertical or
-// horizontal strips, a grid whose columns each split into rows of their own, or rings cut by spokes. `spread` varies
-// the cell sizes; `amount` is the share of cells that get a style. Every `rate` beats the cells reshuffle: Pulse cuts
-// anew at once, Slide glides the cuts there and only steps the styles. Lines of `lines` whole pixels mark the cuts,
-// hard-edged along straight cuts and smoothed around rings and spokes. The accent colour of `hue` tints the edges,
-// dots, duotone and outline; `colour` takes the thermal and inverted cells from the accent ramp and grey to full colour.
+ParamDef onByDefault(std::string name)
+{
+    return options({std::move(name), 0.0, 1.0, 1.0}, kOffOn);
+}
+
+const ParamUnit kRows{" rows", 1.0, 0};
+
+// Cuts the picture into cells of random sizes and draws each cell in a style of its own, or as it is. `count` cuts
+// along `direction`: vertical or horizontal strips, a grid whose columns each split into rows of their own, or rings
+// cut by spokes. `spread` varies the cell sizes; `amount` is the share of cells that get a style, picked among the
+// styles switched on. Every `rate` beats the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and
+// only steps the styles. Lines of `lines` whole pixels mark the cuts, hard-edged along straight cuts and smoothed around
+// rings and spokes. The accent colour of `hue` tints the edges, dots, duotone and outline; `colour` takes the thermal
+// and inverted cells from the accent ramp and grey to full colour.
 EffectDef slicer()
 {
     EffectDef def{"slicer",
@@ -431,7 +473,15 @@ EffectDef slicer()
                    in(units::whole, {"seed", 0.0, 99.0, 0.0}),
                    choice(in({" px", 1.0, 0}, {"lines", 0.0, 8.0, 2.0})),
                    wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
-                   percent({"colour", 0.0, 1.0, 1.0})},
+                   percent({"colour", 0.0, 1.0, 1.0}),
+                   onByDefault("thermal"),
+                   onByDefault("grain"),
+                   onByDefault("letters"),
+                   onByDefault("invert"),
+                   onByDefault("dots"),
+                   onByDefault("edges"),
+                   onByDefault("duotone"),
+                   onByDefault("outline")},
                   false,
                   R"(
     float4 c = t.sample(pix, px);
@@ -463,17 +513,85 @@ EffectDef slicer()
         cell = uint(x.x) * 64u + uint(y.x);
         edge = min(x.y * h.size.x, y.y * h.size.y);
     }
+    int styles[8];
+    int count = 0;
+    for (int i = 0; i < 8; ++i)
+        if (p[10 + i] > 0.5)
+            styles[count++] = i + 1;
     uint key = seed + cell * 0x9e3779b9u;
-    int style = slicerRand(key, tick * 3u + 1u) < p[5] ? 1 + int(slicerRand(key, tick * 3u + 2u) * 8.0) % 8 : 0;
-    float3 accent = saturate(abs(fract(p[8] + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
-    float3 o = slicerStyle(style, t, px, c, accent, p[9], slicerRand(key, tick * 3u + 3u), h.time, h.size);
+    int style = count > 0 && slicerRand(key, tick * 3u + 1u) < p[5]
+                    ? styles[min(int(slicerRand(key, tick * 3u + 2u) * float(count)), count - 1)]
+                    : 0;
+    float3 o = slicerStyle(style, t, px, c, styleAccent(p[8]), p[9], slicerRand(key, tick * 3u + 3u), h.time, h.size);
     float width = floor(p[7] + 0.5);
     float line = direction == 3 ? saturate(width * 0.5 + 0.5 - edge) : float(edge < width * 0.5);
     return float4(mix(o, float3(1.0), line), max(c.a, line));
 )",
                   {}};
-    def.globals = kSlicerGlobals;
+    def.globals = std::string(kStyleGlobals) + kSlicerGlobals;
     return def;
+}
+
+EffectDef styleEffect(std::string type, StageKind kind, std::vector<ParamDef> params, std::string metal)
+{
+    EffectDef def{std::move(type), kind, std::move(params), false, std::move(metal), {}};
+    def.globals = kStyleGlobals;
+    return def;
+}
+
+// Luminance in a thermal camera's false colours, from black through blue, magenta, red and yellow to white; `colour`
+// below 1 takes it toward a ramp through the accent colour of `hue`.
+EffectDef thermal()
+{
+    return styleEffect("thermal", StageKind::Pointwise,
+                       {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}), percent({"colour", 0.0, 1.0, 1.0})}, R"(
+    return float4(styleThermal(styleLuma(c.rgb), styleAccent(p[0]), p[1]), c.a);
+)");
+}
+
+// White specks on black, denser where the picture is brighter, drawn anew 24 times a second.
+EffectDef grain()
+{
+    return styleEffect("grain", StageKind::Pointwise, {}, R"(
+    return float4(styleGrain(px, styleLuma(c.rgb), h.time), c.a);
+)");
+}
+
+// Random letters on black in a grid of `rows` rows where the picture is lit, as bright as it is there, changing six
+// times a second.
+EffectDef letters()
+{
+    return styleEffect("letters", StageKind::Neighbourhood, {in(kRows, {"rows", 10.0, 120.0, 45.0})}, R"(
+    return float4(styleLetters(t, px, p[0], h.time, h.size), t.sample(pix, px).a);
+)");
+}
+
+// A halftone: dots on black in a grid of `rows` rows, as large as the picture is bright there, white or, by `tint`, in
+// the colour of `hue`.
+EffectDef dots()
+{
+    return styleEffect("dots", StageKind::Neighbourhood,
+                       {in(kRows, {"rows", 20.0, 200.0, 70.0}), wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
+                        percent({"tint", 0.0, 1.0, 0.0})},
+                       R"(
+    return float4(styleDots(t, px, p[0], mix(float3(1.0), styleAccent(p[1]), p[2]), h.size), t.sample(pix, px).a);
+)");
+}
+
+// Shadows in a dark shade of the colour of `hue`, highlights white.
+EffectDef duotone()
+{
+    return styleEffect("duotone", StageKind::Pointwise, {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7})}, R"(
+    return float4(styleDuotone(styleLuma(c.rgb), styleAccent(p[0])), c.a);
+)");
+}
+
+// A thick line in the colour of `hue` on black where the picture crosses from dark to lit.
+EffectDef outline()
+{
+    return styleEffect("outline", StageKind::Neighbourhood, {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7})}, R"(
+    return float4(styleOutline(t, px, styleAccent(p[0]), h.size), t.sample(pix, px).a);
+)");
 }
 
 // Classic effects keep the reference's controls: its labels, order, defaults and stored value domain (0..1 where it
@@ -1617,7 +1735,9 @@ Registry& registry()
 {
     static Registry effects{.effects = withIsf(withVariants(
         {withMix(transform()), withMix(colorize()), withMix(edgeDetection()), withMix(stripper()),
-         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(classicStripper()), withMix(classicColorize()),
+         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()), withMix(grain()),
+         withMix(letters()), withMix(dots()), withMix(duotone()), withMix(outline()), withMix(classicStripper()),
+         withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
          withMix(classicAutoMask()), withMix(classicBrightnessContrast()), withMix(classicLevels()),
          withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
