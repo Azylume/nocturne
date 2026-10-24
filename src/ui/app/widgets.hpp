@@ -270,16 +270,19 @@ double valueAtX(juce::Rectangle<int> bar, const ParamInfo& info, int x);
 // One parameter: its name (with "~" when animated), a bar to drag and its value; double-click the value to type it,
 // right-click for macro and animation. In learn mode a click on the bar adds the parameter to the selected macro.
 // An animated parameter shows its range on the bar: dragging a handle moves that end, past the other one too.
-// A choice with named options shows a dropdown of them instead of the bar and the value, set to the driven option
-// while a macro or modulator drives it. The label's tooltip names the parameter in full.
+// A choice with named options shows a dropdown of them instead of the bar and the value, or a checkbox when they are
+// Off and On, set to the driven option while a macro or modulator drives it. The label's tooltip names the parameter
+// in full.
 class ParamRow : public juce::Component, public PointerTips {
 public:
     ParamRow(Session& session, ParamRef ref);
 
     const ParamRef& ref() const { return ref_; }
     AnimateBox* animateBox() { return animate_.get(); }
-    // Null unless the parameter has named options.
+    // Null unless the parameter has named options other than Off and On.
     juce::ComboBox* optionBox() { return options_.get(); }
+    // Null unless the parameter's options are Off and On.
+    juce::ToggleButton* switchBox() { return switch_.get(); }
     void refresh();
     // A modulation update: repaints only when the value its modulation drives has moved.
     void refreshDriven();
@@ -303,6 +306,7 @@ public:
 private:
     juce::Rectangle<int> valueArea() const;
     void showOptions(const ParamInfo& info);
+    void showSwitch(const ParamInfo& info);
     void setFromX(int x);
     void setEndFromX(int x);
     void sendEnds();
@@ -321,6 +325,7 @@ private:
     std::unique_ptr<juce::TextEditor> editor_;
     std::optional<double> shownDriven_;
     std::unique_ptr<juce::ComboBox> options_;
+    std::unique_ptr<juce::ToggleButton> switch_;
 };
 
 // Every parameter row under `root` takes a modulation update.

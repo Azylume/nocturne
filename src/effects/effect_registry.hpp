@@ -68,6 +68,8 @@ struct ParamDef {
     std::vector<double> optionStarts{};
     // The whole name when `label` shortens it.
     std::string fullLabel{};
+    // Parameters of the same group fold under one header in an effect's card.
+    std::string group{};
 };
 
 // "-45\xc2\xb0", "2.30 strips/s".

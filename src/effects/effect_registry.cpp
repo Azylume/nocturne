@@ -446,9 +446,11 @@ float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 ac
 }
 )";
 
-ParamDef onByDefault(std::string name)
+ParamDef style(std::string name)
 {
-    return options({std::move(name), 0.0, 1.0, 1.0}, kOffOn);
+    ParamDef param = options({std::move(name), 0.0, 1.0, 1.0}, kOffOn);
+    param.group = "Styles";
+    return param;
 }
 
 const ParamUnit kRows{" rows", 1.0, 0};
@@ -474,14 +476,14 @@ EffectDef slicer()
                    choice(in({" px", 1.0, 0}, {"lines", 0.0, 8.0, 2.0})),
                    wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
                    percent({"colour", 0.0, 1.0, 1.0}),
-                   onByDefault("thermal"),
-                   onByDefault("grain"),
-                   onByDefault("letters"),
-                   onByDefault("invert"),
-                   onByDefault("dots"),
-                   onByDefault("edges"),
-                   onByDefault("duotone"),
-                   onByDefault("outline")},
+                   style("thermal"),
+                   style("grain"),
+                   style("letters"),
+                   style("invert"),
+                   style("dots"),
+                   style("edges"),
+                   style("duotone"),
+                   style("outline")},
                   false,
                   R"(
     float4 c = t.sample(pix, px);

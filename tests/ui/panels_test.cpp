@@ -2601,8 +2601,9 @@ TEST_CASE("colours: colours linked to a palette colour follow it in engine and U
     two.closePicker();
 }
 
-TEST_CASE("panels: every option parameter is a dropdown of its options in order, a choice stores the option's value "
-          "in one undo step, a macro steps it, and a shortened label names the parameter in full in its tooltip")
+TEST_CASE("panels: every option parameter is a dropdown of its options in order (a checkbox for Off and On), a choice "
+          "stores the option's value in one undo step, a macro steps it, and a shortened label names the parameter in "
+          "full in its tooltip")
 {
     Show show;
     for (const std::string& type : azl::effectTypes()) {
@@ -2632,9 +2633,11 @@ TEST_CASE("panels: every option parameter is a dropdown of its options in order,
         return azl::Effect{};
     };
 
-    // Each row of each card: a dropdown with the option names in order exactly when the parameter has options, set to
-    // the option its value picks; a label that is shortened or does not fit names the parameter in full in its tip.
+    // Each row of each card: a checkbox when the parameter's options are Off and On, else a dropdown with the option
+    // names in order exactly when it has options, set to the option its value picks; a label that is shortened or does
+    // not fit names the parameter in full in its tip.
     size_t dropdowns = 0;
+    size_t switches = 0;
     std::vector<std::string> cut;
     for (const uint64_t id : effects) {
         const azl::Effect effect = effectOf(id);
@@ -2644,8 +2647,15 @@ TEST_CASE("panels: every option parameter is a dropdown of its options in order,
             CAPTURE(p.name);
             azl::ui::ParamRow* row = chain.card(id)->row(p.name);
             REQUIRE(row);
+            const bool offOn = p.options == std::vector<std::string>{"Off", "On"};
             juce::ComboBox* box = row->optionBox();
-            CHECK((box != nullptr) == !p.options.empty());
+            CHECK((box != nullptr) == (!p.options.empty() && !offOn));
+            CHECK((row->switchBox() != nullptr) == offOn);
+            if (offOn) {
+                ++switches;
+                CHECK(row->switchBox()->getToggleState() == (azl::optionIndex(p, p.defaultValue) == 1));
+                CHECK(row->switchBox()->getTooltip().isNotEmpty());
+            }
             if (box) {
                 ++dropdowns;
                 REQUIRE(box->getNumItems() == int(p.options.size()));
@@ -2666,7 +2676,8 @@ TEST_CASE("panels: every option parameter is a dropdown of its options in order,
             }
         }
     }
-    CHECK(dropdowns >= 40);
+    CHECK(dropdowns + switches >= 40);
+    CHECK(switches > 0);
     MESSAGE("labels cut off (named in full in their tooltip): " << cut.size());
     for (const std::string& label : cut)
         MESSAGE("  " << label);
