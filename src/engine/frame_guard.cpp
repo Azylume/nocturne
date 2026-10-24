@@ -4,6 +4,21 @@
 
 namespace azl {
 
+namespace {
+
+constexpr double kFitsAt = 0.75;       // of the budget: a frame under it counts as calm
+constexpr double kCalmSeconds = 1.0;   // of calm that takes a level off, until a bounce
+constexpr double kMaxCalmSeconds = 600.0;
+constexpr double kBounceSeconds = 2.0; // after a step down, within which a step up is a bounce
+
+// Seconds as frames of the budget, which is the frame at the engine's rate.
+int framesOf(double seconds, double budget)
+{
+    return std::max(1, int(seconds / budget + 0.5));
+}
+
+} // namespace
+
 GuardThresholds guardThresholds(GuardProfile profile, bool protectTransitions, bool fading)
 {
     GuardThresholds t = profile == GuardProfile::Sharp ? GuardThresholds{1.0, 30} : GuardThresholds{0.9, 15};
@@ -15,24 +30,30 @@ GuardThresholds guardThresholds(GuardProfile profile, bool protectTransitions, b
 bool FrameGuard::step(double gpu, double budget, size_t layers, const GuardThresholds& thresholds)
 {
     frames++;
+    if (sinceOff >= 0 && ++sinceOff > framesOf(kBounceSeconds, budget)) {
+        sinceOff = -1;
+        calmTimes = 1;
+    }
     const size_t was = level;
-    if (gpu > thresholds.raiseAt * budget && level < layers && frames >= thresholds.settle) {
+    hot = gpu > thresholds.raiseAt * budget ? hot + 1 : 0;
+    if (hot >= thresholds.settle && level < layers && frames >= thresholds.settle) {
+        if (sinceOff >= 0) {
+            calmTimes = std::min(calmTimes * 2, int(kMaxCalmSeconds / kCalmSeconds));
+            sinceOff = -1;
+        }
         level++;
-        before = gpu;
-        saved.push_back(-1.0);
-    } else if (level > 0) {
-        double& last = saved.back();
-        if (last < 0.0 && frames >= 30)
-            last = std::max(0.0, before - gpu);
-        calm = last >= 0.0 && gpu + last < 0.75 * budget ? calm + 1 : 0;
-        if (calm >= 60) {
+    }
+    calmNeeded = std::min(framesOf(kCalmSeconds * calmTimes, budget), framesOf(kMaxCalmSeconds, budget));
+    if (level == was && level > 0) {
+        calm = gpu < kFitsAt * budget ? calm + 1 : std::max(0, calm - 2);
+        if (calm >= calmNeeded) {
             level--;
-            saved.pop_back();
+            sinceOff = 0;
         }
     }
     if (level == was)
         return false;
-    frames = calm = 0;
+    frames = hot = calm = 0;
     return true;
 }
 
