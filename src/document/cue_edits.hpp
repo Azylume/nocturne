@@ -6,6 +6,7 @@
 
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,10 @@ nlohmann::json toJson(const SetTimeline& e);
 nlohmann::json toJson(const CancelTrigger& e);
 
 std::optional<Edit> cueEditFromJson(const std::string& op, const nlohmann::json& j);
+
+// Drops the Cue steps on these effects, naming each in `dropped`; returns the edits restoring the Cues they came from.
+std::vector<SetCue> dropCueSteps(Composition& composition, const std::set<uint64_t>& effects,
+                                 std::vector<std::string>& dropped);
 
 void to_json(nlohmann::json& j, const Cue& cue);
 void from_json(const nlohmann::json& j, Cue& cue);

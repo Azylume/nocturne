@@ -35,10 +35,10 @@ nlohmann::json toJson(const SetMacros& e);
 
 std::optional<Edit> modulationEditFromJson(const std::string& op, const nlohmann::json& j);
 
-// Drops the macro targets and modulators on these layers or effects; returns the edit restoring them, or nothing when
-// none was there.
+// Drops the macro targets and modulators on these layers or effects, naming each in `dropped`; returns the edit
+// restoring them, or nothing when none was there.
 std::optional<SetMacros> dropTargets(Composition& composition, const std::set<uint64_t>& layers,
-                                     const std::set<uint64_t>& effects);
+                                     const std::set<uint64_t>& effects, std::vector<std::string>& dropped);
 
 // Puts every audio modulator on the preset, everything else as it is, in one undoable edit.
 SetMacros setEnvelopes(const Composition& composition, EnvelopePreset preset);

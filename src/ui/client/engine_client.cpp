@@ -308,6 +308,8 @@ void EngineClient::receiveLocked(const std::string& type, const Message& message
             composition_ = std::move(next);
             notify.push_back([this] { listener_.documentChanged(); });
         }
+        if (const std::string notice = message.value("notice", ""); !notice.empty())
+            notify.push_back([this, notice] { listener_.compositionNotice(notice); });
     } else if (type == "clock") {
         if (message.value("op", "") == "state") {
             receiveClock(message);

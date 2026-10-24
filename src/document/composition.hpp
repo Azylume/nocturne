@@ -1052,8 +1052,11 @@ struct ProtocolError : std::runtime_error {
 void checkAutopilotBars(std::optional<int> bars, std::optional<int> hold);
 
 // Applies `edit`, completing it in place, and returns the edit that reverts it (a live edit returns itself). Throws
-// ProtocolError and leaves the document untouched when the edit does not apply.
-Edit applyEdit(Composition& composition, Edit& edit);
+// ProtocolError and leaves the document untouched when the edit does not apply. The macro targets, modulators and
+// Cue steps on a layer or effect the edit removes go with it, restored by the returned edit, and each is named in
+// `dropped` when given (droppedNotice words them for a client).
+Edit applyEdit(Composition& composition, Edit& edit, std::vector<std::string>* dropped = nullptr);
+std::string droppedNotice(const std::vector<std::string>& dropped);
 
 // An edit is a flat object: {"op": ..., fields}. Extra keys are ignored, so commands and changes carry it inline.
 nlohmann::json editToJson(const Edit& edit);

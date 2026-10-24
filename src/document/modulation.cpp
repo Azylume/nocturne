@@ -568,16 +568,29 @@ Edit apply(Composition& composition, SetMacros& edit)
 }
 
 std::optional<SetMacros> dropTargets(Composition& composition, const std::set<uint64_t>& layers,
-                                     const std::set<uint64_t>& effects)
+                                     const std::set<uint64_t>& effects, std::vector<std::string>& dropped)
 {
     auto on = [&](const ParamRef& param) {
         return param.effect ? effects.contains(param.effect) : layers.contains(param.layer);
     };
+    auto where = [](const ParamRef& param) {
+        return (param.effect ? "effect " + std::to_string(param.effect) : "layer " + std::to_string(param.layer)) +
+               " " + param.param;
+    };
     SetMacros restore{composition.macros, composition.modulators};
     for (Macro& macro : composition.macros)
-        std::erase_if(macro.targets, [&](const MacroTarget& target) { return on(target.param); });
-    std::erase_if(composition.modulators,
-                  [&](const Modulator& modulator) { return !modulator.target.macro && on(modulator.target.param); });
+        std::erase_if(macro.targets, [&](const MacroTarget& target) {
+            if (!on(target.param))
+                return false;
+            dropped.push_back("macro " + macro.name + "'s target " + where(target.param));
+            return true;
+        });
+    std::erase_if(composition.modulators, [&](const Modulator& modulator) {
+        if (modulator.target.macro || !on(modulator.target.param))
+            return false;
+        dropped.push_back("modulator " + modulator.name + " on " + where(modulator.target.param));
+        return true;
+    });
     if (composition.macros == restore.macros && composition.modulators == restore.modulators)
         return std::nullopt;
     return restore;
