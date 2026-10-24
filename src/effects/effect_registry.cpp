@@ -3,6 +3,7 @@
 #include "effects/isf.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -11,6 +12,7 @@
 #include <set>
 #include <shared_mutex>
 #include <utility>
+#include <vector>
 
 namespace azl {
 
@@ -446,6 +448,244 @@ float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 ac
 }
 )";
 
+uint32_t pcg(uint32_t n);
+float fract(float x);
+
+// What the CPU hands Slicer's shader (q): every cell's style, six 4-bit styles to a value, then each box or seed's
+// centre (composition widths and heights) and half size (composition heights), then the two boxes each box links to.
+constexpr int kSlicerCells = 288;
+constexpr int kSlicerShapes = 32;
+constexpr size_t kSlicerShapesAt = kSlicerCells / 6;
+constexpr size_t kSlicerLinksAt = kSlicerShapesAt + 4 * kSlicerShapes;
+constexpr size_t kSlicerDerived = kSlicerLinksAt + 2 * kSlicerShapes;
+// The CPU does not know the composition's size; it lays cells out at 16:9 to find which ones touch.
+constexpr float kSlicerAspect = 16.0f / 9.0f;
+
+enum class SlicerLayout { Vertical, Horizontal, Grid, Radial, Boxes, Voronoi };
+
+float slicerRand(uint32_t a, uint32_t b)
+{
+    return float(pcg(a * 0x9e3779b9u ^ pcg(b)) >> 8u) / 16777215.0f;
+}
+
+using SlicerCuts = std::array<float, 18>;
+
+// The cuts between n slots of random widths, as the shader's slicerSlot places them: cuts[0] = 0 and cuts[n] = 1.
+SlicerCuts slicerCuts(int n, uint32_t base, uint32_t tick, float spread, float glide)
+{
+    std::array<float, 17> w{};
+    float total = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        const float a = slicerRand(base ^ pcg(tick), uint32_t(i)), b = slicerRand(base ^ pcg(tick + 1u), uint32_t(i));
+        w[size_t(i)] = 1.0f + spread * 1.8f * (a + (b - a) * glide - 0.5f);
+        total += w[size_t(i)];
+    }
+    SlicerCuts cuts{};
+    for (int i = 0; i < n; ++i)
+        cuts[size_t(i) + 1] = cuts[size_t(i)] + w[size_t(i)] / total;
+    return cuts;
+}
+
+int slotAt(float u, const SlicerCuts& cuts, int n)
+{
+    for (int i = 0; i < n - 1; ++i)
+        if (u < cuts[size_t(i) + 1])
+            return i;
+    return n - 1;
+}
+
+// One frame's cells, as the shader cuts them, to find out which touch.
+struct SlicerCells {
+    SlicerLayout layout;
+    int n;
+    SlicerCuts outer;
+    std::array<SlicerCuts, 17> inner;
+    std::array<float, 16> offsets;
+    const float* shapes;
+
+    // The cell at (x, y), composition widths and heights; -1 outside every box.
+    int at(float x, float y) const
+    {
+        switch (layout) {
+        case SlicerLayout::Vertical: return slotAt(x, outer, n + 1) * 16;
+        case SlicerLayout::Horizontal: return slotAt(y, outer, n + 1);
+        case SlicerLayout::Grid: {
+            const int column = slotAt(x, outer, n + 1);
+            return column * 16 + slotAt(y, inner[size_t(column)], n);
+        }
+        case SlicerLayout::Radial: {
+            const float dx = (x - 0.5f) * kSlicerAspect, dy = y - 0.5f;
+            const int ring = slotAt(std::sqrt(dx * dx + dy * dy) / std::sqrt(0.25f * kSlicerAspect * kSlicerAspect + 0.25f),
+                                    outer, n);
+            const float turn = fract(std::atan2(dy, dx) / 6.2831853f + 0.5f + offsets[size_t(ring)]);
+            return ring * 18 + slotAt(turn, inner[size_t(ring)], n + 2);
+        }
+        case SlicerLayout::Boxes: {
+            int cell = -1;
+            for (int i = 0; i < n; ++i) {
+                const float* b = shapes + 4 * i;
+                if (std::abs(x - b[0]) * kSlicerAspect < b[2] && std::abs(y - b[1]) < b[3])
+                    cell = i;
+            }
+            return cell;
+        }
+        case SlicerLayout::Voronoi: {
+            int cell = 0;
+            float best = 1e9f;
+            for (int i = 0; i < n; ++i) {
+                const float dx = (x - shapes[4 * i]) * kSlicerAspect, dy = y - shapes[4 * i + 1];
+                if (dx * dx + dy * dy < best) {
+                    best = dx * dx + dy * dy;
+                    cell = i;
+                }
+            }
+            return cell;
+        }
+        }
+        return -1;
+    }
+};
+
+// Where box or seed i is: a random place for the step, glided toward the next step's, then moved by `movement` at the
+// phase of `speed`: sliding right to left across the picture, bouncing off its edges or drifting around its place.
+void slicerShape(const float* p, int i, uint32_t seed, uint32_t tick, float glide, bool boxes, float* out)
+{
+    const uint32_t key = seed + uint32_t(i) * 0x9e3779b9u;
+    auto random = [&](uint32_t k) {
+        const float a = slicerRand(key, tick * 7u + k), b = slicerRand(key, (tick + 1u) * 7u + k);
+        return a + (b - a) * glide;
+    };
+    const float r = slicerRand(key, 101u), r2 = slicerRand(key, 102u);
+    const float tall = p[20] * (1.0f + p[4] * (random(3) - 0.5f));
+    const float wide = tall * (1.0f + random(4));
+    const float margin = boxes ? 0.1f : 0.0f;
+    float x = margin + (1.0f - 2.0f * margin) * random(1);
+    float y = margin + (1.0f - 2.0f * margin) * random(2);
+    const float phase = p[19];
+    auto bounce = [](float v) { return 1.0f - std::abs(fract(v * 0.5f) * 2.0f - 1.0f); };
+    switch (int(p[18] + 0.5f)) {
+    case 1: x = fract(x - phase * (0.6f + 0.8f * r)) * 1.4f - 0.2f; break;
+    case 2:
+        x = margin + (1.0f - 2.0f * margin) * bounce(x + phase * (0.5f + r));
+        y = margin + (1.0f - 2.0f * margin) * bounce(y + phase * (0.3f + r2));
+        break;
+    case 3:
+        x += 0.12f * std::sin((phase * (1.0f + r) + r2) * 6.2831853f);
+        y += 0.12f * std::cos((phase * (0.8f + r2) + r) * 6.2831853f);
+        break;
+    default: break;
+    }
+    out[0] = x;
+    out[1] = y;
+    out[2] = boxes ? wide * 0.5f : 0.0f;
+    out[3] = boxes ? tall * 0.5f : 0.0f;
+}
+
+// Slicer's values from the CPU (kSlicerDerived of them): the boxes or seeds, each box's links to its two nearest, and
+// every cell's style, picked among the styles switched on. Which cells touch comes from a coarse grid of samples; a cell
+// takes its random style unless a touching cell before it holds that one, then the next style none of them holds, and
+// its random style again when every one is held (few styles on, many neighbours).
+void slicerDerive(const float* p, const float*, float, float, float* out)
+{
+    const auto layout = SlicerLayout(std::clamp(int(p[1] + 0.5f), 0, 5));
+    const bool shaped = layout == SlicerLayout::Boxes || layout == SlicerLayout::Voronoi;
+    const int n = std::clamp(int(p[0]), 1, shaped ? kSlicerShapes : 16);
+    const int animation = int(p[2] + 0.5f);
+    const float clock = animation == 0 ? 0.0f : std::max(p[3], 0.0f);
+    const auto tick = uint32_t(std::floor(clock));
+    const float step = fract(clock);
+    const float glide = animation == 2 ? step * step * (3.0f - 2.0f * step) : 0.0f;
+    const uint32_t seed = pcg(uint32_t(p[6]) + 1u);
+    std::fill(out, out + kSlicerDerived, 0.0f);
+
+    float* shapes = out + kSlicerShapesAt;
+    float* links = out + kSlicerLinksAt;
+    std::fill(links, links + 2 * kSlicerShapes, -1.0f);
+    if (shaped)
+        for (int i = 0; i < n; ++i)
+            slicerShape(p, i, seed, tick, glide, layout == SlicerLayout::Boxes, shapes + 4 * i);
+    if (layout == SlicerLayout::Boxes)
+        for (int i = 0; i < n; ++i) {
+            std::array<std::pair<float, int>, 2> nearest{{{1e9f, -1}, {1e9f, -1}}};
+            for (int j = 0; j < n; ++j) {
+                const float dx = (shapes[4 * j] - shapes[4 * i]) * kSlicerAspect, dy = shapes[4 * j + 1] - shapes[4 * i + 1];
+                const std::pair<float, int> d{dx * dx + dy * dy, j};
+                if (j == i)
+                    continue;
+                if (d < nearest[0]) {
+                    nearest[1] = nearest[0];
+                    nearest[0] = d;
+                } else if (d < nearest[1])
+                    nearest[1] = d;
+            }
+            links[2 * i] = float(nearest[0].second);
+            links[2 * i + 1] = float(nearest[1].second);
+        }
+
+    SlicerCells cells{layout, n, {}, {}, {}, shapes};
+    switch (layout) {
+    case SlicerLayout::Vertical: cells.outer = slicerCuts(n + 1, seed, tick, p[4], glide); break;
+    case SlicerLayout::Horizontal: cells.outer = slicerCuts(n + 1, seed ^ 0x2fu, tick, p[4], glide); break;
+    case SlicerLayout::Grid:
+        cells.outer = slicerCuts(n + 1, seed, tick, p[4], glide);
+        for (int column = 0; column <= n; ++column)
+            cells.inner[size_t(column)] = slicerCuts(n, seed ^ (uint32_t(column) * 0x632be5abu + 0x2fu), tick, p[4], glide);
+        break;
+    case SlicerLayout::Radial:
+        cells.outer = slicerCuts(n, seed, tick, p[4], glide);
+        for (int ring = 0; ring < n; ++ring) {
+            const uint32_t r = uint32_t(ring);
+            const float a = slicerRand(seed ^ r, tick), b = slicerRand(seed ^ r, tick + 1u);
+            cells.offsets[size_t(ring)] = a + (b - a) * glide;
+            cells.inner[size_t(ring)] = slicerCuts(n + 2, seed ^ (r * 0x632be5abu + 7u), tick, p[4], glide);
+        }
+        break;
+    default: break;
+    }
+
+    constexpr int kWide = 96, kHigh = 54;
+    thread_local std::vector<uint8_t> touching(size_t(kSlicerCells) * kSlicerCells);
+    std::fill(touching.begin(), touching.end(), uint8_t(0));
+    std::array<int, kWide> above{};
+    for (int j = 0; j < kHigh; ++j) {
+        int left = -1;
+        for (int i = 0; i < kWide; ++i) {
+            const int cell = cells.at((float(i) + 0.5f) / kWide, (float(j) + 0.5f) / kHigh);
+            for (const int other : {left, j > 0 ? above[size_t(i)] : -1})
+                if (cell >= 0 && other >= 0 && other != cell) {
+                    touching[size_t(cell) * kSlicerCells + size_t(other)] = 1;
+                    touching[size_t(other) * kSlicerCells + size_t(cell)] = 1;
+                }
+            left = above[size_t(i)] = cell;
+        }
+    }
+
+    std::vector<int> on;
+    for (int s = 0; s < 8; ++s)
+        if (p[10 + s] > 0.5f)
+            on.push_back(s + 1);
+    std::array<int, kSlicerCells> styles{};
+    for (int cell = 0; cell < kSlicerCells && !on.empty(); ++cell) {
+        const uint32_t key = seed + uint32_t(cell) * 0x9e3779b9u;
+        if (slicerRand(key, tick * 3u + 1u) >= p[5])
+            continue;
+        const size_t first = std::min(size_t(slicerRand(key, tick * 3u + 2u) * float(on.size())), on.size() - 1);
+        styles[size_t(cell)] = on[first];
+        for (size_t k = 0; k < on.size(); ++k) {
+            const int candidate = on[(first + k) % on.size()];
+            bool taken = false;
+            for (int other = 0; other < cell && !taken; ++other)
+                taken = touching[size_t(cell) * kSlicerCells + size_t(other)] && styles[size_t(other)] == candidate;
+            if (!taken) {
+                styles[size_t(cell)] = candidate;
+                break;
+            }
+        }
+    }
+    for (int cell = 0; cell < kSlicerCells; ++cell)
+        out[cell / 6] += float(uint32_t(styles[size_t(cell)]) << (4 * (cell % 6)));
+}
+
 ParamDef style(std::string name)
 {
     ParamDef param = options({std::move(name), 0.0, 1.0, 1.0}, kOffOn);
@@ -455,19 +695,24 @@ ParamDef style(std::string name)
 
 const ParamUnit kRows{" rows", 1.0, 0};
 
-// Cuts the picture into cells of random sizes and draws each cell in a style of its own, or as it is. `count` cuts
-// along `direction`: vertical or horizontal strips, a grid whose columns each split into rows of their own, or rings
-// cut by spokes. `spread` varies the cell sizes; `amount` is the share of cells that get a style, picked among the
-// styles switched on. Every `rate` beats the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and
-// only steps the styles. Lines of `lines` whole pixels mark the cuts, hard-edged along straight cuts and smoothed around
-// rings and spokes. The accent colour of `hue` tints the edges, dots, duotone and outline; `colour` takes the thermal
-// and inverted cells from the accent ramp and grey to full colour.
+// Cuts the picture into cells and draws each cell in a style of its own, or as it is. `count` cuts along `direction`:
+// vertical or horizontal strips, a grid whose columns each split into rows of their own, rings cut by spokes, boxes
+// over the picture or the Voronoi cells of as many seeds. `spread` varies the cell sizes; `amount` is the share of
+// cells that get a style, picked among the styles switched on and unlike the touching cells' styles while one is free.
+// Every `rate` beats the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and only steps the
+// styles. Boxes and seeds also move by `movement` at `speed` cycles a second; boxes are `size` of the picture's
+// height, framed whole or at their `corners`, and with `links` each joins its two nearest boxes with a line and a dot.
+// Lines of `lines` whole pixels mark the cuts, hard-edged along straight cuts and smoothed around rings, spokes and
+// links. The accent colour of `hue` tints the edges, dots, duotone and outline; `colour` takes the thermal and
+// inverted cells from the accent ramp and grey to full colour.
 EffectDef slicer()
 {
+    const std::string shapes = std::to_string(kSlicerShapesAt), links = std::to_string(kSlicerLinksAt);
     EffectDef def{"slicer",
                   StageKind::Neighbourhood,
-                  {in(units::whole, {"count", 1.0, 16.0, 3.0}),
-                   in(units::whole, options({"direction", 0.0, 3.0, 2.0}, {"Vertical", "Horizontal", "Grid", "Radial"})),
+                  {in(units::whole, {"count", 1.0, 32.0, 3.0}),
+                   in(units::whole, options({"direction", 0.0, 5.0, 2.0},
+                                            {"Vertical", "Horizontal", "Grid", "Radial", "Boxes", "Voronoi"})),
                    in(units::whole, options({"animation", 0.0, 2.0, 1.0}, {"Static", "Pulse", "Slide"})),
                    in(units::beats, {"rate", 0.0, 16.0, 1.0, ParamDrive::Beats}),
                    percent({"spread", 0.0, 1.0, 0.6}),
@@ -483,20 +728,75 @@ EffectDef slicer()
                    style("dots"),
                    style("edges"),
                    style("duotone"),
-                   style("outline")},
+                   style("outline"),
+                   in(units::whole, options({"movement", 0.0, 3.0, 3.0}, {"Still", "Slide", "Bounce", "Drift"})),
+                   in(units::perSecond, {"speed", -2.0, 2.0, 0.1, ParamDrive::Phase}),
+                   percent({"size", 0.05, 0.6, 0.25}),
+                   options({"corners", 0.0, 1.0, 0.0}, kOffOn),
+                   options({"links", 0.0, 1.0, 1.0}, kOffOn)},
                   false,
                   R"(
     float4 c = t.sample(pix, px);
-    int n = clamp(int(p[0]), 1, 16);
     int direction = int(p[1] + 0.5);
     int animation = int(p[2] + 0.5);
     float clock = animation == 0 ? 0.0 : max(p[3], 0.0);
     uint tick = uint(floor(clock));
     float glide = animation == 2 ? smoothstep(0.0, 1.0, fract(clock)) : 0.0;
     uint seed = pcg(uint(p[6]) + 1u);
-    uint cell;
-    float edge;
-    if (direction == 3) {
+    float width = floor(p[7] + 0.5);
+    int cell = -1;
+    float line = 0.0;
+    if (direction >= 4) {
+        int n = clamp(int(p[0]), 1, 32);
+        constant float* shape = q + )" + shapes + R"(;
+        if (direction == 5) {
+            float d1 = 1e9, d2 = 1e9;
+            float2 s1 = 0.0, s2 = 0.0;
+            for (int i = 0; i < n; ++i) {
+                float2 s = float2(shape[4 * i], shape[4 * i + 1]) * h.size;
+                float d = distance_squared(px, s);
+                if (d < d1) {
+                    d2 = d1;
+                    s2 = s1;
+                    d1 = d;
+                    s1 = s;
+                    cell = i;
+                } else if (d < d2) {
+                    d2 = d;
+                    s2 = s;
+                }
+            }
+            float edge = n > 1 ? (d2 - d1) / (2.0 * max(length(s2 - s1), 1e-3)) : 1e4;
+            line = float(edge < width * 0.5);
+        } else {
+            for (int i = 0; i < n; ++i) {
+                constant float* b = shape + 4 * i;
+                float2 extent = float2(b[2], b[3]) * h.size.y;
+                float2 inner = extent - abs(px - float2(b[0], b[1]) * h.size);
+                if (inner.x <= 0.0 || inner.y <= 0.0)
+                    continue;
+                cell = i;
+                float corner = 0.25 * min(extent.x, extent.y);
+                bool frame = p[21] > 0.5 ? (inner.x < width && inner.y < corner) || (inner.y < width && inner.x < corner)
+                                         : min(inner.x, inner.y) < width;
+                line = float(frame);
+            }
+            if (p[22] > 0.5)
+                for (int i = 0; i < n; ++i) {
+                    float2 a = float2(shape[4 * i], shape[4 * i + 1]) * h.size;
+                    line = max(line, saturate(width * 1.5 + 2.0 - length(px - a)));
+                    for (int k = 0; k < 2; ++k) {
+                        int j = int(q[)" + links + R"( + 2 * i + k]);
+                        if (j < 0)
+                            continue;
+                        float2 e = float2(shape[4 * j], shape[4 * j + 1]) * h.size - a, w = px - a;
+                        float2 x = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-3));
+                        line = max(line, saturate(width * 0.5 + 0.5 - length(x)));
+                    }
+                }
+        }
+    } else if (direction == 3) {
+        int n = clamp(int(p[0]), 1, 16);
         float2 d = px - h.size * 0.5;
         float rmax = length(h.size * 0.5);
         float2 ring = slicerSlot(length(d) / rmax, n, seed, tick, p[4], glide);
@@ -504,33 +804,28 @@ EffectDef slicer()
         float offset = mix(slicerRand(seed ^ r, tick), slicerRand(seed ^ r, tick + 1u), glide);
         float turn = fract(atan2(d.y, d.x) / (2.0 * M_PI_F) + 0.5 + offset);
         float2 spoke = slicerSlot(turn, n + 2, seed ^ (r * 0x632be5abu + 7u), tick, p[4], glide);
-        cell = r * 64u + uint(spoke.x);
-        edge = min(ring.y * rmax, min(spoke.y, min(turn, 1.0 - turn)) * 2.0 * M_PI_F * length(d));
+        cell = int(r) * 18 + int(spoke.x);
+        float edge = min(ring.y * rmax, min(spoke.y, min(turn, 1.0 - turn)) * 2.0 * M_PI_F * length(d));
+        line = saturate(width * 0.5 + 0.5 - edge);
     } else {
+        int n = clamp(int(p[0]), 1, 16);
         float2 uv = px / h.size;
         float2 x = direction != 1 ? slicerSlot(uv.x, n + 1, seed, tick, p[4], glide) : float2(0.0, 1e4);
         float2 y = direction != 0 ? slicerSlot(uv.y, direction == 1 ? n + 1 : n, seed ^ (uint(x.x) * 0x632be5abu + 0x2fu),
                                                tick, p[4], glide)
                                   : float2(0.0, 1e4);
-        cell = uint(x.x) * 64u + uint(y.x);
-        edge = min(x.y * h.size.x, y.y * h.size.y);
+        cell = int(x.x) * 16 + int(y.x);
+        line = float(min(x.y * h.size.x, y.y * h.size.y) < width * 0.5);
     }
-    int styles[8];
-    int count = 0;
-    for (int i = 0; i < 8; ++i)
-        if (p[10 + i] > 0.5)
-            styles[count++] = i + 1;
-    uint key = seed + cell * 0x9e3779b9u;
-    int style = count > 0 && slicerRand(key, tick * 3u + 1u) < p[5]
-                    ? styles[min(int(slicerRand(key, tick * 3u + 2u) * float(count)), count - 1)]
-                    : 0;
+    int style = cell < 0 ? 0 : int((uint(q[cell / 6]) >> (4u * uint(cell % 6))) & 15u);
+    uint key = seed + uint(max(cell, 0)) * 0x9e3779b9u;
     float3 o = slicerStyle(style, t, px, c, styleAccent(p[8]), p[9], slicerRand(key, tick * 3u + 3u), h.time, h.size);
-    float width = floor(p[7] + 0.5);
-    float line = direction == 3 ? saturate(width * 0.5 + 0.5 - edge) : float(edge < width * 0.5);
     return float4(mix(o, float3(1.0), line), max(c.a, line));
 )",
                   {}};
     def.globals = std::string(kStyleGlobals) + kSlicerGlobals;
+    def.derive = slicerDerive;
+    def.derived = kSlicerDerived;
     return def;
 }
 
