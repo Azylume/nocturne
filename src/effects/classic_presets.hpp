@@ -26,8 +26,7 @@ std::optional<ClassicPreset> classicPreset(const XmlNode& preset, const std::str
 // are skipped.
 std::vector<ClassicPreset> readClassicPresets(const std::vector<std::filesystem::path>& roots);
 
-// Our own looks for the Classic effects, one per preset bundled with the app they mirror, from those presets' static
-// values (their animations left out). Every parameter is set; the ones a look does not name take their defaults.
+// Our own looks for the Classic effects. Every parameter is set; the ones a look does not name take their defaults.
 std::vector<ClassicPreset> classicBuiltinPresets();
 
 // The Presets folders of that app on this machine, found by their layout: the user's under ~/Documents first, then

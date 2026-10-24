@@ -126,14 +126,14 @@ TEST_CASE("Classic effects expose exactly the inventoried controls, in order, wi
             auto p = std::find_if(def->params.begin(), def->params.end(), [&](const azl::ParamDef& d) { return d.name == id; });
             REQUIRE(p != def->params.end());
             CHECK(p->defaultValue == doctest::Approx(param["default"].get<double>()));
-            if (param.contains("stored")) {
-                CHECK(p->min == param["stored"][0].get<double>());
-                CHECK(p->max == param["stored"][1].get<double>());
+            if (param.contains("range")) {
+                CHECK(p->min == param["range"][0].get<double>());
+                CHECK(p->max == param["range"][1].get<double>());
             }
             if (!param["label"].get<std::string>().empty() && id.find("color") != 0)
                 CHECK((p->fullLabel.empty() ? p->label : p->fullLabel) == param["label"].get<std::string>());
-            if (param.contains("display") && param["display"].contains("options"))
-                CHECK(p->options == param["display"]["options"].get<std::vector<std::string>>());
+            if (param.contains("options"))
+                CHECK(p->options == param["options"].get<std::vector<std::string>>());
             if (param["kind"] == "bool")
                 CHECK(p->options == std::vector<std::string>{"Off", "On"});
         }
@@ -518,7 +518,7 @@ TEST_CASE("Classic Edge Detection behaves as measured, maps its presets, and eac
     }
 }
 
-TEST_CASE("built-in Classic looks: one of our own per bundled preset of each Classic effect, served with the presets")
+TEST_CASE("built-in Classic looks set every parameter in range, have unique names, and are served with the presets")
 {
     std::map<std::string, size_t> looks;
     std::set<std::string> names;
@@ -535,19 +535,6 @@ TEST_CASE("built-in Classic looks: one of our own per bundled preset of each Cla
         ++looks[look.effectType];
         CHECK(names.insert(look.name).second);
     }
-    const fs::path spec = sourceDir() / "docs/research/classic-controls.json";
-    if (fs::exists(spec)) {
-        std::ifstream in(spec);
-        for (const auto& effect : nlohmann::json::parse(in)["effects"]) {
-            if (!azl::findEffect(effect["classicType"].get<std::string>()))
-                continue;
-            CAPTURE(effect["classicType"]);
-            CHECK(looks[effect["classicType"]] == effect["bundledPresets"].size());
-            for (const auto& bundled : effect["bundledPresets"])
-                CHECK(!names.contains(bundled.get<std::string>()));
-        }
-    }
-
     TempDir root;
     azl::EngineHarness harness({.width = 960, .height = 540}, 60.0, root.path);
     Client client(harness.document());
@@ -555,7 +542,7 @@ TEST_CASE("built-in Classic looks: one of our own per bundled preset of each Cla
     client.send({{"type", "preset"}, {"op", "list"}});
     CHECK(client.next()["presets"]["classicMirror"].size() == looks["classicMirror"]);
     client.send({{"type", "preset"}, {"op", "apply"}, {"effect", effect}, {"name", "Nine Petals"}});
-    CHECK(client.next()["params"]["angles"] == doctest::Approx(0.775));
+    CHECK(client.next()["params"]["angles"] == doctest::Approx(0.81));
     CHECK(!fs::exists(root.path / "presets.json"));
 }
 
@@ -979,7 +966,7 @@ Score score(const azl::Image& a, const azl::Image& b)
 
 } // namespace
 
-// Renders parity cases at 1920x1080 and scores them against reference captures, for tools/classic_parity.py:
+// Renders parity cases at 1920x1080 and scores them against reference captures, for the parity scripts:
 // NOCTURNE_PARITY_DIR=DIR holding cases.json. Writes DIR/input.png (the bare test card), DIR/ours/NAME.png when
 // NOCTURNE_PARITY_SAVE is set, and DIR/scores.json for every case with a DIR/ref/NAME.png. `shown` is the share of the
 // picture left as it was, for effects whose layout is random in the reference.
@@ -1112,7 +1099,7 @@ std::pair<std::vector<int>, std::vector<int>> medianLines(const azl::Image& imag
 
 } // namespace
 
-// Renders the timed parity cases (`sequence` in DIR/cases.json) for tools/classic_parity.py: each reference sequence
+// Renders the timed parity cases (`sequence` in DIR/cases.json) for the parity scripts: each reference sequence
 // DIR/seq/NAME.I is matched by one of ours with a fresh effect switched on at its start and sampled at the reference's
 // snapshot times (Strobe every frame for 8 s). Writes DIR/ours/seq/NAME.I.json: per sample its time, mean colour over
 // black, alpha, the share changed from the bare input by more than 8 levels and whether it equals the last sample, and
