@@ -4,6 +4,15 @@
 
 namespace azl {
 
+namespace {
+
+constexpr double kFitsAt = 0.75;    // of the budget: a frame under it counts as calm
+constexpr int kCalm = 60;           // calm frames that take a level off, until a bounce
+constexpr int kMaxCalm = 36000;     // ten minutes at 60 fps
+constexpr int kBounceWithin = 120;  // frames after a step down within which a step up is a bounce
+
+} // namespace
+
 GuardThresholds guardThresholds(GuardProfile profile, bool protectTransitions, bool fading)
 {
     GuardThresholds t = profile == GuardProfile::Sharp ? GuardThresholds{1.0, 30} : GuardThresholds{0.9, 15};
@@ -15,24 +24,28 @@ GuardThresholds guardThresholds(GuardProfile profile, bool protectTransitions, b
 bool FrameGuard::step(double gpu, double budget, size_t layers, const GuardThresholds& thresholds)
 {
     frames++;
+    if (sinceOff >= 0 && ++sinceOff > kBounceWithin) {
+        sinceOff = -1;
+        calmNeeded = kCalm;
+    }
     const size_t was = level;
-    if (gpu > thresholds.raiseAt * budget && level < layers && frames >= thresholds.settle) {
+    hot = gpu > thresholds.raiseAt * budget ? hot + 1 : 0;
+    if (hot >= thresholds.settle && level < layers && frames >= thresholds.settle) {
+        if (sinceOff >= 0) {
+            calmNeeded = std::min(calmNeeded * 2, kMaxCalm);
+            sinceOff = -1;
+        }
         level++;
-        before = gpu;
-        saved.push_back(-1.0);
     } else if (level > 0) {
-        double& last = saved.back();
-        if (last < 0.0 && frames >= 30)
-            last = std::max(0.0, before - gpu);
-        calm = last >= 0.0 && gpu + last < 0.75 * budget ? calm + 1 : 0;
-        if (calm >= 60) {
+        calm = gpu < kFitsAt * budget ? calm + 1 : std::max(0, calm - 2);
+        if (calm >= calmNeeded) {
             level--;
-            saved.pop_back();
+            sinceOff = 0;
         }
     }
     if (level == was)
         return false;
-    frames = calm = 0;
+    frames = hot = calm = 0;
     return true;
 }
 
