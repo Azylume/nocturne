@@ -6,11 +6,34 @@
 #include "ui/app/step_strip.hpp"
 #include "ui/app/widgets.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 namespace azl::ui {
+
+// The header a group of an effect's parameters folds under: a chevron, the group's name and how many of its switches
+// are on. A click opens or closes it.
+class GroupHeader : public juce::Component, public juce::SettableTooltipClient {
+public:
+    GroupHeader(std::string name, std::function<void()> onClick);
+
+    const std::string& name() const { return name_; }
+    void show(bool open, int on, int count);
+    void paint(juce::Graphics&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+
+    static constexpr int kHeight = 22;
+
+private:
+    const std::string name_;
+    std::function<void()> onClick_;
+    bool open_ = false;
+    int on_ = 0;
+    int count_ = 0;
+};
 
 // One effect of the chain: a header to collapse it (click) or reorder it (drag), its preset menu and remove button,
 // and a row per parameter with dry/wet last. Collapsed it is a thin vertical strip.
@@ -24,6 +47,8 @@ public:
     void refresh();
     int cardWidth() const;
     ParamRow* row(const std::string& param);
+    // The header of the group of parameters with this name; null when the effect has no such group.
+    GroupHeader* groupHeader(const std::string& group);
     // The swatch row of the colour group with this key, above the group's sliders.
     SwatchRow* swatchRow(const std::string& group);
     juce::TextButton& removeButton() { return remove_; }
@@ -74,6 +99,10 @@ private:
     std::vector<std::unique_ptr<ParamRow>> rows_;
     // Each with the index of the row it sits above.
     std::vector<std::pair<std::unique_ptr<SwatchRow>, size_t>> swatches_;
+    // Each row's group, empty for none; each group's header with the index of its first row, and the groups open.
+    std::vector<std::string> rowGroups_;
+    std::vector<std::pair<std::unique_ptr<GroupHeader>, size_t>> groups_;
+    std::set<std::string> openGroups_;
     bool dragging_ = false;
     void buildRows(const EffectDef& def);
     void dropPresets(const juce::CallOutBox* box);

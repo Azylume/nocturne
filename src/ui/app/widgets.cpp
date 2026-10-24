@@ -1099,6 +1099,11 @@ std::optional<double> drivenNow(const Session& session, const ParamRef& ref)
     return session.drivenValue(ref);
 }
 
+bool isSwitch(const ParamInfo& info)
+{
+    return info.options() == std::vector<std::string>{"Off", "On"};
+}
+
 } // namespace
 
 ParamRow::ParamRow(Session& session, ParamRef ref) : session_(session), ref_(std::move(ref))
@@ -1121,7 +1126,9 @@ void ParamRow::refresh()
             valueWidth_ = std::max(valueWidth_,
                                    juce::GlyphArrangement::getStringWidthInt(Look::font(), formatValue(*info, v)) + 2);
     }
-    if (info && !info->options().empty())
+    if (info && isSwitch(*info))
+        showSwitch(*info);
+    else if (info && !info->options().empty())
         showOptions(*info);
     const bool open = session_.animationOpen(ref_) && animationOf(session_.composition(), ref_);
     if (open && !animate_) {
@@ -1147,9 +1154,12 @@ void ParamRow::refreshDriven()
     shownDriven_ = driven;
     if (animate_)
         animate_->refresh();
-    if (options_)
-        if (const auto info = paramInfo(session_.composition(), ref_))
+    if (const auto info = paramInfo(session_.composition(), ref_)) {
+        if (options_)
             showOptions(*info);
+        if (switch_)
+            showSwitch(*info);
+    }
     repaint();
 }
 
@@ -1175,6 +1185,24 @@ void ParamRow::showOptions(const ParamInfo& info)
     options_->setSelectedItemIndex(shown, juce::dontSendNotification);
 }
 
+void ParamRow::showSwitch(const ParamInfo& info)
+{
+    if (!switch_) {
+        switch_ = std::make_unique<juce::ToggleButton>();
+        switch_->setTooltip(utf8(info.fullLabel()) + ": click to switch; right-click to animate it or put it on a macro");
+        switch_->onClick = [this] {
+            if (const auto now = paramInfo(session_.composition(), ref_); now && now->def)
+                session_.setParam(ref_, optionValue(*now->def, switch_->getToggleState() ? 1 : 0));
+        };
+        switch_->addMouseListener(this, false);
+        addAndMakeVisible(*switch_);
+        resized();
+    }
+    switch_->setInterceptsMouseClicks(!session_.learning(), false);
+    const int shown = optionIndex(*info.def, drivenNow(session_, ref_).value_or(info.value));
+    switch_->setToggleState(shown == 1, juce::dontSendNotification);
+}
+
 void refreshDrivenRows(juce::Component& root)
 {
     for (juce::Component* child : root.getChildren()) {
@@ -1191,6 +1219,8 @@ void ParamRow::resized()
 {
     if (options_)
         options_->setBounds(barArea().getX(), 2, valueArea().getRight() - barArea().getX(), kHeight - 4);
+    if (switch_)
+        switch_->setBounds(barArea().getX(), 2, valueArea().getRight() - barArea().getX(), kHeight - 4);
     if (animate_)
         animate_->setBounds(0, kHeight, getWidth(), animate_->preferredHeight());
 }
@@ -1242,10 +1272,10 @@ void ParamRow::paint(juce::Graphics& g)
         g.setColour(p.muted);
     }
     drawText(g, utf8(info->label), label, juce::Justification::centredLeft, true);
-    if (options_) {
+    if (juce::Component* control = options_ ? static_cast<juce::Component*>(options_.get()) : switch_.get()) {
         if (session_.learning() || macro) {
             g.setColour(session_.learning() ? p.accent : p.live);
-            g.drawRect(options_->getBounds(), 1);
+            g.drawRect(control->getBounds(), 1);
         }
         return;
     }
@@ -1330,7 +1360,7 @@ void ParamRow::setFromX(int x)
 
 void ParamRow::mouseDown(const juce::MouseEvent& e)
 {
-    if (e.eventComponent == options_.get()) {
+    if (e.eventComponent == options_.get() || e.eventComponent == switch_.get()) {
         if (e.mods.isPopupMenu())
             showMenu();
         return;
@@ -1361,7 +1391,7 @@ void ParamRow::mouseDown(const juce::MouseEvent& e)
 
 void ParamRow::mouseDrag(const juce::MouseEvent& e)
 {
-    if (e.eventComponent == options_.get())
+    if (e.eventComponent == options_.get() || e.eventComponent == switch_.get())
         return;
     if (dragEnd_)
         setEndFromX(e.x);
@@ -1412,7 +1442,7 @@ juce::String ParamRow::tipAt(juce::Point<int> point)
 void ParamRow::mouseDoubleClick(const juce::MouseEvent& e)
 {
     const auto info = paramInfo(session_.composition(), ref_);
-    if (!info || options_ || !valueArea().contains(e.getPosition()))
+    if (!info || options_ || switch_ || !valueArea().contains(e.getPosition()))
         return;
     const double scale = info->unit.scale;
     editInline(editor_, *this, valueArea().expanded(4, 0), juce::String(info->value * scale, info->unit.decimals + 1),

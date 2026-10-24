@@ -171,11 +171,53 @@ juce::Rectangle<int> EffectCard::chevronArea() const
     return session_.collapsed(effect_) ? header.withSizeKeepingCentre(size, size) : chevronBox(header);
 }
 
+GroupHeader::GroupHeader(std::string name, std::function<void()> onClick)
+    : name_(std::move(name)), onClick_(std::move(onClick))
+{
+    setTooltip(utf8(name_) + ": click to show or hide its switches");
+}
+
+void GroupHeader::show(bool open, int on, int count)
+{
+    open_ = open;
+    on_ = on;
+    count_ = count;
+    repaint();
+}
+
+void GroupHeader::paint(juce::Graphics& g)
+{
+    const Palette& p = Look::palette();
+    auto area = getLocalBounds();
+    drawChevron(g, chevronBox(area), open_, p.text);
+    area.removeFromLeft(Look::metrics().chevronBox);
+    g.setFont(Look::font());
+    g.setColour(p.muted);
+    drawText(g, juce::String(on_) + " of " + juce::String(count_) + " on", area.removeFromRight(area.getWidth() / 2 - 8),
+             juce::Justification::centredRight);
+    g.setColour(p.text);
+    drawText(g, utf8(name_), area, juce::Justification::centredLeft, true);
+}
+
+void GroupHeader::mouseUp(const juce::MouseEvent& e)
+{
+    if (!e.mods.isPopupMenu() && getLocalBounds().contains(e.getPosition()))
+        onClick_();
+}
+
 ParamRow* EffectCard::row(const std::string& param)
 {
     for (auto& r : rows_)
         if (r->ref().param == param)
             return r.get();
+    return nullptr;
+}
+
+GroupHeader* EffectCard::groupHeader(const std::string& group)
+{
+    for (auto& [header, at] : groups_)
+        if (header->name() == group)
+            return header.get();
     return nullptr;
 }
 
@@ -206,6 +248,13 @@ void EffectCard::refresh()
         r->refresh();
     for (auto& [swatch, at] : swatches_)
         swatch->refresh();
+    for (auto& [header, at] : groups_) {
+        int on = 0, count = 0;
+        for (size_t i = at; i < rows_.size() && rowGroups_[i] == header->name(); ++i, ++count)
+            if (const auto info = paramInfo(session_.composition(), rows_[i]->ref()); info && info->def)
+                on += optionIndex(*info->def, info->value) == 1;
+        header->show(openGroups_.contains(header->name()), on, count);
+    }
     const bool collapsed = session_.collapsed(effect_);
     presets_.setVisible(!collapsed);
     remove_.setVisible(!collapsed);
@@ -225,7 +274,18 @@ void EffectCard::refreshClock()
 void EffectCard::buildRows(const EffectDef& def)
 {
     for (const ParamDef& param : def.params) {
+        if (!param.group.empty() && (rowGroups_.empty() || rowGroups_.back() != param.group)) {
+            const std::string group = param.group;
+            groups_.emplace_back(std::make_unique<GroupHeader>(group, [this, group] {
+                                     if (!openGroups_.erase(group))
+                                         openGroups_.insert(group);
+                                     refresh();
+                                 }),
+                                 rows_.size());
+            list_.addAndMakeVisible(*groups_.back().first);
+        }
         rows_.push_back(std::make_unique<ParamRow>(session_, ParamRef{0, effect_, param.name}));
+        rowGroups_.push_back(param.group);
         list_.addAndMakeVisible(*rows_.back());
     }
     for (const ColourGroup& group : colourGroups(def)) {
@@ -262,6 +322,15 @@ void EffectCard::resized()
                 swatch->setBounds(0, y, width, SwatchRow::kHeight);
                 y += SwatchRow::kHeight;
             }
+        for (auto& [header, at] : groups_)
+            if (at == i) {
+                header->setBounds(0, y, width, GroupHeader::kHeight);
+                y += GroupHeader::kHeight;
+            }
+        const bool shown = rowGroups_[i].empty() || openGroups_.contains(rowGroups_[i]);
+        rows_[i]->setVisible(shown);
+        if (!shown)
+            continue;
         rows_[i]->setBounds(0, y, width, rows_[i]->preferredHeight());
         y += rows_[i]->preferredHeight();
     }
