@@ -443,6 +443,7 @@ float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 ac
     case 6: return styleEdges(t, px, accent, size);
     case 7: return styleDuotone(y, accent);
     case 8: return styleOutline(t, px, accent, size);
+    case 9: return pick < 0.5 ? float3(1.0) : accent;
     default: return c.rgb;
     }
 }
@@ -556,14 +557,14 @@ void slicerShape(const float* p, int i, uint32_t seed, uint32_t tick, float glid
         return a + (b - a) * glide;
     };
     const float r = slicerRand(key, 101u), r2 = slicerRand(key, 102u);
-    const float tall = p[20] * (1.0f + p[4] * (random(3) - 0.5f));
+    const float tall = p[21] * (1.0f + p[4] * (random(3) - 0.5f));
     const float wide = tall * (1.0f + random(4));
     const float margin = boxes ? 0.1f : 0.0f;
     float x = margin + (1.0f - 2.0f * margin) * random(1);
     float y = margin + (1.0f - 2.0f * margin) * random(2);
-    const float phase = p[19];
+    const float phase = p[20];
     auto bounce = [](float v) { return 1.0f - std::abs(fract(v * 0.5f) * 2.0f - 1.0f); };
-    switch (int(p[18] + 0.5f)) {
+    switch (int(p[19] + 0.5f)) {
     case 1: x = fract(x - phase * (0.6f + 0.8f * r)) * 1.4f - 0.2f; break;
     case 2:
         x = margin + (1.0f - 2.0f * margin) * bounce(x + phase * (0.5f + r));
@@ -585,13 +586,22 @@ void slicerShape(const float* p, int i, uint32_t seed, uint32_t tick, float glid
 // every cell's style, picked among the styles switched on. Which cells touch comes from a coarse grid of samples; a cell
 // takes its random style unless a touching cell before it holds that one, then the next style none of them holds, and
 // its random style again when every one is held (few styles on, many neighbours).
-void slicerDerive(const float* p, const float*, float, float, float* out)
+// How many steps of `rate` the beat clock has counted: none while it is Static or Off.
+float slicerClock(const float* p, float beat)
+{
+    const int rate = int(p[3] + 0.5f);
+    if (int(p[2] + 0.5f) == 0 || rate == 0)
+        return 0.0f;
+    return std::max(beat, 0.0f) / std::exp2(float(rate - 3));
+}
+
+void slicerDerive(const float* p, const float*, float, float beat, float* out)
 {
     const auto layout = SlicerLayout(std::clamp(int(p[1] + 0.5f), 0, 5));
     const bool shaped = layout == SlicerLayout::Boxes || layout == SlicerLayout::Voronoi;
     const int n = std::clamp(int(p[0]), 1, shaped ? kSlicerShapes : 16);
     const int animation = int(p[2] + 0.5f);
-    const float clock = animation == 0 ? 0.0f : std::max(p[3], 0.0f);
+    const float clock = slicerClock(p, beat);
     const auto tick = uint32_t(std::floor(clock));
     const float step = fract(clock);
     const float glide = animation == 2 ? step * step * (3.0f - 2.0f * step) : 0.0f;
@@ -661,7 +671,7 @@ void slicerDerive(const float* p, const float*, float, float, float* out)
     }
 
     std::vector<int> on;
-    for (int s = 0; s < 8; ++s)
+    for (int s = 0; s < 9; ++s)
         if (p[10 + s] > 0.5f)
             on.push_back(s + 1);
     std::array<int, kSlicerCells> styles{};
@@ -699,12 +709,13 @@ const ParamUnit kRows{" rows", 1.0, 0};
 // vertical or horizontal strips, a grid whose columns each split into rows of their own, rings cut by spokes, boxes
 // over the picture or the Voronoi cells of as many seeds. `spread` varies the cell sizes; `amount` is the share of
 // cells that get a style, picked among the styles switched on and unlike the touching cells' styles while one is free.
-// Every `rate` beats the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and only steps the
-// styles. Boxes and seeds also move by `movement` at `speed` cycles a second; boxes are `size` of the picture's
-// height, framed whole or at their `corners`, and with `links` each joins its two nearest boxes with a line and a dot.
+// Every `rate` beats (Off: never) the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and only
+// steps the styles. Boxes and seeds also move by `movement` at `speed` cycles a second; boxes are `size` of the
+// picture's height, framed whole or at their `corners`, and with `links` each joins its two nearest boxes with a line
+// and a dot.
 // Lines of `lines` whole pixels mark the cuts, hard-edged along straight cuts and smoothed around rings, spokes and
-// links. The accent colour of `hue` tints the edges, dots, duotone and outline; `colour` takes the thermal and
-// inverted cells from the accent ramp and grey to full colour.
+// links. The accent colour of `hue` tints the edges, dots, duotone and outline, and fills half the solid cells (the
+// rest white); `colour` takes the thermal and inverted cells from the accent ramp and grey to full colour.
 EffectDef slicer()
 {
     const std::string shapes = std::to_string(kSlicerShapesAt), links = std::to_string(kSlicerLinksAt);
@@ -714,7 +725,7 @@ EffectDef slicer()
                    in(units::whole, options({"direction", 0.0, 5.0, 2.0},
                                             {"Vertical", "Horizontal", "Grid", "Radial", "Boxes", "Voronoi"})),
                    in(units::whole, options({"animation", 0.0, 2.0, 1.0}, {"Static", "Pulse", "Slide"})),
-                   in(units::beats, {"rate", 0.0, 16.0, 1.0, ParamDrive::Beats}),
+                   in(units::whole, options({"rate", 0.0, 7.0, 3.0}, {"Off", "1/4", "1/2", "1", "2", "4", "8", "16"})),
                    percent({"spread", 0.0, 1.0, 0.6}),
                    percent({"amount", 0.0, 1.0, 0.85}),
                    in(units::whole, {"seed", 0.0, 99.0, 0.0}),
@@ -729,6 +740,7 @@ EffectDef slicer()
                    style("edges"),
                    style("duotone"),
                    style("outline"),
+                   style("solid"),
                    in(units::whole, options({"movement", 0.0, 3.0, 3.0}, {"Still", "Slide", "Bounce", "Drift"})),
                    in(units::perSecond, {"speed", -2.0, 2.0, 0.1, ParamDrive::Phase}),
                    percent({"size", 0.05, 0.6, 0.25}),
@@ -739,7 +751,8 @@ EffectDef slicer()
     float4 c = t.sample(pix, px);
     int direction = int(p[1] + 0.5);
     int animation = int(p[2] + 0.5);
-    float clock = animation == 0 ? 0.0 : max(p[3], 0.0);
+    int rate = int(p[3] + 0.5);
+    float clock = animation == 0 || rate == 0 ? 0.0 : max(h.beat, 0.0) / exp2(float(rate - 3));
     uint tick = uint(floor(clock));
     float glide = animation == 2 ? smoothstep(0.0, 1.0, fract(clock)) : 0.0;
     uint seed = pcg(uint(p[6]) + 1u);
@@ -777,11 +790,11 @@ EffectDef slicer()
                     continue;
                 cell = i;
                 float corner = 0.25 * min(extent.x, extent.y);
-                bool frame = p[21] > 0.5 ? (inner.x < width && inner.y < corner) || (inner.y < width && inner.x < corner)
+                bool frame = p[22] > 0.5 ? (inner.x < width && inner.y < corner) || (inner.y < width && inner.x < corner)
                                          : min(inner.x, inner.y) < width;
                 line = float(frame);
             }
-            if (p[22] > 0.5)
+            if (p[23] > 0.5)
                 for (int i = 0; i < n; ++i) {
                     float2 a = float2(shape[4 * i], shape[4 * i + 1]) * h.size;
                     line = max(line, saturate(width * 1.5 + 2.0 - length(px - a)));
