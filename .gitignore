@@ -7,3 +7,4 @@ __pycache__/
 *.tracy
 examples/**/*.mp4
 examples/**/*.mov
+.scratch/

@@ -1,3093 +1,1333 @@
 {
- "about": "Control sets of the reference app's effects, for the Classic pack. Facts read from saved XML on the development machine (reference app 7.26.0; bundled presets saved by 7.3.0; user compositions). No code, shader or preset file was copied. See .scratch/v1/issues/46-classic-effect-pack.md.",
- "conventions": {
-  "order": "parameter order as saved; for complete effects this is the full control list",
-  "name": "the parameter's name in XML, which the preset importer matches",
-  "label": "the XML altName when present, else the name; the UI label is confirmed by REST in phase 2",
-  "id": "our parameter id: name in camelCase (words split at non-alphanumerics; an all-caps first word lowercased)",
-  "stored": "the value domain in saved files ([0, 1] for plugin-style effects whose values are normalized)",
-  "default": "the stored default",
-  "display": "REST ParameterView of the reference app (7.26.0): min/max of the REST value, multiplier, suffix, units, control, step, altName (the UI label), choice options, and response: the displayed value (REST value x multiplier) read back after setting 0, 0.25, 0.5, 0.75 and 1 of the range. REST values are linear in the stored domain for every control; a step quantises the control in the UI",
-  "coverage": "complete: a bundled preset saves every parameter; partial: only non-default values seen in compositions; none: never saved",
-  "wrapper": "every effect sits in a dry/wet wrapper with Opacity (default 1, our `mix`) and a Blend Mode mixer (default Alpha 67464115; Add is 67464114)",
-  "controls": "complete: REST lists every control of the effect, in UI order (wrapper Opacity and Blend Mode excluded)",
-  "mixer": "measured: the Add mixer crossfades additively, dry x min(1, 2 - 2 x Opacity) + wet x min(1, 2 x Opacity); Alpha mixes dry and wet by Opacity",
-  "measured": "phase 6 reference captures (UV picture, test card, semi-transparent flat colour, marker clip): what each control does in real units; one control at a time from the defaults unless stated"
- },
+ "about": "Nocturne's Classic effect controls, in UI order: parameter id, label, kind, default and value range, plus option names. tests/classic_test.cpp checks the effect registry against this file.",
  "effects": [
   {
-   "name": "Stripper",
    "classicType": "classicStripper",
-   "packMember": true,
-   "xmlTypes": [
-    "FFGL:Stripper",
-    "Stripper"
-   ],
-   "uniqueTypeId": "sy69",
-   "coverage": "complete",
-   "usesInCompositions": 12,
-   "bundledPresets": [
-    "Both Ways",
-    "Crossing Strips",
-    "Invert Strips",
-    "Rotating Strips",
-    "Sliding Strips",
-    "Soft Strips"
-   ],
    "params": [
     {
-     "name": "Number",
-     "label": "Number",
      "id": "number",
+     "label": "Number",
      "kind": "range",
      "default": 0.1,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.281786942,
-      0.697594502
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Mode",
-     "label": "Mode",
      "id": "mode",
+     "label": "Mode",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.841924399
-     ],
-     "choice": {
-      "encoding": "round(value * 6): 7 positions, the UI steps by 1/6",
-      "options": [
-       "strips show the picture",
-       "the same",
-       "inverted: the picture outside the strips",
-       "strips show the picture turned with them, magnified 3x across and 2x along around its centre; overlaps add",
-       "as 3, around a random place across per strip",
-       "strips show the picture colour-inverted, the picture outside",
-       "the picture outside; strips lay its channels as (green, blue, green) over it"
-      ],
-      "source": "measured over REST snapshots; bundled presets use 0, 0.467 (3), 0.701 (4) and 0.842 (5)"
-     },
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ],
-      "step": 0.16666666666666666
-     }
+     ]
     },
     {
-     "name": "Direction",
-     "label": "Direction",
      "id": "direction",
+     "label": "Direction",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.36441053440049204
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Direction Spread",
-     "label": "Direction Spread",
      "id": "directionSpread",
+     "label": "Direction Spread",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.333333333
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "MovementType",
-     "label": "MovementType",
      "id": "movementType",
+     "label": "MovementType",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.773195876
-     ],
-     "choice": {
-      "encoding": "round(value * 2): 3 positions, the UI steps by 1/2",
-      "options": [
-       "slide",
-       "unmeasured",
-       "unmeasured; moves even at Speed 0"
-      ],
-      "source": "measured over REST snapshots; bundled presets use 0 and 0.773 (1)"
-     },
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ],
-      "step": 0.5
-     }
+     ]
     },
     {
-     "name": "Speed",
-     "label": "Speed",
      "id": "speed",
+     "label": "Speed",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.158075601,
-      0.158075601
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "SpeedSpread",
-     "label": "SpeedSpread",
      "id": "speedSpread",
+     "label": "SpeedSpread",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "GlobalWidth",
-     "label": "GlobalWidth",
      "id": "globalWidth",
+     "label": "GlobalWidth",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.154639175,
-      0.319587629
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "MinWidth",
-     "label": "MinWidth",
      "id": "minWidth",
+     "label": "MinWidth",
      "kind": "range",
      "default": 0.1,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.100000001,
-      0.100000001
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "MaxWidth",
-     "label": "MaxWidth",
      "id": "maxWidth",
+     "label": "MaxWidth",
      "kind": "range",
      "default": 0.4,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.400000006,
-      0.400000006
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Feather",
-     "label": "Feather",
      "id": "feather",
+     "label": "Feather",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.890034364
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Red",
-     "label": "Red",
      "id": "red",
+     "label": "Red",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Green",
-     "label": "Green",
      "id": "green",
+     "label": "Green",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Blue",
-     "label": "Blue",
      "id": "blue",
+     "label": "Blue",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Alpha",
-     "label": "Alpha",
      "id": "alpha",
+     "label": "Alpha",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      1.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "strips": "floor(Number * 10), each at a random centre in [-1, 1] of composition UV from the centre, new per effect instance; a higher Number adds strips without moving the others",
-    "width": "3 x GlobalWidth x a random share between MinWidth and MaxWidth, in UV along the strip axis",
-    "direction": "whole turns in UV space (0 vertical strips, 0.25 horizontal), so a turn follows the aspect",
-    "speed": "strips slide and wrap over [-1, 1]: 0.12, 0.23 and 0.65 UV/s at Speed 0.01, 0.02 and 0.04 (about 11.5 per unit at low speeds, faster than linear above); higher speeds alias in snapshots",
-    "layout": "random per instance, so frames are compared by the share of the picture left as it was"
-   }
+   ]
   },
   {
-   "name": "Colorize",
    "classicType": "classicColorize",
-   "packMember": true,
-   "xmlTypes": [
-    "Colorize"
-   ],
-   "uniqueTypeId": "A103",
-   "coverage": "complete",
-   "usesInCompositions": 181,
-   "bundledPresets": [
-    "Blue",
-    "Pink",
-    "Rainbow Palette"
-   ],
    "params": [
     {
-     "name": "Color",
-     "label": "Color",
      "id": "color",
+     "label": "Color",
      "kind": "color",
-     "default": 4278190335.0,
-     "packed": "uint32 0xAABBGGRR; channels follow as <name>.<channel>",
-     "palette": [
-      "Red",
-      "Green",
-      "Yellow",
-      "50 Grey",
-      "Blue",
-      "Magenta",
-      "Cyan",
-      "White"
-     ],
-     "display": {}
+     "default": 4278190335.0
     },
     {
-     "name": "Color.Red",
-     "label": "Red",
      "id": "colorRed",
+     "label": "Red",
      "kind": "range",
      "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
+     "range": [
       0.0,
       1.0
      ]
     },
     {
-     "name": "Color.Green",
-     "label": "Green",
      "id": "colorGreen",
+     "label": "Green",
      "kind": "range",
      "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
+     "range": [
       0.0,
       1.0
      ]
     },
     {
-     "name": "Color.Blue",
-     "label": "Blue",
      "id": "colorBlue",
+     "label": "Blue",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.0941176488995552,
       1.0
      ]
     },
     {
-     "name": "Color.Hue",
-     "label": "Hue",
      "id": "colorHue",
+     "label": "Hue",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.007440477143973112,
-      0.9333333373069763
      ]
     },
     {
-     "name": "Color.Saturation",
-     "label": "Saturation",
      "id": "colorSaturation",
+     "label": "Saturation",
      "kind": "range",
      "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
+     "range": [
       0.0,
       1.0
      ]
     },
     {
-     "name": "Color.Brightness",
-     "label": "Brightness",
      "id": "colorBrightness",
+     "label": "Brightness",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.8899999856948853,
       1.0
      ]
     },
     {
-     "name": "Color.Alpha",
-     "label": "Alpha",
      "id": "colorAlpha",
+     "label": "Alpha",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.46666666865348816,
       1.0
      ]
     },
     {
-     "name": "Mode",
-     "label": "Mode",
      "id": "mode",
+     "label": "Mode",
      "kind": "choice",
      "default": 0.0,
-     "observedIndices": [
-      0,
-      1
-     ],
-     "choice": {
-      "encoding": "integer index",
-      "options": [
-       "Color",
-       "Palette"
-      ],
-      "source": "REST"
-     },
-     "display": {
-      "options": [
-       "Color",
-       "Palette"
-      ],
-      "control": "choice_combobox"
-     }
+     "options": [
+      "Color",
+      "Palette"
+     ]
     },
     {
-     "name": "Weighted",
-     "label": "Weighted",
      "id": "weighted",
+     "label": "Weighted",
      "kind": "bool",
-     "default": 1.0,
-     "display": {}
-    },
-    {
-     "name": "GreysKeep",
-     "label": "Keep",
-     "id": "greysKeep",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {
-      "altName": "Keep"
-     }
-    },
-    {
-     "name": "GreysTolerance",
-     "label": "Tolerance",
-     "id": "greysTolerance",
-     "kind": "range",
-     "default": 0.3,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.3,
-      0.3
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ],
-      "altName": "Tolerance"
-     }
-    },
-    {
-     "name": "Invert",
-     "label": "Invert",
-     "id": "invert",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    },
-    {
-     "name": "Contrast",
-     "label": "Contrast",
-     "id": "contrast",
-     "kind": "range",
-     "default": 0.2,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.20000000298023224,
-      0.5647890127388535
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "luma": "weighted: 0.3594 R + 0.4010 G + 0.2396 B of the sRGB values; unweighted: the HSL lightness (max + min) / 2",
-    "contrast": "a gain of 5 x Contrast on that luminance (neutral at 0.2)",
-    "palette": "Mode Palette maps the luminance onto black, red, green, yellow, 50 % grey, blue, magenta, cyan, white at equal steps",
-    "greysKeep": "unmeasured beyond the test card: its greys keep their colour and its bars do not"
-   }
-  },
-  {
-   "name": "Edge Detection",
-   "classicType": "classicEdgeDetection",
-   "packMember": true,
-   "xmlTypes": [
-    "EdgeDetection"
-   ],
-   "uniqueTypeId": "MEDG",
-   "coverage": "partial",
-   "usesInCompositions": 16,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Mode",
-     "label": "Mode",
-     "id": "mode",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ],
-      "step": 1.0
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
      "default": 1.0
     },
     {
-     "name": "Multiplier",
-     "label": "Multiplier",
-     "id": "multiplier",
-     "kind": "range",
-     "default": 0.2,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.3,
-      0.5
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Use Color",
-     "label": "Use Color",
-     "id": "useColor",
+     "id": "greysKeep",
+     "label": "Keep",
      "kind": "bool",
-     "display": {},
      "default": 0.0
     },
     {
-     "name": "Color",
-     "label": "Color",
+     "id": "greysTolerance",
+     "label": "Tolerance",
+     "kind": "range",
+     "default": 0.3,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "invert",
+     "label": "Invert",
+     "kind": "bool",
+     "default": 0.0
+    },
+    {
+     "id": "contrast",
+     "label": "Contrast",
+     "kind": "range",
+     "default": 0.2,
+     "range": [
+      0.0,
+      1.0
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicEdgeDetection",
+   "params": [
+    {
+     "id": "mode",
+     "label": "Mode",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "multiplier",
+     "label": "Multiplier",
+     "kind": "range",
+     "default": 0.2,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "useColor",
+     "label": "Use Color",
+     "kind": "bool",
+     "default": 0.0
+    },
+    {
      "id": "color",
+     "label": "Color",
      "kind": "color",
-     "default": 4294967295.0,
-     "packed": "uint32 0xAABBGGRR; channels follow as <name>.<channel>",
-     "display": {}
+     "default": 4294967295.0
     },
     {
-     "name": "Color.Red",
-     "label": "Red",
      "id": "colorRed",
+     "label": "Red",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
+     ]
     },
     {
-     "name": "Color.Green",
-     "label": "Green",
      "id": "colorGreen",
+     "label": "Green",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.4901960790157318,
-      0.4901960790157318
      ]
     },
     {
-     "name": "Color.Blue",
-     "label": "Blue",
      "id": "colorBlue",
+     "label": "Blue",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.3803921639919281,
-      0.3803921639919281
      ]
     },
     {
-     "name": "Color.Hue",
-     "label": "Hue",
      "id": "colorHue",
+     "label": "Hue",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.029535865411162376,
-      0.029535865411162376
      ]
     },
     {
-     "name": "Color.Saturation",
-     "label": "Saturation",
      "id": "colorSaturation",
+     "label": "Saturation",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     },
-     "observed": [
-      0.6196078062057495,
-      0.6196078062057495
      ]
     },
     {
-     "name": "Color.Brightness",
-     "label": "Brightness",
      "id": "colorBrightness",
+     "label": "Brightness",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
+     ]
     },
     {
-     "name": "Color.Alpha",
-     "label": "Alpha",
      "id": "colorAlpha",
+     "label": "Alpha",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
+     ]
     },
     {
-     "name": "Amount",
-     "label": "Amount",
      "id": "amount",
+     "label": "Amount",
      "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
+     "default": 1.0,
+     "range": [
       0.0,
       1.0
-     ],
-     "default": 1.0
+     ]
     }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Mode": "0 and 1 both draw edges on black; 0 is about half as bright on the test card",
-    "Multiplier": "edge gain: 0 is black, the test card's hard edges saturate from about 0.25",
-    "Use Color / Color": "edges take the colour (colour alpha 0.5 halves them)",
-    "Amount": "no visible change in any captured case (0..1 on all three inputs)",
-    "alpha": "output alpha is the input alpha"
-   }
+   ]
   },
   {
-   "name": "Bloom",
    "classicType": "classicBloom",
-   "packMember": true,
-   "xmlTypes": [
-    "Bloom"
-   ],
-   "uniqueTypeId": "6980402605",
-   "coverage": "none",
-   "usesInCompositions": 119,
-   "bundledPresets": [],
    "params": [
     {
-     "name": "Amount",
-     "label": "Amount",
      "id": "amount",
+     "label": "Amount",
      "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
+     "default": 1.0,
+     "range": [
       0.0,
       1.0
-     ],
-     "default": 1.0
+     ]
     },
     {
-     "name": "Threshold",
-     "label": "Threshold",
      "id": "threshold",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.9
-    },
-    {
-     "name": "Knee",
-     "label": "Knee",
-     "id": "knee",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.1
-    },
-    {
-     "name": "Iterations",
-     "label": "Iterations",
-     "id": "iterations",
-     "kind": "range",
-     "display": {
-      "min": 1.0,
-      "max": 5.0,
-      "response": [
-       1.0,
-       2.0,
-       3.0,
-       4.0,
-       5.0
-      ],
-      "units": "real",
-      "control": "spinner",
-      "step": 1.0
-     },
-     "stored": [
-      1.0,
-      5.0
-     ],
-     "default": 2.0
-    },
-    {
-     "name": "Size",
-     "label": "Size",
-     "id": "size",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.25
-    },
-    {
-     "name": "Gaussian",
-     "label": "Gaussian",
-     "id": "gaussian",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Amount": "0 leaves the picture unchanged, rising to the full glow at 1",
-    "Threshold": "0 and 0.125 turn the whole picture white (alpha 1); above, only the bright parts glow",
-    "Size / Gaussian": "0 is nearly unchanged (MAE 2.6 on the test card); both widen the glow",
-    "Iterations": "1..5, each step brighter and wider",
-    "alpha": "kept where nothing glows"
-   }
-  },
-  {
-   "name": "Trails",
-   "classicType": "classicTrails",
-   "packMember": true,
-   "xmlTypes": [
-    "Trails"
-   ],
-   "uniqueTypeId": "A111",
-   "coverage": "partial",
-   "usesInCompositions": 7,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Feedback",
-     "label": "Feedback",
-     "id": "feedback",
+     "label": "Threshold",
      "kind": "range",
      "default": 0.9,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "observed": [
-      0.0,
-      0.7741883363746959
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Mode",
-     "label": "Mode",
-     "id": "mode",
-     "kind": "choice",
-     "display": {
-      "options": [
-       "Alpha",
-       "Luma",
-       "Lighten"
-      ]
-     },
-     "default": 0.0,
-     "choice": {
-      "options": [
-       "Alpha",
-       "Luma",
-       "Lighten"
-      ],
-      "source": "REST"
-     }
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Feedback": "1 freezes the picture (every snapshot identical); 0 shows the clip as it is; between, a decaying smear of the moving shapes",
-    "Mode": "Alpha and Luma smear darker over dark ground; Lighten keeps the brightest (the smear stays bright)"
-   }
-  },
-  {
-   "name": "Twitch",
-   "classicType": "classicTwitch",
-   "packMember": true,
-   "xmlTypes": [
-    "TwitchEffect"
-   ],
-   "uniqueTypeId": "A183",
-   "coverage": "complete",
-   "usesInCompositions": 5,
-   "bundledPresets": [
-    "Bzzzt",
-    "Chaos",
-    "Subtle"
-   ],
-   "params": [
-    {
-     "name": "Global Twitch",
-     "label": "Global Twitch",
-     "id": "globalTwitch",
+     "id": "knee",
+     "label": "Knee",
      "kind": "range",
-     "default": 1.0,
-     "stored": [
+     "default": 0.1,
+     "range": [
       0.0,
       1.0
-     ],
-     "observed": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Max Pos X",
-     "label": "Max Pos X",
-     "id": "maxPosX",
+     "id": "iterations",
+     "label": "Iterations",
      "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.16168981481481481,
-      0.7
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max Pos Y",
-     "label": "Max Pos Y",
-     "id": "maxPosY",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.7
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Pos Frequency",
-     "label": "Pos Frequency",
-     "id": "posFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.125,
-      0.7229166666666667
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max Scale",
-     "label": "Max Scale",
-     "id": "maxScale",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.5
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Scale Frequency",
-     "label": "Scale Frequency",
-     "id": "scaleFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.7283275462962963
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max Opacity",
-     "label": "Max Opacity",
-     "id": "maxOpacity",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.75
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Opacity Frequency",
-     "label": "Opacity Frequency",
-     "id": "opacityFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max Light",
-     "label": "Max Light",
-     "id": "maxLight",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.25,
-      0.9
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Light Frequency",
-     "label": "Light Frequency",
-     "id": "lightFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.2,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max RGB Shift",
-     "label": "Max RGB Shift",
-     "id": "maxRGBShift",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.25,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "RGB Frequency",
-     "label": "RGB Frequency",
-     "id": "rgbFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.15,
-      0.45
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Max Blur",
-     "label": "Max Blur",
-     "id": "maxBlur",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.597883598
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Blur Frequency",
-     "label": "Blur Frequency",
-     "id": "blurFrequency",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.5
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Black BG",
-     "label": "Black BG",
-     "id": "blackBG",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    }
-   ],
-   "controls": "complete: REST lists every control"
-  },
-  {
-   "name": "Shift RGB",
-   "classicType": "classicShiftRgb",
-   "packMember": true,
-   "xmlTypes": [
-    "ShiftRGB"
-   ],
-   "uniqueTypeId": "A153",
-   "coverage": "complete",
-   "usesInCompositions": 1,
-   "bundledPresets": [
-    "3D Glasses",
-    "Acid Trip",
-    "Just Good",
-    "RGB Rotated",
-    "Up & Down"
-   ],
-   "params": [
-    {
-     "name": "Distance",
-     "label": "Distance",
-     "id": "distance",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      1.0
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Mode",
-     "label": "Mode",
-     "id": "mode",
-     "kind": "choice",
-     "default": 0.0,
-     "observedIndices": [
-      0,
-      1,
-      4,
-      5
-     ],
-     "choice": {
-      "encoding": "integer index",
-      "options": [
-       "Shift X",
-       "Shift Y",
-       "Rotate X",
-       "Rotate Y",
-       "Rotate Z",
-       "Zoom"
-      ],
-      "source": "REST"
-     },
-     "display": {
-      "options": [
-       "Shift X",
-       "Shift Y",
-       "Rotate X",
-       "Rotate Y",
-       "Rotate Z",
-       "Zoom"
-      ]
-     }
-    },
-    {
-     "name": "R",
-     "label": "R",
-     "id": "r",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      -1.0,
-      1.0
-     ],
-     "observed": [
-      -0.19999999999999996,
-      0.10000000000000009
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": -1.0,
-      "max": 1.0,
-      "response": [
-       -1.0,
-       -0.5,
-       0.0,
-       0.5,
-       1.0
-      ],
-      "step": 0.005
-     }
-    },
-    {
-     "name": "G",
-     "label": "G",
-     "id": "g",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      -1.0,
-      1.0
-     ],
-     "observed": [
-      -0.018644775999788282,
-      0.19999999999999996
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": -1.0,
-      "max": 1.0,
-      "response": [
-       -1.0,
-       -0.5,
-       0.0,
-       0.5,
-       1.0
-      ],
-      "step": 0.005
-     }
-    },
-    {
-     "name": "B",
-     "label": "B",
-     "id": "b",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      -1.0,
-      1.0
-     ],
-     "observed": [
-      -0.05065938013136284,
-      0.2216904579997871
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": -1.0,
-      "max": 1.0,
-      "response": [
-       -1.0,
-       -0.5,
-       0.0,
-       0.5,
-       1.0
-      ],
-      "step": 0.005
-     }
-    },
-    {
-     "name": "Black BG",
-     "label": "Black BG",
-     "id": "blackBG",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    }
-   ],
-   "controls": "complete: REST lists every control"
-  },
-  {
-   "name": "Polar Kaleido",
-   "classicType": "classicPolarKaleido",
-   "packMember": true,
-   "xmlTypes": [
-    "PolarKaleido"
-   ],
-   "uniqueTypeId": "A190",
-   "coverage": "partial",
-   "usesInCompositions": 1,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Rings",
-     "label": "Rings",
-     "id": "rings",
-     "kind": "range",
-     "display": {
-      "min": 1.0,
-      "max": 16.0,
-      "response": [
-       1.0,
-       4.75,
-       8.5,
-       12.25,
-       16.0
-      ],
-      "step": 1.0
-     },
-     "stored": [
+     "default": 2.0,
+     "range": [
       1.0,
-      16.0
-     ],
-     "default": 1.0
+      5.0
+     ]
     },
     {
-     "name": "Parts",
-     "label": "Parts",
-     "id": "parts",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      1.0,
-      16.0
-     ],
-     "observed": [
-      3.1026475694444446,
-      3.1026475694444446
-     ],
-     "display": {
-      "min": 1.0,
-      "max": 16.0,
-      "response": [
-       1.0,
-       4.75,
-       8.5,
-       12.25,
-       16.0
-      ],
-      "step": 1.0
-     }
-    },
-    {
-     "name": "Angle",
-     "label": "Angle",
-     "id": "angle",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.0
-    }
-   ],
-   "restName": "PolarKaleido",
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "mapping": "source u = frac(Parts x angle + 0.75 - Angle), angle in turns from +x counter-clockwise with y up; source v = frac(radius / 960 px x (Rings + 1) / 2)",
-    "Angle": "turns (0.25 shifts the source u by -0.25)"
-   }
-  },
-  {
-   "name": "Mirror Quad",
-   "classicType": "classicMirrorQuad",
-   "packMember": true,
-   "xmlTypes": [
-    "MirrorQuad"
-   ],
-   "uniqueTypeId": "A180",
-   "coverage": "partial",
-   "usesInCompositions": 1,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Flip X",
-     "label": "Flip X",
-     "id": "flipX",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    },
-    {
-     "name": "Flip Y",
-     "label": "Flip Y",
-     "id": "flipY",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "mapping": "each quadrant shows the whole picture at half size: top-left as it is, top-right mirrored in x, bottom-left in y, bottom-right both",
-    "Flip X / Flip Y": "mirror every quadrant in that axis"
-   }
-  },
-  {
-   "name": "Strobe",
-   "classicType": "classicStrobe",
-   "packMember": true,
-   "xmlTypes": [],
-   "uniqueTypeId": null,
-   "coverage": "none",
-   "usesInCompositions": 0,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Frequency",
-     "label": "Frequency",
-     "id": "frequency",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
-    },
-    {
-     "name": "Fade",
-     "label": "Fade",
-     "id": "fade",
-     "kind": "bool",
-     "display": {},
-     "default": 0.0
-    },
-    {
-     "name": "Color",
-     "label": "Color",
-     "id": "color",
-     "kind": "color",
-     "display": {},
-     "default": 4294967295.0,
-     "packed": "uint32 0xAABBGGRR; channels follow as <name>.<channel>"
-    },
-    {
-     "name": "Color.Red",
-     "label": "Red",
-     "id": "colorRed",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Green",
-     "label": "Green",
-     "id": "colorGreen",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Blue",
-     "label": "Blue",
-     "id": "colorBlue",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Hue",
-     "label": "Hue",
-     "id": "colorHue",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Saturation",
-     "label": "Saturation",
-     "id": "colorSaturation",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Brightness",
-     "label": "Brightness",
-     "id": "colorBrightness",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color.Alpha",
-     "label": "Alpha",
-     "id": "colorAlpha",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Frequency": "flash period 2 x (1 - Frequency) seconds at any tempo (1 s at 0.5, 0.5 s at 0.75, 0.25 s at 0.875, the same at 120 and 90 BPM); 0 never flashes, 1 stays on; on half of each period",
-    "Fade": "the flash ramps up and down linearly over the period (a triangle) instead of switching",
-    "Color": "the flash replaces the picture with the colour at its alpha (white at 0.5 gives grey 128)"
-   }
-  },
-  {
-   "name": "Shift Glitch",
-   "classicType": "classicShiftGlitch",
-   "packMember": false,
-   "xmlTypes": [
-    "FFGL:Shift Glitch",
-    "ShiftGlitch"
-   ],
-   "uniqueTypeId": "MBSH",
-   "coverage": "complete",
-   "usesInCompositions": 3,
-   "bundledPresets": [
-    "Hoirzontal",
-    "Kapot",
-    "Lines",
-    "Vertical"
-   ],
-   "params": [
-    {
-     "name": "Frequency",
-     "label": "Frequency",
-     "id": "frequency",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0,
-      1
-     ],
-     "observed": [
-      1.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Vertical",
-     "label": "Vertical",
-     "id": "vertical",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0,
-      1
-     ],
-     "observed": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Horizontal",
-     "label": "Horizontal",
-     "id": "horizontal",
-     "kind": "range",
-     "default": 0.5,
-     "stored": [
-      0,
-      1
-     ],
-     "observed": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Size",
-     "label": "Size",
      "id": "size",
+     "label": "Size",
+     "kind": "range",
+     "default": 0.25,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "gaussian",
+     "label": "Gaussian",
      "kind": "range",
      "default": 0.5,
-     "stored": [
-      0,
-      1
-     ],
-     "observed": [
-      0.00806451613,
+     "range": [
+      0.0,
       1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicTrails",
+   "params": [
+    {
+     "id": "feedback",
+     "label": "Feedback",
+     "kind": "range",
+     "default": 0.9,
+     "range": [
+      0.0,
+      1.0
+     ]
     },
     {
-     "name": "Black BG",
-     "label": "Black BG",
+     "id": "mode",
+     "label": "Mode",
+     "kind": "choice",
+     "default": 0.0,
+     "options": [
+      "Alpha",
+      "Luma",
+      "Lighten"
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicTwitch",
+   "params": [
+    {
+     "id": "globalTwitch",
+     "label": "Global Twitch",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxPosX",
+     "label": "Max Pos X",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxPosY",
+     "label": "Max Pos Y",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "posFrequency",
+     "label": "Pos Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxScale",
+     "label": "Max Scale",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "scaleFrequency",
+     "label": "Scale Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxOpacity",
+     "label": "Max Opacity",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "opacityFrequency",
+     "label": "Opacity Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxLight",
+     "label": "Max Light",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "lightFrequency",
+     "label": "Light Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxRGBShift",
+     "label": "Max RGB Shift",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "rgbFrequency",
+     "label": "RGB Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "maxBlur",
+     "label": "Max Blur",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "blurFrequency",
+     "label": "Blur Frequency",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
      "id": "blackBG",
+     "label": "Black BG",
      "kind": "bool",
-     "default": 0.0,
-     "display": {}
+     "default": 0.0
     }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Frequency": "how often the pattern changes, not whether it shows: every 1 - Frequency seconds at any tempo (1.0, 0.5, 0.25 s at 0, 0.5, 0.75, the same at 120 and 90 BPM), every snapshot (13/s or more) at 1",
-    "Horizontal / Vertical / Size": "amount of shifted area: Horizontal 0 (with Vertical 0) or Size 0 shows the picture unchanged; the shifted share grows with each",
-    "random": "a new random pattern per instance and per change"
-   }
+   ]
   },
   {
-   "name": "Brightness Contrast",
-   "classicType": "classicBrightnessContrast",
-   "packMember": false,
-   "xmlTypes": [
-    "BrightnessContrast"
-   ],
-   "uniqueTypeId": "A102",
-   "coverage": "partial",
-   "usesInCompositions": 6,
-   "bundledPresets": [],
+   "classicType": "classicShiftRgb",
    "params": [
     {
-     "name": "Brightness",
-     "label": "Brightness",
-     "id": "brightness",
+     "id": "distance",
+     "label": "Distance",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "mode",
+     "label": "Mode",
+     "kind": "choice",
+     "default": 0.0,
+     "options": [
+      "Shift X",
+      "Shift Y",
+      "Rotate X",
+      "Rotate Y",
+      "Rotate Z",
+      "Zoom"
+     ]
+    },
+    {
+     "id": "r",
+     "label": "R",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       -1.0,
       1.0
-     ],
-     "observed": [
-      -0.1,
-      -0.09799999999999998
-     ],
-     "display": {
-      "min": -1.0,
-      "max": 1.0,
-      "response": [
-       -100.0,
-       -50.0,
-       0.0,
-       50.0,
-       100.0
-      ],
-      "multiplier": 100.0,
-      "suffix": " %",
-      "units": "percent",
-      "step": 1.0
-     }
+     ]
     },
     {
-     "name": "Contrast",
-     "label": "Contrast",
-     "id": "contrast",
+     "id": "g",
+     "label": "G",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       -1.0,
       1.0
-     ],
-     "observed": [
-      0.7,
-      0.8115323967889909
-     ],
-     "display": {
-      "min": -1.0,
-      "max": 1.0,
-      "response": [
-       -1.0,
-       -0.5,
-       0.0,
-       0.5,
-       1.0
-      ],
-      "step": 0.01
-     }
+     ]
+    },
+    {
+     "id": "b",
+     "label": "B",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      -1.0,
+      1.0
+     ]
+    },
+    {
+     "id": "blackBG",
+     "label": "Black BG",
+     "kind": "bool",
+     "default": 0.0
     }
-   ],
-   "restName": "Bright.Contrast",
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Brightness": "adds Brightness x 255 levels to R, G and B (clipped); display -100..100 %",
-    "Contrast": "scales the colour about black: gain 1 + Contrast below 0, 1 + 5 x Contrast above (0 at -1, 6 at 1)",
-    "alpha": "kept"
-   }
+   ]
   },
   {
-   "name": "Levels",
-   "classicType": "classicLevels",
-   "packMember": false,
-   "xmlTypes": [
-    "Levels"
-   ],
-   "uniqueTypeId": "A141",
-   "coverage": "none",
-   "usesInCompositions": 5,
-   "bundledPresets": [],
+   "classicType": "classicPolarKaleido",
    "params": [
     {
-     "name": "Base",
-     "label": "Base",
-     "id": "base",
+     "id": "rings",
+     "label": "Rings",
      "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
+     "default": 1.0,
+     "range": [
+      1.0,
+      16.0
+     ]
     },
     {
-     "name": "Midpoint",
-     "label": "Midpoint",
-     "id": "midpoint",
+     "id": "parts",
+     "label": "Parts",
      "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
+     "default": 1.0,
+     "range": [
+      1.0,
+      16.0
+     ]
     },
     {
-     "name": "Ratio",
-     "label": "Ratio",
-     "id": "ratio",
+     "id": "angle",
+     "label": "Angle",
      "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
+     "default": 0.0,
+     "range": [
       0.0,
       1.0
-     ],
-     "default": 0.5
+     ]
     }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Base": "adds 4 x (Base - 0.5) (black at 0.25 and below, white at 0.75 and above)",
-    "Midpoint": "gamma: out = in ^ (2 x (1 - Midpoint)); 0.5 identity",
-    "Ratio": "gain (2 x Ratio)^2; 0.5 identity",
-    "alpha": "kept"
-   }
+   ]
   },
   {
-   "name": "Threshold",
-   "classicType": "classicThreshold",
-   "packMember": false,
-   "xmlTypes": [
-    "Threshold"
-   ],
-   "uniqueTypeId": "A106",
-   "coverage": "partial",
-   "usesInCompositions": 4,
-   "bundledPresets": [],
+   "classicType": "classicMirrorQuad",
    "params": [
     {
-     "name": "Threshold",
-     "label": "Threshold",
-     "id": "threshold",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
-    },
-    {
-     "name": "Smoothness",
-     "label": "Smoothness",
-     "id": "smoothness",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
+     "id": "flipX",
+     "label": "Flip X",
+     "kind": "bool",
      "default": 0.0
     },
     {
-     "name": "Color 1",
-     "label": "Color 1",
-     "id": "color1",
-     "kind": "color",
-     "default": 4294967295.0,
-     "packed": "uint32 0xAABBGGRR; channels follow as <name>.<channel>",
-     "display": {}
-    },
-    {
-     "name": "Color 1.Red",
-     "label": "Red",
-     "id": "color1Red",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Green",
-     "label": "Green",
-     "id": "color1Green",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Blue",
-     "label": "Blue",
-     "id": "color1Blue",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Hue",
-     "label": "Hue",
-     "id": "color1Hue",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Saturation",
-     "label": "Saturation",
-     "id": "color1Saturation",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Brightness",
-     "label": "Brightness",
-     "id": "color1Brightness",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 1.Alpha",
-     "label": "Alpha",
-     "id": "color1Alpha",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2",
-     "label": "Color 2",
-     "id": "color2",
-     "kind": "color",
-     "default": 4278190080.0,
-     "packed": "uint32 0xAABBGGRR; channels follow as <name>.<channel>",
-     "display": {}
-    },
-    {
-     "name": "Color 2.Red",
-     "label": "Red",
-     "id": "color2Red",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Green",
-     "label": "Green",
-     "id": "color2Green",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Blue",
-     "label": "Blue",
-     "id": "color2Blue",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Hue",
-     "label": "Hue",
-     "id": "color2Hue",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Saturation",
-     "label": "Saturation",
-     "id": "color2Saturation",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Brightness",
-     "label": "Brightness",
-     "id": "color2Brightness",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Color 2.Alpha",
-     "label": "Alpha",
-     "id": "color2Alpha",
-     "kind": "range",
-     "default": 1.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0
-     }
-    },
-    {
-     "name": "Alpha",
-     "label": "Alpha",
-     "id": "alpha",
-     "kind": "choice",
-     "display": {
-      "options": [
-       "Original",
-       "Combine",
-       "Replace"
-      ]
-     },
-     "default": 0.0,
-     "choice": {
-      "options": [
-       "Original",
-       "Combine",
-       "Replace"
-      ],
-      "source": "REST"
-     }
+     "id": "flipY",
+     "label": "Flip Y",
+     "kind": "bool",
+     "default": 0.0
     }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Threshold": "Rec. 601 luma of the colour against Threshold: above gives Color 1, below Color 2",
-    "Smoothness": "widens the step into a ramp around the threshold (at 1 the ramp spans 94..161 over input 0..255)",
-    "Alpha": "Replace makes alpha 1; Original and Combine keep the input alpha with opaque colours"
-   }
+   ]
   },
   {
-   "name": "Hue Rotate",
-   "classicType": "classicHueRotate",
-   "packMember": false,
-   "xmlTypes": [
-    "HueRotate"
-   ],
-   "uniqueTypeId": "A128",
-   "coverage": "partial",
-   "usesInCompositions": 1,
-   "bundledPresets": [],
+   "classicType": "classicStrobe",
    "params": [
     {
-     "name": "Hue Scale",
-     "label": "Hue Scale",
-     "id": "hueScale",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 1.0
-    },
-    {
-     "name": "Hue Rotate",
-     "label": "Hue Rotate",
-     "id": "hueRotate",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.565,
-      0.565
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
-    },
-    {
-     "name": "Sat. Scale",
-     "label": "Sat. Scale",
-     "id": "satScale",
-     "kind": "range",
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     },
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "default": 0.5
-    }
-   ],
-   "controls": "complete: REST lists every control",
-   "measured": {
-    "Hue Rotate": "turns (0.5 = 180 degrees)",
-    "Hue Scale": "multiplies the hue (1 identity, 0 turns every hue red)",
-    "Sat. Scale": "HSL saturation x 2 x Sat. Scale (0 grey at the HSL lightness, 0.5 identity)",
-    "alpha": "kept"
-   }
-  },
-  {
-   "name": "Auto Mask",
-   "classicType": "classicAutoMask",
-   "packMember": false,
-   "xmlTypes": [
-    "AutoMask"
-   ],
-   "uniqueTypeId": "A120",
-   "coverage": "partial",
-   "usesInCompositions": 12,
-   "bundledPresets": [],
-   "params": [
-    {
-     "name": "Channel",
-     "label": "Channel",
-     "id": "channel",
-     "kind": "choice",
-     "display": {
-      "options": [
-       "Luminance",
-       "Red",
-       "Green",
-       "Blue"
-      ],
-      "control": "choice_combobox"
-     },
-     "default": 0.0,
-     "choice": {
-      "options": [
-       "Luminance",
-       "Red",
-       "Green",
-       "Blue"
-      ],
-      "source": "REST"
-     }
-    },
-    {
-     "name": "Contrast",
-     "label": "Contrast",
-     "id": "contrast",
+     "id": "frequency",
+     "label": "Frequency",
      "kind": "range",
      "default": 0.5,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "observed": [
-      0.3488209575688073,
-      0.3488209575688073
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Invert",
-     "label": "Invert",
-     "id": "invert",
+     "id": "fade",
+     "label": "Fade",
      "kind": "bool",
-     "default": 0.0,
-     "display": {}
-    }
-   ],
-   "controls": "complete: REST lists every control"
-  },
-  {
-   "name": "Mirror",
-   "classicType": "classicMirror",
-   "packMember": false,
-   "xmlTypes": [
-    "Mirror"
-   ],
-   "uniqueTypeId": "A108",
-   "coverage": "complete",
-   "usesInCompositions": 0,
-   "bundledPresets": [
-    "Basic",
-    "Black Hole",
-    "Horizontal"
-   ],
-   "params": [
-    {
-     "name": "X",
-     "label": "X",
-     "id": "x",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.5
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     "default": 0.0
     },
     {
-     "name": "Y",
-     "label": "Y",
-     "id": "y",
-     "kind": "range",
-     "default": 0.0,
-     "stored": [
-      0.0,
-      1.0
-     ],
-     "observed": [
-      0.0,
-      0.5
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     "id": "color",
+     "label": "Color",
+     "kind": "color",
+     "default": 4294967295.0
     },
     {
-     "name": "In / Out",
-     "label": "In / Out",
-     "id": "inOut",
+     "id": "colorRed",
+     "label": "Red",
      "kind": "range",
      "default": 1.0,
-     "stored": [
+     "range": [
       0.0,
       1.0
-     ],
-     "observed": [
-      0.19766463019645394,
+     ]
+    },
+    {
+     "id": "colorGreen",
+     "label": "Green",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
       1.0
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Flip X",
-     "label": "Flip X",
-     "id": "flipX",
-     "kind": "bool",
-     "default": 0.0,
-     "display": {}
+     "id": "colorBlue",
+     "label": "Blue",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
     },
     {
-     "name": "Flip Y",
-     "label": "Flip Y",
-     "id": "flipY",
-     "kind": "bool",
+     "id": "colorHue",
+     "label": "Hue",
+     "kind": "range",
      "default": 0.0,
-     "display": {}
+     "range": [
+      0.0,
+      1.0
+     ]
     },
     {
-     "name": "Black BG",
-     "label": "Black BG",
-     "id": "blackBG",
-     "kind": "bool",
+     "id": "colorSaturation",
+     "label": "Saturation",
+     "kind": "range",
      "default": 0.0,
-     "display": {}
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "colorBrightness",
+     "label": "Brightness",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "colorAlpha",
+     "label": "Alpha",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
     }
-   ],
-   "controls": "complete: REST lists every control"
+   ]
   },
   {
-   "name": "Kaleidoscope",
-   "classicType": "classicKaleidoscope",
-   "packMember": false,
-   "xmlTypes": [
-    "FFGL:Kaleidoscope"
-   ],
-   "uniqueTypeId": "sy02",
-   "coverage": "complete",
-   "usesInCompositions": 0,
-   "bundledPresets": [
-    "Insanity",
-    "Moving"
-   ],
+   "classicType": "classicShiftGlitch",
    "params": [
     {
-     "name": "Angles",
-     "label": "Angles",
+     "id": "frequency",
+     "label": "Frequency",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0,
+      1
+     ]
+    },
+    {
+     "id": "vertical",
+     "label": "Vertical",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0,
+      1
+     ]
+    },
+    {
+     "id": "horizontal",
+     "label": "Horizontal",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0,
+      1
+     ]
+    },
+    {
+     "id": "size",
+     "label": "Size",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0,
+      1
+     ]
+    },
+    {
+     "id": "blackBG",
+     "label": "Black BG",
+     "kind": "bool",
+     "default": 0.0
+    }
+   ]
+  },
+  {
+   "classicType": "classicBrightnessContrast",
+   "params": [
+    {
+     "id": "brightness",
+     "label": "Brightness",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      -1.0,
+      1.0
+     ]
+    },
+    {
+     "id": "contrast",
+     "label": "Contrast",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      -1.0,
+      1.0
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicLevels",
+   "params": [
+    {
+     "id": "base",
+     "label": "Base",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "midpoint",
+     "label": "Midpoint",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "ratio",
+     "label": "Ratio",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicThreshold",
+   "params": [
+    {
+     "id": "threshold",
+     "label": "Threshold",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "smoothness",
+     "label": "Smoothness",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1",
+     "label": "Color 1",
+     "kind": "color",
+     "default": 4294967295.0
+    },
+    {
+     "id": "color1Red",
+     "label": "Red",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Green",
+     "label": "Green",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Blue",
+     "label": "Blue",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Hue",
+     "label": "Hue",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Saturation",
+     "label": "Saturation",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Brightness",
+     "label": "Brightness",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color1Alpha",
+     "label": "Alpha",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2",
+     "label": "Color 2",
+     "kind": "color",
+     "default": 4278190080.0
+    },
+    {
+     "id": "color2Red",
+     "label": "Red",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Green",
+     "label": "Green",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Blue",
+     "label": "Blue",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Hue",
+     "label": "Hue",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Saturation",
+     "label": "Saturation",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Brightness",
+     "label": "Brightness",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "color2Alpha",
+     "label": "Alpha",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "alpha",
+     "label": "Alpha",
+     "kind": "choice",
+     "default": 0.0,
+     "options": [
+      "Original",
+      "Combine",
+      "Replace"
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicHueRotate",
+   "params": [
+    {
+     "id": "hueScale",
+     "label": "Hue Scale",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "hueRotate",
+     "label": "Hue Rotate",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "satScale",
+     "label": "Sat. Scale",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    }
+   ]
+  },
+  {
+   "classicType": "classicAutoMask",
+   "params": [
+    {
+     "id": "channel",
+     "label": "Channel",
+     "kind": "choice",
+     "default": 0.0,
+     "options": [
+      "Luminance",
+      "Red",
+      "Green",
+      "Blue"
+     ]
+    },
+    {
+     "id": "contrast",
+     "label": "Contrast",
+     "kind": "range",
+     "default": 0.5,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "invert",
+     "label": "Invert",
+     "kind": "bool",
+     "default": 0.0
+    }
+   ]
+  },
+  {
+   "classicType": "classicMirror",
+   "params": [
+    {
+     "id": "x",
+     "label": "X",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "y",
+     "label": "Y",
+     "kind": "range",
+     "default": 0.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "inOut",
+     "label": "In / Out",
+     "kind": "range",
+     "default": 1.0,
+     "range": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "id": "flipX",
+     "label": "Flip X",
+     "kind": "bool",
+     "default": 0.0
+    },
+    {
+     "id": "flipY",
+     "label": "Flip Y",
+     "kind": "bool",
+     "default": 0.0
+    },
+    {
+     "id": "blackBG",
+     "label": "Black BG",
+     "kind": "bool",
+     "default": 0.0
+    }
+   ]
+  },
+  {
+   "classicType": "classicKaleidoscope",
+   "params": [
+    {
      "id": "angles",
+     "label": "Angles",
      "kind": "range",
      "default": 0.3,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.681063123,
-      0.775052547454834
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ],
-      "step": 0.09090909090909091
-     }
+     ]
     },
     {
-     "name": "Rotation",
-     "label": "Rotation",
      "id": "rotation",
+     "label": "Rotation",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.0,
-      0.0
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Zoom",
-     "label": "Zoom",
      "id": "zoom",
+     "label": "Zoom",
      "kind": "range",
      "default": 0.5,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.57807309,
-      0.57807309
-     ],
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Input Rotation",
-     "label": "Input Rotation",
      "id": "inputRotation",
+     "label": "Input Rotation",
      "kind": "range",
      "default": 0.0,
-     "stored": [
+     "range": [
       0,
       1
-     ],
-     "observed": [
-      0.3078737258911133,
-      0.9874545755997303
-     ],
-     "animatedInSaves": true,
-     "display": {
-      "min": 0.0,
-      "max": 1.0,
-      "response": [
-       0.0,
-       0.25,
-       0.5,
-       0.75,
-       1.0
-      ]
-     }
+     ]
     },
     {
-     "name": "Black BG",
-     "label": "Black BG",
      "id": "blackBG",
+     "label": "Black BG",
      "kind": "bool",
-     "default": 0.0,
-     "display": {}
+     "default": 0.0
     }
-   ],
-   "controls": "complete: REST lists every control"
+   ]
   }
  ]
 }
