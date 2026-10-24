@@ -14,10 +14,11 @@
 #include <cmath>
 #include <iterator>
 #include <set>
+#include <type_traits>
 #include <utility>
 
-// applyEdit: it dispatches each edit to its apply (edit_support.hpp) and takes the macro targets and modulators
-// of what an edit removes with it; and the two edits that hold others or the whole document.
+// applyEdit: it dispatches each edit to its apply (edit_support.hpp) and takes the macro targets, modulators and
+// Cue steps of what an edit removes with it; and the two edits that hold others or the whole document.
 
 namespace azl {
 
@@ -80,33 +81,60 @@ Edit apply(Composition& composition, LoadComposition& edit)
     return inverse;
 }
 
-Edit apply(Composition& composition, Batch& edit);
+Edit apply(Composition& composition, Batch& edit, std::vector<std::string>* dropped = nullptr);
 
-// The macro targets and modulators on a layer or effect the edit removes go with it, in the same undo step.
-Edit applyEdit(Composition& composition, Edit& edit)
+// The macro targets, modulators and Cue steps on a layer or effect the edit removes go with it, in the same undo step:
+// the inverse puts the effect back first, so the restored targets find it.
+Edit applyEdit(Composition& composition, Edit& edit, std::vector<std::string>* dropped)
 {
-    auto applyOne = [&] { return std::visit([&](auto& e) { return apply(composition, e); }, edit); };
+    auto applyOne = [&] {
+        return std::visit(
+            [&](auto& e) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(e)>, Batch>)
+                    return apply(composition, e, dropped);
+                else
+                    return apply(composition, e);
+            },
+            edit);
+    };
     if (!mayRemoveOwners(edit))
         return applyOne();
     const Owners before = ownersIn(composition);
     Edit inverse = applyOne();
     const Owners after = ownersIn(composition);
-    std::optional<SetMacros> restore =
-        dropTargets(composition, gone(before.layers, after.layers), gone(before.effects, after.effects));
-    if (!restore)
+    const std::set<uint64_t> effects = gone(before.effects, after.effects);
+    std::vector<std::string> names;
+    std::optional<SetMacros> restore = dropTargets(composition, gone(before.layers, after.layers), effects, names);
+    std::vector<SetCue> cues = dropCueSteps(composition, effects, names);
+    if (dropped)
+        dropped->insert(dropped->end(), names.begin(), names.end());
+    if (!restore && cues.empty())
         return inverse;
-    return Batch{{std::move(inverse), std::move(*restore)}};
+    Batch undo{{std::move(inverse)}};
+    if (restore)
+        undo.edits.push_back(std::move(*restore));
+    for (SetCue& cue : cues)
+        undo.edits.push_back(std::move(cue));
+    return undo;
+}
+
+std::string droppedNotice(const std::vector<std::string>& dropped)
+{
+    std::string notice = "Gone with what the edit removed: ";
+    for (size_t i = 0; i < dropped.size(); ++i)
+        notice += (i ? "; " : "") + dropped[i];
+    return notice;
 }
 
 // The edits applied so far are reverted when one throws.
-Edit apply(Composition& composition, Batch& edit)
+Edit apply(Composition& composition, Batch& edit, std::vector<std::string>* dropped)
 {
     Batch inverse;
     try {
         for (Edit& e : edit.edits) {
             if (isLive(e))
                 throw ProtocolError("a batch cannot hold the live action " + editToJson(e).value("op", std::string()));
-            inverse.edits.insert(inverse.edits.begin(), applyEdit(composition, e));
+            inverse.edits.insert(inverse.edits.begin(), applyEdit(composition, e, dropped));
         }
     } catch (...) {
         for (Edit& undo : inverse.edits)

@@ -740,6 +740,90 @@ TEST_CASE("clearing or removing a clip takes along the macro targets and modulat
     SUBCASE("a removed column") { checkTakesAlong(azl::RemoveColumn{kClipColumn}, {mixOf(3)}); }
 }
 
+namespace {
+
+// The removal composition with Cue 1 stepping Reveal 1 and Colorize 3, and Cue 2 setting a macro only.
+azl::Composition removalCompositionWithCues()
+{
+    azl::Composition composition = removalComposition();
+    composition.cues = {{.id = 1, .name = "Drop", .effects = {{1, azl::AutopilotMode::Next}, {3, azl::AutopilotMode::Next}}},
+                        {.id = 2, .name = "Build", .macros = {{2, 1.0, 0}}}};
+    return composition;
+}
+
+} // namespace
+
+TEST_CASE("a change that removes an effect says what went with it, and undo brings them back together")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, removalCompositionWithCues());
+    Client client(harness.document());
+    const azl::Composition before = harness.document().document();
+    auto document = [&] { return harness.document().document(); };
+    // The effects (by id and type, a put-back effect carries its completed parameters) and what drives them.
+    auto same = [&](const azl::Composition& a, const azl::Composition& b) {
+        auto effects = [](const azl::Composition& c) {
+            std::vector<std::pair<uint64_t, std::string>> ids;
+            azl::forEachChain(c, [&](const std::vector<azl::Effect>& chain, uint64_t, std::optional<uint64_t>) {
+                for (const azl::Effect& e : chain)
+                    ids.emplace_back(e.id, e.type);
+            });
+            return ids;
+        };
+        return effects(a) == effects(b) && a.macros == b.macros && a.modulators == b.modulators && a.cues == b.cues;
+    };
+
+    SUBCASE("removing an effect")
+    {
+        // Reveal 1 is driven by macro Energy, modulator 2 and Cue Drop.
+        const Message change = apply(client, azl::RemoveEffect{1});
+        CHECK(change["notice"] ==
+              "Gone with what the edit removed: macro Energy's target effect 1 evolve; modulator Modulator 2 on effect "
+              "1 evolve; cue Drop's step of effect 1");
+        CHECK(document().cues[0].effects == std::vector<azl::CueEffect>{{3, azl::AutopilotMode::Next}});
+        CHECK(document().cues[1] == before.cues[1]);
+        CHECK(document().modulators.size() == before.modulators.size() - 1);
+
+        client.send(msg::undo());
+        const Message undone = client.next();
+        CHECK(undone["type"] == "change");
+        CHECK(!undone.contains("notice"));
+        CHECK(same(document(), before));
+
+        client.send(msg::redo());
+        CHECK(client.next()["notice"] == change["notice"]);
+        CHECK(document().cues[0].effects == std::vector<azl::CueEffect>{{3, azl::AutopilotMode::Next}});
+    }
+    SUBCASE("replacing an effect by another in one batch")
+    {
+        const Message change = apply(
+            client, azl::Batch{{azl::RemoveEffect{1}, azl::AddEffect{1, 0, {0, "colorize", {{"mix", 0.5}}}}}});
+        CHECK(change["notice"] ==
+              "Gone with what the edit removed: macro Energy's target effect 1 evolve; modulator Modulator 2 on effect "
+              "1 evolve; cue Drop's step of effect 1");
+        CHECK(document().layers[0].effects[0].type == "colorize");
+        client.send(msg::undo());
+        client.next();
+        CHECK(same(document(), before));
+    }
+    SUBCASE("replacing a clip with another")
+    {
+        // Colorize 3 on the clip is driven by macros Energy and Clip, modulator 3 and Cue Drop.
+        const Message change = apply(client, azl::SetSlot{1, kClipColumn, azl::ClipRef{.hash = std::string(64, 'b'), .name = "other"}});
+        CHECK(change["notice"] ==
+              "Gone with what the edit removed: macro Energy's target effect 3 mix; macro Clip's target effect 3 mix; "
+              "modulator Modulator 3 on effect 3 mix; cue Drop's step of effect 3");
+        CHECK(document().cues[0].effects == std::vector<azl::CueEffect>{{1, azl::AutopilotMode::Next}});
+        client.send(msg::undo());
+        client.next();
+        CHECK(same(document(), before));
+    }
+    SUBCASE("an edit that removes nothing driven carries no notice")
+    {
+        CHECK(!apply(client, azl::RemoveEffect{2}).contains("notice"));
+        CHECK(!apply(client, azl::SetEffectParam{3, "mix", 0.2}).contains("notice"));
+    }
+}
+
 TEST_CASE("each LFO shape takes its value at fixed phases; a custom curve runs between its points and wraps round")
 {
     struct Sample {

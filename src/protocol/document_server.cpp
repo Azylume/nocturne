@@ -344,9 +344,10 @@ void DocumentServer::command(ClientId client, const Message& message)
         apply(client, edit, "edit");
         return;
     }
-    Edit inverse = applyEdit(document_, edit);
+    std::vector<std::string> dropped;
+    Edit inverse = applyEdit(document_, edit, &dropped);
     record(client, gesture == message.end() ? 0 : gesture->get<uint64_t>(), edit, std::move(inverse));
-    announce(client, edit, "edit");
+    announce(client, edit, "edit", dropped);
 }
 
 void DocumentServer::prepare(ClientId client, const Message& message)
@@ -388,9 +389,10 @@ Message DocumentServer::applyPrepared(ClientId client, const Message& edits, std
     batch.edits.insert(batch.edits.end(), rebased.applied.begin(), rebased.applied.end());
     if (!batch.edits.empty()) {
         Edit edit = std::move(batch);
-        Edit inverse = applyEdit(document_, edit);
+        std::vector<std::string> dropped;
+        Edit inverse = applyEdit(document_, edit, &dropped);
         record(client, 0, edit, std::move(inverse));
-        announce(client, edit, cause);
+        announce(client, edit, cause, dropped);
     }
     Message sent{{"type", "prepare"},
                  {"op", "sent"},
@@ -462,12 +464,14 @@ void DocumentServer::history(ClientId client, std::vector<Step>& from, std::vect
 
 Edit DocumentServer::apply(ClientId client, Edit& edit, const char* cause)
 {
-    Edit inverse = applyEdit(document_, edit);
-    announce(client, edit, cause);
+    std::vector<std::string> dropped;
+    Edit inverse = applyEdit(document_, edit, &dropped);
+    announce(client, edit, cause, dropped);
     return inverse;
 }
 
-void DocumentServer::announce(ClientId client, const Edit& edit, const char* cause)
+void DocumentServer::announce(ClientId client, const Edit& edit, const char* cause,
+                              const std::vector<std::string>& dropped)
 {
     ++change_;
     publish_(std::make_shared<const Composition>(document_));
@@ -479,6 +483,8 @@ void DocumentServer::announce(ClientId client, const Edit& edit, const char* cau
     change["cause"] = cause;
     change["client"] = client;
     change["history"] = historyJson();
+    if (!dropped.empty())
+        change["notice"] = droppedNotice(dropped);
     for (auto& [id, c] : clients_)
         if (c.watching)
             c.sink(change);

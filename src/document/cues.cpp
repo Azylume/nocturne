@@ -397,6 +397,24 @@ Edit apply(Composition& composition, SetCue& edit)
     return inverse;
 }
 
+std::vector<SetCue> dropCueSteps(Composition& composition, const std::set<uint64_t>& effects,
+                                 std::vector<std::string>& dropped)
+{
+    std::vector<SetCue> restore;
+    for (Cue& cue : composition.cues) {
+        const Cue before = cue;
+        std::erase_if(cue.effects, [&](const CueEffect& e) {
+            if (!effects.contains(e.effect))
+                return false;
+            dropped.push_back("cue " + cue.name + "'s step of effect " + std::to_string(e.effect));
+            return true;
+        });
+        if (cue.effects.size() != before.effects.size())
+            restore.push_back(SetCue{before});
+    }
+    return restore;
+}
+
 Edit apply(Composition& composition, SetCueEnabled& edit)
 {
     auto it = findCue(composition, edit.cue);

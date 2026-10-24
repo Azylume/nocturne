@@ -404,7 +404,8 @@ public:
         virtual void videoArrived() {}
         // A prepared change went out or was scheduled, with what it left out; the text is for the user.
         virtual void prepareNotice(const std::string& notice) {}
-        // A loaded show dropped what it held of removed effects; the text is for the user.
+        // A loaded show dropped what it held of removed effects, or a change took the macro targets, modulators or Cue
+        // steps of a removed layer or effect with it; the text is for the user.
         virtual void compositionNotice(const std::string& notice) {}
         // The night's deck switches changed.
         virtual void switchesChanged() {}

@@ -614,3 +614,29 @@ TEST_CASE("a load's notice of dropped removed effects is passed on; a load witho
                     {"notice", notice}});
     CHECK(listener.notices == std::vector<std::string>{notice});
 }
+
+TEST_CASE("a change's notice of what went with a removed effect is passed on, after the document it changed")
+{
+    struct Notices : Recorder {
+        std::vector<std::string> notices;
+        void compositionNotice(const std::string& notice) override
+        {
+            notices.push_back(notice);
+            CHECK(documents == 3);
+        }
+    } listener;
+    EngineClient client(listener);
+    client.attached([](const Message&) {}, false);
+    azl::Composition composition = gridComposition();
+    composition.layers[0].effects = {{1, "reveal", {{"progress", 1.0}}}};
+    client.receive(snapshot(composition, 7));
+    client.receive(change(azl::SetLayerOpacity{1, 0.25}, 8));
+    CHECK(listener.notices.empty());
+
+    const std::string notice = "Gone with what the edit removed: modulator Modulator 2 on effect 1 evolve";
+    Message removed = change(azl::RemoveEffect{1}, 9);
+    removed["notice"] = notice;
+    client.receive(removed);
+    CHECK(client.composition()->layers[0].effects.empty());
+    CHECK(listener.notices == std::vector<std::string>{notice});
+}

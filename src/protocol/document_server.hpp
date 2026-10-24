@@ -38,6 +38,9 @@ bool sameEdit(const Edit& a, const Edit& b);
 // "now" applies the edits that still fit as one undo step and answers {"op": "sent", "applied", "skipped"}; "switch"
 // adds a Cue holding them (one undo step) and answers {"op": "scheduled", "cue"}. At the next deck switch that Cue
 // applies the same way, gone in the same step, and every client gets the "sent" message with its "cue".
+//
+// A change whose edit removed a layer or an effect that macro targets, modulators or Cue steps pointed at carries
+// "notice": a sentence naming each of them, gone in the same step (applyEdit), for a UI to show.
 class DocumentServer {
 public:
     // Called with every new document state, on whichever thread applied the edit.
@@ -117,7 +120,8 @@ private:
     Message applyPrepared(ClientId client, const Message& edits, std::optional<uint64_t> cue, const char* cause);
     void followDeck();
     Edit apply(ClientId client, Edit& edit, const char* cause);
-    void announce(ClientId client, const Edit& edit, const char* cause);
+    // `dropped` names what the edit took with it (applyEdit), carried as the change's "notice".
+    void announce(ClientId client, const Edit& edit, const char* cause, const std::vector<std::string>& dropped = {});
     void history(ClientId client, std::vector<Step>& from, std::vector<Step>& to, bool undo);
     void record(ClientId client, uint64_t gesture, Edit edit, Edit inverse);
     Message historyJson() const;
