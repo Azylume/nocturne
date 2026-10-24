@@ -531,6 +531,97 @@ TEST_CASE("golden frames of EdgeDetection, Stripper, Colorize, Reveal and Trails
     }
 }
 
+namespace {
+
+// The pixels a Reveal gap hides: those that differ from the same frame with no gap. Over a non-black picture that is
+// the gap exactly; a black patch of the card can only miss gap pixels, never add any, so a maximum over several
+// lines across the gap reads its width.
+std::vector<bool> hiddenByGap(const azl::Image& gapped, const azl::Image& plain)
+{
+    std::vector<bool> hidden(gapped.rgba.size() / 4);
+    for (size_t i = 0; i < hidden.size(); ++i)
+        for (int ch = 0; ch < 3; ++ch)
+            if (std::abs(int(gapped.rgba[4 * i + ch]) - int(plain.rgba[4 * i + ch])) > 64)
+                hidden[i] = true;
+    return hidden;
+}
+
+// The width of the gap between two cells, measured as the longest run of hidden pixels on a line through the middle
+// of a cell and across its edge into the next: half a cell either side of the edge, which never reaches another gap.
+struct GapWidths {
+    int across; // width of the gap between two cells side by side, in pixels along x
+    int down;   // width of the gap between two cells one above the other, in pixels along y
+};
+
+GapWidths gapWidths(const azl::Image& gapped, const azl::Image& plain, int columns, int rows)
+{
+    const std::vector<bool> hidden = hiddenByGap(gapped, plain);
+    const int w = int(gapped.width), h = int(gapped.height);
+    const int cellW = w / columns, cellH = h / rows;
+    auto run = [&](auto at, int from, int to) {
+        int best = 0, current = 0;
+        for (int i = from; i < to; ++i) {
+            current = hidden[at(i)] ? current + 1 : 0;
+            best = std::max(best, current);
+        }
+        return best;
+    };
+    GapWidths widths{0, 0};
+    // Lines through the middle of each cell row, across the first interior vertical edge; and through the middle of
+    // each cell column, down the first interior horizontal edge. Half a cell either side never reaches another gap.
+    for (int r = 0; r < rows; ++r) {
+        const int y = r * cellH + cellH / 2;
+        widths.across = std::max(widths.across, run([&](int x) { return size_t(y) * w + x; }, cellW / 2, cellW + cellW / 2));
+    }
+    for (int c = 0; c < columns; ++c) {
+        const int x = c * cellW + cellW / 2;
+        widths.down = std::max(widths.down, run([&](int y) { return size_t(y) * w + x; }, cellH / 2, cellH + cellH / 2));
+    }
+    return widths;
+}
+
+} // namespace
+
+TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
+{
+    // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
+    constexpr int kColumns = 5, kRows = 4;
+    constexpr double kGap = 0.2;
+    // The test card through a Reveal with everything shown but the gap: progress 1 with no softness, hidden parts
+    // black. A gap below 0 shoots the card with no effect at all.
+    auto shoot = [&](double gap, int renderScale) {
+        azl::EngineHarness harness({.width = 1920, .height = 1080});
+        Client client(harness.document());
+        harness.engine().setRenderScale(renderScale);
+        if (gap >= 0.0)
+            addEffect(client, "reveal",
+                      {{"progress", 1.0}, {"columns", kColumns}, {"rows", kRows}, {"gap", gap}, {"softness", 0.0},
+                       {"black", 1.0}});
+        harness.step(2);
+        return harness.readScreen();
+    };
+
+    SUBCASE("gap 0 shows the whole picture")
+    {
+        CHECK(shoot(0.0, 100).rgba == shoot(-1.0, 100).rgba);
+    }
+    SUBCASE("at render scale 100 %")
+    {
+        const GapWidths widths = gapWidths(shoot(kGap, 100), shoot(0.0, 100), kColumns, kRows);
+        INFO("across " << widths.across << " down " << widths.down);
+        // A fifth of the shorter side, 270: 54 pixels.
+        CHECK(std::abs(widths.across - widths.down) <= 1);
+        CHECK(std::abs(widths.across - 54) <= 1);
+    }
+    SUBCASE("at render scale 67 %, in output pixels")
+    {
+        const GapWidths widths = gapWidths(shoot(kGap, 67), shoot(0.0, 67), kColumns, kRows);
+        INFO("across " << widths.across << " down " << widths.down);
+        CHECK(std::abs(widths.across - widths.down) <= 1);
+        CHECK(std::abs(widths.across - 54) <= 2);
+    }
+}
+
 TEST_CASE("Trails history ping-pongs across frames, survives parameter and chain edits and a clip change")
 {
     TempDir media;
