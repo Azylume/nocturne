@@ -1338,7 +1338,7 @@
    "columns.size": "9/9",
    "columns.slope": "9/9"
   },
-  "method": "Shift Glitch cases on statistics, snapshots with the logo overlay (even fading) left out. A case passes on the test card's five reference instances against five of ours, the mean share changed (medians within 0.03 or 20 %; ours less what our card changes with no band, Horizontal 0, as its marker sweeps and the reference's card is still), and on the UV probe (still, unlike our card's moving marker) the share of snapshot pairs whose pattern changed (within 0.05 or 20 % of our median). Its band shape is reported apart, from the UV probe's one reference instance against the spread of five of ours: rows and columns each, the moved share, bands per frame and their median size and slope (given 10 bands with a slope), each within the range of ours padded by 0.03, 12.5 % (at least 0.5), 17.5 % + 1 and 17.5 %.",
+  "method": "Shift Glitch cases on statistics, unusable snapshots left out. A case passes on the test card's five reference instances against five of ours, the mean share changed (medians within 0.03 or 20 %; ours less what our card changes with no band, Horizontal 0, as its marker sweeps and the reference's card is still), and on the UV probe (still, unlike our card's moving marker) the share of snapshot pairs whose pattern changed (within 0.05 or 20 % of our median). Its band shape is reported apart, from the UV probe's one reference instance against the spread of five of ours: rows and columns each, the moved share, bands per frame and their median size and slope (given 10 bands with a slope), each within the range of ours padded by 0.03, 12.5 % (at least 0.5), 17.5 % + 1 and 17.5 %.",
   "perCase": {
    "blackBG.0": {
     "pass": true,
@@ -1584,7 +1584,7 @@
    "pass": 1.0,
    "cases": 12
   },
-  "method": "Each Trails snapshot after 1.5 s (and 1 s after the reference's clip last stood still; a fading logo overlay left out) against our frame of the same clip time: it passes at MAE <= 2 and SSIM >= 0.98, a case at 90 % of its snapshots; the single-frame check is its snapshot of median MAE. Sequences whose history the reference inherited are checked on what does not depend on it: Feedback 1 holds a still picture in both, and in Luma every pixel lighter than 1 - Feedback stays as it was between the reference's snapshots.",
+  "method": "Each Trails snapshot after 1.5 s (and 1 s after the reference's clip last stood still; unusable snapshots left out) against our frame of the same clip time: it passes at MAE <= 2 and SSIM >= 0.98, a case at 90 % of its snapshots; the single-frame check is its snapshot of median MAE. Sequences whose history the reference inherited are checked on what does not depend on it: Feedback 1 holds a still picture in both, and in Luma every pixel lighter than 1 - Feedback stays as it was between the reference's snapshots.",
   "perCase": {
    "default": {
     "pass": true,

@@ -61,8 +61,9 @@ suite locally before a pull request that touches rendering, outputs, recording o
 - Follow the code around it: naming, comment density, file layout. `CONTEXT.md` defines the domain words.
 - Architecture decisions go in `docs/adr/`. Read the relevant ADR before changing what it decided.
 - A new dependency must be AGPL-3.0-compatible: check `docs/licence-notes.md` and add a row to ADR 0012's table.
-- Nothing copied from other VJ software or its files. Compatibility (the Resolume importer, the ISF loader) is built
-  from documented formats and our own saved files.
+- Nothing copied from other VJ software or its files. Compatibility features are built from publicly documented
+  formats, our own saved files, and observing the visible output of other tools. Never contribute code, shaders,
+  assets or data extracted from another product's binaries.
 
 ## Reporting and questions
 

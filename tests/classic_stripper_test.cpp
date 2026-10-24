@@ -157,7 +157,7 @@ TEST_CASE("Classic Stripper Random holds each place Speed x 10/3 s, anywhere ove
 
 namespace {
 
-// The reference moved Both Ways' strips by whole steps of 0.3 x Speed units, 7 to 9 of them between snapshots 65 to
+// The reference moved MovementType 1 strips by whole steps of 0.3 x Speed units, 7 to 9 of them between snapshots 65 to
 // 83 ms apart: it rendered about 110 frames a second during the p11 capture (ticket 101), and moves strips per frame.
 constexpr double kReferenceFps = 110.0;
 
@@ -183,7 +183,7 @@ int softColumns(const azl::Image& image, const azl::Image& input)
 
 } // namespace
 
-// NOCTURNE_PARITY_DIR=DIR with the p11 `stripper-uv` work directory (tools/arena-capture): its MovementType and Feather
+// NOCTURNE_PARITY_DIR=DIR with the p11 `stripper-uv` capture directory: its MovementType and Feather
 // stills and its MovementType 1.0 sequences against ours.
 TEST_CASE("parity of Classic Stripper MovementType Random and Feather")
 {
