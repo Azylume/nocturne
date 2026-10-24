@@ -20,16 +20,17 @@ GuardThresholds guardThresholds(GuardProfile profile, bool protectTransitions, b
 // The frame budget guard's level: how many of the costliest layers it draws at half resolution. It steps up one level
 // at a time, on a sustained overrun only (one long frame, as a chain compile makes, is not a step), and waits for the
 // GPU time average to follow before the next step. A level comes off once the frames have fitted well under the
-// budget for `calmNeeded` frames, counting a frame over it against two under, so a spike delays it a little and never
-// holds it up. A level that comes off and is needed back within two seconds was holding the frames in the budget:
-// each such bounce doubles the calm the next step down needs (up to ten minutes), and a step down that holds resets
-// it to a second. Render thread only.
+// budget for `calmNeeded` frames (a second at the engine's rate, which the budget is a frame of), counting a frame
+// over it against two under, so a spike delays it a little and never holds it up. A level that comes off and is
+// needed back within two seconds was holding the frames in the budget: each such bounce doubles the calm the next
+// step down needs (up to ten minutes), and a step down that holds resets it to a second. Render thread only.
 struct FrameGuard {
     size_t level = 0;
     int frames = 0;        // since the level last changed
     int hot = 0;           // frames in a row over raiseAt
     int calm = 0;          // fitting frames, less two per frame over, since the level last changed
-    int calmNeeded = 60;   // calm frames that take a level off
+    int calmTimes = 1;     // seconds of calm that take a level off, doubled by each bounce
+    int calmNeeded = 0;    // that as frames of the budget, as of the last step
     int sinceOff = -1;     // frames since a level came off, while a step up would be a bounce; -1 otherwise
 
     // One frame of `gpu` seconds against `budget`, with `layers` that can be reduced; true when the level changed.

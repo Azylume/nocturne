@@ -347,3 +347,43 @@ TEST_CASE("caches: what they hold is reported, and lowering the preload bound fr
     CHECK(harness.engine().cacheUse().preloadBytes == 0);
     CHECK(settings(client)["use"]["preloadMB"] == 0);
 }
+
+TEST_CASE("frame guard: its calm and bounce windows are seconds at the engine's rate, not frames")
+{
+    // At 30 fps the budget is a 30th: a level comes off after 30 calm frames, and a step up 61 frames after a step
+    // down is no bounce; at 120 fps after 120 calm frames, and 240 frames later is still a bounce.
+    const auto calmFrames = [](double fps) {
+        azl::FrameGuard guard;
+        const azl::GuardThresholds t = azl::guardThresholds(GuardProfile::Smooth, false, false);
+        for (int i = 0; i < 100; ++i)
+            guard.step(1.0 / fps, 1.0 / fps, 1, t);
+        REQUIRE(guard.level == 1);
+        int n = 0;
+        while (guard.level == 1 && n < 1000) {
+            guard.step(0.0, 1.0 / fps, 1, t);
+            n++;
+        }
+        return n;
+    };
+    CHECK(calmFrames(30.0) == 30);
+    CHECK(calmFrames(60.0) == 60);
+    CHECK(calmFrames(120.0) == 120);
+
+    const auto bounceAt = [](double fps, int after) {
+        azl::FrameGuard guard;
+        const azl::GuardThresholds t = azl::guardThresholds(GuardProfile::Smooth, false, false);
+        for (int i = 0; i < 100; ++i)
+            guard.step(1.0 / fps, 1.0 / fps, 1, t);
+        while (guard.level == 1)
+            guard.step(0.0, 1.0 / fps, 1, t);
+        for (int i = 0; i < after; ++i)
+            guard.step(0.0, 1.0 / fps, 1, t);
+        while (guard.level == 0)
+            guard.step(1.0 / fps, 1.0 / fps, 1, t);
+        return guard.calmNeeded;
+    };
+    CHECK(bounceAt(30.0, 40) == 60);
+    CHECK(bounceAt(30.0, 70) == 30);
+    CHECK(bounceAt(120.0, 220) == 240);
+    CHECK(bounceAt(120.0, 250) == 120);
+}
