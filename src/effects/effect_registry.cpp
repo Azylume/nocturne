@@ -243,7 +243,8 @@ EffectDef stripper()
 
 // Hides the picture in a grid of `columns` x `rows` cells that appear in a random order as `progress` goes from 0 to
 // 1: a cell shows once its rank, hashed from the cell and the seed, is below progress, fading in over `softness`.
-// `gap` hides a border of each cell; hidden parts are transparent, or black with `black`. Each seed is its own order;
+// `gap` hides a border of each cell, as a fraction of the cell's shorter side so it is as wide across as down whatever
+// the cell's shape; hidden parts are transparent, or black with `black`. Each seed is its own order;
 // `evolve` crossfades each cell from its visibility in one seed's order to the next over each whole step (morphing the
 // rank instead would pop a cell whenever its rank crossed progress), and `reshuffle` times per second it steps on,
 // gliding over the first half of the period.
@@ -265,7 +266,8 @@ EffectDef reveal()
     float2 g = px / h.size * float2(p[1], p[2]);
     float2 cell = floor(g);
     float2 f = g - cell;
-    float halfGap = p[3] * 0.5;
+    float2 cellPx = h.size / float2(p[1], p[2]);
+    float2 halfGap = p[3] * 0.5 * min(cellPx.x, cellPx.y) / cellPx;
     float4 hidden = float4(0.0, 0.0, 0.0, p[7]);
     if (any(f < halfGap) || any(f > 1.0 - halfGap))
         return hidden;
