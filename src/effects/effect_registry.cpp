@@ -605,7 +605,7 @@ void slicerDerive(const float* p, const float*, float, float beat, float* out)
     const auto tick = uint32_t(std::floor(clock));
     const float step = fract(clock);
     const float glide = animation == 2 ? step * step * (3.0f - 2.0f * step) : 0.0f;
-    const uint32_t seed = pcg(uint32_t(p[6]) + 1u);
+    const uint32_t seed = pcg(uint32_t(p[5]) + 1u);
     std::fill(out, out + kSlicerDerived, 0.0f);
 
     float* shapes = out + kSlicerShapesAt;
@@ -671,14 +671,12 @@ void slicerDerive(const float* p, const float*, float, float beat, float* out)
     }
 
     std::vector<int> on;
-    for (int s = 0; s < 9; ++s)
-        if (p[10 + s] > 0.5f)
-            on.push_back(s + 1);
+    for (int s = 0; s < 10; ++s)
+        if (p[9 + s] > 0.5f)
+            on.push_back(s);
     std::array<int, kSlicerCells> styles{};
     for (int cell = 0; cell < kSlicerCells && !on.empty(); ++cell) {
         const uint32_t key = seed + uint32_t(cell) * 0x9e3779b9u;
-        if (slicerRand(key, tick * 3u + 1u) >= p[5])
-            continue;
         const size_t first = std::min(size_t(slicerRand(key, tick * 3u + 2u) * float(on.size())), on.size() - 1);
         styles[size_t(cell)] = on[first];
         for (size_t k = 0; k < on.size(); ++k) {
@@ -696,9 +694,9 @@ void slicerDerive(const float* p, const float*, float, float beat, float* out)
         out[cell / 6] += float(uint32_t(styles[size_t(cell)]) << (4 * (cell % 6)));
 }
 
-ParamDef style(std::string name)
+ParamDef style(std::string name, double on = 1.0)
 {
-    ParamDef param = options({std::move(name), 0.0, 1.0, 1.0}, kOffOn);
+    ParamDef param = options({std::move(name), 0.0, 1.0, on}, kOffOn);
     param.group = "Styles";
     return param;
 }
@@ -707,8 +705,8 @@ const ParamUnit kRows{" rows", 1.0, 0};
 
 // Cuts the picture into cells and draws each cell in a style of its own, or as it is. `count` cuts along `direction`:
 // vertical or horizontal strips, a grid whose columns each split into rows of their own, rings cut by spokes, boxes
-// over the picture or the Voronoi cells of as many seeds. `spread` varies the cell sizes; `amount` is the share of
-// cells that get a style, picked among the styles switched on and unlike the touching cells' styles while one is free.
+// over the picture or the Voronoi cells of as many seeds. `spread` varies the cell sizes. Each cell takes one of the
+// styles switched on (None: the picture as it is), unlike the touching cells' styles while one is free.
 // Every `rate` beats (Off: never) the cells reshuffle: Pulse cuts anew at once, Slide glides the cuts there and only
 // steps the styles. Boxes and seeds also move by `movement` at `speed` cycles a second; boxes are `size` of the
 // picture's height, framed whole or at their `corners`, and with `links` each joins its two nearest boxes with a line
@@ -727,11 +725,11 @@ EffectDef slicer()
                    in(units::whole, options({"animation", 0.0, 2.0, 1.0}, {"Static", "Pulse", "Slide"})),
                    in(units::whole, options({"rate", 0.0, 7.0, 3.0}, {"Off", "1/4", "1/2", "1", "2", "4", "8", "16"})),
                    percent({"spread", 0.0, 1.0, 0.6}),
-                   percent({"amount", 0.0, 1.0, 0.85}),
                    in(units::whole, {"seed", 0.0, 99.0, 0.0}),
                    choice(in({" px", 1.0, 0}, {"lines", 0.0, 8.0, 2.0})),
                    wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
                    percent({"colour", 0.0, 1.0, 1.0}),
+                   style("none", 0.0),
                    style("thermal"),
                    style("grain"),
                    style("letters"),
@@ -755,8 +753,8 @@ EffectDef slicer()
     float clock = animation == 0 || rate == 0 ? 0.0 : max(h.beat, 0.0) / exp2(float(rate - 3));
     uint tick = uint(floor(clock));
     float glide = animation == 2 ? smoothstep(0.0, 1.0, fract(clock)) : 0.0;
-    uint seed = pcg(uint(p[6]) + 1u);
-    float width = floor(p[7] + 0.5);
+    uint seed = pcg(uint(p[5]) + 1u);
+    float width = floor(p[6] + 0.5);
     int cell = -1;
     float line = 0.0;
     if (direction >= 4) {
@@ -832,7 +830,7 @@ EffectDef slicer()
     }
     int style = cell < 0 ? 0 : int((uint(q[cell / 6]) >> (4u * uint(cell % 6))) & 15u);
     uint key = seed + uint(max(cell, 0)) * 0x9e3779b9u;
-    float3 o = slicerStyle(style, t, px, c, styleAccent(p[8]), p[9], slicerRand(key, tick * 3u + 3u), h.time, h.size);
+    float3 o = slicerStyle(style, t, px, c, styleAccent(p[7]), p[8], slicerRand(key, tick * 3u + 3u), h.time, h.size);
     return float4(mix(o, float3(1.0), line), max(c.a, line));
 )",
                   {}};
