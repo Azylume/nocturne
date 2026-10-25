@@ -20,6 +20,8 @@
 
 namespace azl::ui {
 
+class MidiControl;
+
 // The UI's side of one engine, on the message thread: the client's state as JUCE images and a cached composition,
 // plus what only this UI knows (selection, which monitor shows what). Views register to hear what changed.
 class Session : private EngineClient::Listener, private juce::AsyncUpdater, private juce::Timer {
@@ -256,6 +258,8 @@ public:
     bool groupOpen(const std::string& key, bool byDefault) const;
     void setGroupOpen(const std::string& key, bool open);
     void useSettings(juce::PropertiesFile* settings);
+    // MIDI controllers on this machine; nothing listens until it starts.
+    MidiControl& midi() { return *midi_; }
     // Selects the chain that holds the parameter (showing the clip's deck) and opens its Animate box; panels bring it
     // into view and highlight it for a second.
     void goToParam(const ParamRef& ref);
@@ -375,6 +379,8 @@ private:
     std::vector<std::string> past_, future_;
     std::vector<Rgba> recent_;
     void trackHistory(const History& history);
+    // Last, so it goes first: it ends its undo step through the client.
+    std::unique_ptr<MidiControl> midi_;
 };
 
 // A typed "host" or "host:port" (an IPv6 address takes the default port); the default port when none is given.

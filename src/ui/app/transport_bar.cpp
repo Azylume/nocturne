@@ -2,6 +2,7 @@
 
 #include "protocol/build_info.hpp"
 #include "ui/app/look.hpp"
+#include "ui/app/midi.hpp"
 #include "ui/app/widgets.hpp"
 
 #include <algorithm>
@@ -88,8 +89,17 @@ TransportBar::TransportBar(Session& session) : session_(session), venue_(session
         };
     undo_.onClick = [this] { session_.client().undo(); };
     redo_.onClick = [this] { session_.client().redo(); };
-    tap_.onClick = [this] { session_.client().tap(); };
-    resync_.onClick = [this] { session_.client().resync(); };
+    // A right-click opens their MIDI menu instead.
+    tap_.onClick = [this] {
+        if (!juce::ModifierKeys::currentModifiers.isPopupMenu())
+            session_.client().tap();
+    };
+    resync_.onClick = [this] {
+        if (!juce::ModifierKeys::currentModifiers.isPopupMenu())
+            session_.client().resync();
+    };
+    tap_.addMouseListener(this, false);
+    resync_.addMouseListener(this, false);
     record_.onClick = [this] { session_.client().record(!session_.client().record().recording); };
     settingsButton_.setTooltip(juce::String::fromUTF8("Settings: where and how the engine records (\xe2\x8c\x98,)"));
     settingsButton_.onClick = [this] { openSettings(); };
@@ -270,6 +280,19 @@ void TransportBar::sessionChanged(int changes)
     if (changes & Session::Previews)
         previews_.setToggleState(session_.previewsOn(), juce::dontSendNotification);
     repaint();
+}
+
+Menu TransportBar::midiMenu(bool tap)
+{
+    Menu menu;
+    addMidiEntries(menu, session_, {.kind = tap ? MidiTarget::Kind::Tap : MidiTarget::Kind::Resync});
+    return menu;
+}
+
+void TransportBar::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() && (e.eventComponent == &tap_ || e.eventComponent == &resync_))
+        showMenu(*e.eventComponent, midiMenu(e.eventComponent == &tap_));
 }
 
 void TransportBar::resized()

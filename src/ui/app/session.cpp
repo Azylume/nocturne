@@ -1,5 +1,7 @@
 #include "ui/app/session.hpp"
 
+#include "ui/app/midi.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -89,12 +91,14 @@ Session::Session(std::string host, uint16_t port, bool surfaces, LocalRender loc
     media_ = std::make_unique<DirectorMedia>(withLibrary(std::move(media), localOptions_, rendersLocally),
                                              [this](const std::string& hash) { mediaChanged(hash); });
     client_.setListenSink([this](const Message& message) { returnAudio_.receive(message); });
+    midi_ = std::make_unique<MidiControl>(*this);
     connect();
     startTimerHz(30);
 }
 
 Session::~Session()
 {
+    midi_.reset();
     stopTimer();
     venues_.reset();
     local_.reset();
@@ -716,6 +720,7 @@ void Session::useSettings(juce::PropertiesFile* settings)
         std::lock_guard lock(tokensMutex_);
         settings_ = settings;
     }
+    midi_->useSettings(settings);
     if (!settings_)
         return;
     if (tokenFor(host_) != token_)

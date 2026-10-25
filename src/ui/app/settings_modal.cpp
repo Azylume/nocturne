@@ -11,6 +11,9 @@ namespace {
 
 const std::pair<uint32_t, uint32_t> kSizes[] = {{0, 0}, {3840, 2160}, {2560, 1440}, {1920, 1080}, {1280, 720}};
 constexpr int kLabelWidth = 112;
+using Section = SettingsModal::Section;
+constexpr Section kSections[] = {Section::Recording, Section::Audio, Section::Displays, Section::Performance,
+                                 Section::Caches, Section::Midi};
 constexpr int kRow = 24;
 constexpr const char* kDisplaysNote =
     "Kept on this machine, not in the show: a screen of the same name in any show goes to the same display.";
@@ -61,7 +64,8 @@ SettingsModal::SettingsModal(Session& session) : session_(session), native_(sess
     displaysTab_.setTooltip("Which of the engine machine's displays each screen goes to, kept on that machine");
     performanceTab_.setTooltip("How the engine trades sharpness for a steady frame rate");
     cachesTab_.setTooltip("How much the engine keeps decoded");
-    for (Section section : {Section::Recording, Section::Audio, Section::Displays, Section::Performance, Section::Caches})
+    midiTab_.setTooltip("MIDI controllers on this machine and what their controls drive");
+    for (Section section : kSections)
         sectionButton(section).onClick = [this, section] { showSection(section); };
     input_.setTooltip("The engine machine's input device; the engine reopens it after a restart or a replug");
     input_.onChange = [this] {
@@ -147,7 +151,7 @@ SettingsModal::SettingsModal(Session& session) : session_(session), native_(sess
     for (juce::Component* c : std::initializer_list<juce::Component*>{
              &recordingTab_, &audioTab_, &displaysTab_, &performanceTab_, &cachesTab_, &choose_, &codec_, &size_,
              &audio_, &precise_, &reserveMB_, &reservePercent_, &maxMB_, &maxSeconds_, &maxTotal_, &gigGrace_, &list_,
-             &up_, &use_, &cancel_, &input_, &renderScale_, &profile_, &protect_, &bake_, &frameCache_, &preload_, &previews_})
+             &up_, &use_, &cancel_, &input_, &renderScale_, &profile_, &protect_, &bake_, &frameCache_, &preload_, &previews_, &midiTab_, &midi_})
         addChildComponent(c);
     session_.addView(this);
     refresh();
@@ -340,6 +344,7 @@ juce::TextButton& SettingsModal::sectionButton(Section section)
     case Section::Displays: return displaysTab_;
     case Section::Performance: return performanceTab_;
     case Section::Caches: return cachesTab_;
+    case Section::Midi: return midiTab_;
     case Section::Recording: break;
     }
     return recordingTab_;
@@ -348,7 +353,8 @@ juce::TextButton& SettingsModal::sectionButton(Section section)
 bool SettingsModal::offers(Section section) const
 {
     static const char* const names[] = {"recording", "audio", "displays", "performance", "caches"};
-    return section == Section::Recording ||
+    // MIDI is this machine's, whatever the engine serves.
+    return section == Section::Recording || section == Section::Midi ||
            std::find(settings_.sections.begin(), settings_.sections.end(), names[int(section)]) !=
                settings_.sections.end();
 }
@@ -360,7 +366,7 @@ void SettingsModal::showSection(Section section)
     if (picking_ && section != Section::Recording)
         showPicker(false);
     section_ = section;
-    for (Section s : {Section::Recording, Section::Audio, Section::Displays, Section::Performance, Section::Caches})
+    for (Section s : kSections)
         sectionButton(s).setToggleState(s == section_, juce::dontSendNotification);
     if (section_ == Section::Caches)
         session_.client().requestSettings();
@@ -384,13 +390,14 @@ std::vector<juce::Component*> SettingsModal::sectionComponents(Section section)
     }
     case Section::Performance: return {&renderScale_, &profile_, &protect_, &bake_};
     case Section::Caches: return {&frameCache_, &preload_, &previews_};
+    case Section::Midi: return {&midi_};
     }
     return {};
 }
 
 void SettingsModal::updateVisibility()
 {
-    for (Section s : {Section::Recording, Section::Audio, Section::Displays, Section::Performance, Section::Caches}) {
+    for (Section s : kSections) {
         sectionButton(s).setVisible(offers(s));
         for (juce::Component* c : sectionComponents(s))
             c->setVisible(s == section_ && !(s == Section::Recording && picking_));
@@ -589,6 +596,7 @@ void SettingsModal::paint(juce::Graphics& g)
     case Section::Displays: return paintDisplays(g);
     case Section::Performance:
     case Section::Caches: return paintSettings(g);
+    case Section::Midi: return;
     }
 }
 
@@ -743,7 +751,7 @@ void SettingsModal::resized()
     close_.setBounds(buttons.removeFromRight(80));
     area.removeFromBottom(8);
     auto tabs = area.removeFromLeft(100);
-    for (Section section : {Section::Recording, Section::Audio, Section::Displays, Section::Performance, Section::Caches}) {
+    for (Section section : kSections) {
         if (!offers(section))
             continue;
         sectionButton(section).setBounds(tabs.removeFromTop(kRow));
@@ -761,6 +769,7 @@ void SettingsModal::resized()
     frameCache_.setBounds(at(0).withTrimmedLeft(kLabelWidth).withWidth(70));
     preload_.setBounds(at(1).withTrimmedLeft(kLabelWidth).withWidth(70));
     previews_.setBounds(at(2).withTrimmedLeft(kLabelWidth).withWidth(70));
+    midi_.setBounds(area);
 
     pathRow_ = area.removeFromTop(kRow);
     up_.setBounds(pathRow_.removeFromRight(48));

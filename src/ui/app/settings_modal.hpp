@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/app/midi_settings.hpp"
 #include "ui/app/session.hpp"
 
 #include <memory>
@@ -15,13 +16,14 @@ namespace azl::ui {
 // engine machine's displays each screen goes to, mirrored and missing ones marked, kept on that machine for every
 // show with a screen of the same name. Performance: the render scale, the frame guard's
 // profile and Protect transitions. Caches: the engine's cache bounds with what each holds now. Sections the engine
-// does not serve are left out (an older engine: Recording only). It covers its parent; closing hides it.
+// does not serve are left out (an older engine: Recording only). MIDI is this machine's: its controllers and their
+// mappings. It covers its parent; closing hides it.
 class SettingsModal : public juce::Component,
                       private Session::View,
                       private juce::ListBoxModel,
                       private juce::Timer {
 public:
-    enum class Section { Recording, Audio, Displays, Performance, Caches };
+    enum class Section { Recording, Audio, Displays, Performance, Caches, Midi };
 
     explicit SettingsModal(Session& session);
     ~SettingsModal() override;
@@ -35,6 +37,7 @@ public:
     // The connected engine serves it.
     bool offers(Section section) const;
 
+    MidiSettings& midiSettings() { return midi_; }
     juce::TextButton& chooseButton() { return choose_; }
     juce::TextButton& closeButton() { return close_; }
     juce::ComboBox& codecBox() { return codec_; }
@@ -119,8 +122,9 @@ private:
     FolderList listed_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::Label title_;
+    MidiSettings midi_{session_};
     juce::TextButton recordingTab_{"Recording"}, audioTab_{"Audio input"}, displaysTab_{"Displays"},
-        performanceTab_{"Performance"}, cachesTab_{"Caches"};
+        performanceTab_{"Performance"}, cachesTab_{"Caches"}, midiTab_{"MIDI"};
     juce::TextButton choose_{juce::String::fromUTF8("Choose\xe2\x80\xa6")}, close_{"Close"};
     juce::ComboBox codec_, size_;
     juce::ToggleButton audio_{"Audio track"}, precise_{"Precise (10/16-bit)"};

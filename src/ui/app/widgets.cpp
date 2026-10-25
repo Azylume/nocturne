@@ -2,6 +2,7 @@
 
 #include "ui/app/colour_picker.hpp"
 #include "ui/app/look.hpp"
+#include "ui/app/midi.hpp"
 #include "ui/app/preset_tree.hpp"
 
 #include <cmath>
@@ -266,6 +267,17 @@ Menu addEffectMenu(Session& session, const std::function<void(const Effect&)>& a
             menu.push_back({.label = type, .sub = sub, .tip = "Add " + juce::String(type) + ", plain or from a preset"});
     }
     return menu;
+}
+
+void addMidiEntries(Menu& menu, Session& session, const MidiTarget& target)
+{
+    menu.push_back({.label = "MIDI learn",
+                    .run = [&session, target] { session.midi().learn(target); },
+                    .tip = "Map the next control moved on a MIDI controller to this"});
+    if (const MidiBinding* bound = session.midi().bindingFor(target))
+        menu.push_back({.label = "Forget MIDI (" + bound->source.text() + ")",
+                        .run = [&session, target] { session.midi().forget(target); },
+                        .tip = "Remove the MIDI control mapped to this"});
 }
 
 const MenuEntry* menuEntry(const Menu& menu, const juce::String& path)
@@ -1523,6 +1535,11 @@ void ParamRow::showMenu()
                     animation != nullptr);
     animate.addItem(401, "None", animation != nullptr);
     menu.addSubMenu("Animate", animate);
+    const MidiTarget midi{.kind = MidiTarget::Kind::Param, .param = ref_};
+    const MidiBinding* bound = session_.midi().bindingFor(midi);
+    menu.addItem(600, "MIDI learn");
+    if (bound)
+        menu.addItem(601, "Forget MIDI (" + bound->source.text() + ")");
     menu.addSeparator();
     menu.addItem(500, "Reset to default");
 
@@ -1539,6 +1556,10 @@ void ParamRow::showMenu()
                                session.setAnimationOpen(ref, !session.animationOpen(ref));
                            else if (result == 401)
                                session.stopAnimating(ref);
+                           else if (result == 600)
+                               session.midi().learn({.kind = MidiTarget::Kind::Param, .param = ref});
+                           else if (result == 601)
+                               session.midi().forget({.kind = MidiTarget::Kind::Param, .param = ref});
                            else if (result == 500) {
                                session.client().beginGesture();
                                session.stopAnimating(ref);

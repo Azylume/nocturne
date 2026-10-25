@@ -37,6 +37,8 @@ set(NOCTURNE_UI_SOURCES
   app/map_inspector.cpp
   app/map_view.cpp
   app/mid_tabs.cpp
+  app/midi.cpp
+  app/midi_settings.cpp
   app/monitors.cpp
   app/params.cpp
   app/preset_tree.cpp
@@ -52,7 +54,7 @@ set(NOCTURNE_UI_SOURCES
 add_library(nocturne_ui_components STATIC ${NOCTURNE_UI_SOURCES})
 target_link_libraries(nocturne_ui_components
   PUBLIC nocturne_ui_client nocturne_ui_local
-  PRIVATE juce::juce_gui_basics juce::juce_recommended_config_flags)
+  PRIVATE juce::juce_gui_basics juce::juce_audio_devices juce::juce_recommended_config_flags)
 target_compile_definitions(nocturne_ui_components
   PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1
   INTERFACE $<TARGET_PROPERTY:nocturne_ui_components,COMPILE_DEFINITIONS>)
@@ -82,7 +84,7 @@ add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_S
   ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp)
+  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots")

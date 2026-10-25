@@ -1,5 +1,7 @@
 #include "ui/app/main_component.hpp"
 
+#include "ui/app/midi.hpp"
+
 namespace azl::ui {
 
 namespace {
@@ -210,6 +212,10 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
     if (key == juce::KeyPress::escapeKey) {
         if (map_.isVisible() && map_.escape())
             return true;
+        if (session_.midi().learning()) {
+            session_.midi().cancelLearn();
+            return true;
+        }
         if (session_.learning())
             session_.setLearning(false);
         else
