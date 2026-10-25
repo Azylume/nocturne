@@ -5,6 +5,16 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "")
 
 project(nocturne VERSION 0.1.1 LANGUAGES CXX OBJCXX)
 
+# ccache, when installed, so a branch switch or a fresh build folder reuses what was compiled before.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  foreach(lang C CXX OBJC OBJCXX)
+    if(NOT CMAKE_${lang}_COMPILER_LAUNCHER)
+      set(CMAKE_${lang}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    endif()
+  endforeach()
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_STANDARD 20)
