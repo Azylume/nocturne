@@ -1,7 +1,7 @@
 # Builds once (arm64, Ninja, ccache) and runs the tests in parallel shards (tools/ci-tests.sh) from that build;
 # on main and nightly also proves the universal (arm64 + x86_64) build compiles. Docs-only changes run nothing here
-# (dco.yml still checks every pull request). A newer push to a pull request cancels the run in progress; pushes to
-# main all run to the end.
+# (dco.yml still checks every pull request). A newer push to a pull request cancels the run in progress; every push
+# to main runs to the end.
 name: CI
 
 on:
@@ -26,8 +26,11 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# A pull request's runs share one group, so a newer push cancels the one in progress. Every other run (a push to
+# main, the nightly, a manual one) has a group of its own: GitHub keeps only one pending run per group, so sharing
+# one would drop a main commit's run while another was in progress.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
