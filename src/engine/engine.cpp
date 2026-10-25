@@ -266,8 +266,13 @@ void Engine::renderFrame(double seconds)
         std::unique_lock lock(inFlightMutex_);
         if (inFlight_ >= bound) {
             stats_.throttled++;
-            inFlightDone_.wait_for(lock, std::chrono::duration<double>(frameDt_ > 0.0 ? frameDt_ : 1.0 / 60.0),
-                                   [&] { return inFlight_ < bound; });
+            if (!inFlightDone_.wait_for(lock, std::chrono::duration<double>(frameDt_ > 0.0 ? frameDt_ : 1.0 / 60.0),
+                                        [&] { return inFlight_ < bound; })) {
+                // Still that many on the GPU after a frame's time: this frame is skipped, never queued over the bound.
+                stats_.skipped++;
+                pool->release();
+                return;
+            }
         }
     }
     std::shared_ptr<Frame> frame = ring_->claim();

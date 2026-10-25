@@ -48,7 +48,7 @@ struct EngineConfig {
     // with one to spare for a frame still on the GPU.
     int frameCount = 9;
     // How many rendered frames may be on the GPU at once; a frame due while that many are waits for one to finish,
-    // up to a frame's time. Under GPU overload frames queue up ahead of the outputs' presents (ADR 0003), and the
+    // up to a frame's time, and is skipped when none has. Under GPU overload frames queue up ahead of the outputs' presents (ADR 0003), and the
     // bound lets the presents through. 0: as many as the ring allows.
     int maxInFlight = 0;
     // Deterministic mode for the harness: a frame waits until every clip's frame for its time is decoded. Live
