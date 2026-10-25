@@ -41,6 +41,7 @@ TEST_CASE("colour: the colour groups are found from the parameter names of every
         {"strobe", {"red"}},
         {"lines", {"red"}},
         {"checker", {"red"}},
+        {"rings", {"red"}},
         {"gradient", {"red", "toRed"}},
         {"noise", {"red"}},
         {"isfTriangleMosaic", {"outlineColorRed"}},

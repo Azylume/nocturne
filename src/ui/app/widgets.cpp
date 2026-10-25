@@ -231,6 +231,18 @@ void paintGenerator(juce::Graphics& g, juce::Rectangle<int> area, const Effect& 
                     g.fillRect(juce::Rectangle<float>(r.getX() + float(i) * cell, r.getY() + float(j) * cell, cell, cell)
                                    .getIntersection(r));
             }
+    } else if (type == "rings") {
+        const int count = std::clamp(int(std::lround(value("count"))), 1, 12);
+        const float step = r.getHeight() * 0.5f / float(count);
+        const juce::Point<float> centre = r.getCentre() + juce::Point<float>(float(value("x")) * r.getWidth(),
+                                                                             -float(value("y")) * r.getHeight());
+        g.setColour(ink);
+        g.saveState();
+        g.reduceClipRegion(area);
+        for (int i = 1; float(i) * step < r.getWidth(); ++i)
+            g.drawEllipse(juce::Rectangle<float>(step * 2.0f * float(i), step * 2.0f * float(i)).withCentre(centre),
+                          std::max(1.0f, step * float(value("width"))));
+        g.restoreState();
     } else if (type == "gradient") {
         g.setGradientFill(juce::ColourGradient(ink, r.getTopLeft(), colour("toRed", "toGreen", "toBlue"),
                                                r.getBottomRight(), false));

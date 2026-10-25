@@ -1926,6 +1926,31 @@ EffectDef lines()
 )");
 }
 
+// `count` concentric rings from the centre to the top edge, each `width` of its period wide, around a centre moved by
+// `x` and `y` (shares of the width and height), spreading outward at `speed` rings per second (inward when negative):
+// a tunnel on the beat with speed as a phase. `softness` blurs the edges by up to half a period. Between them it is
+// transparent. One length per pixel; edges box filtered over a pixel as Lines does, so thin rings never shimmer.
+EffectDef rings()
+{
+    return generator("rings",
+                     joined({in(units::rings, {"count", 1.0, 64.0, 8.0}), percent({"width", 0.0, 1.0, 0.5}),
+                             in(units::ringsPerSecond, {"speed", -8.0, 8.0, 0.0, ParamDrive::Phase}),
+                             percent({"softness", 0.0, 1.0, 0.0}), percent({"x", -0.5, 0.5, 0.0}),
+                             percent({"y", -0.5, 0.5, 0.0})},
+                            colour()),
+                     R"(
+    float perPixel = p[0] / (0.5 * h.size.y);
+    float2 centre = h.size * (0.5 + float2(p[4], -p[5]));
+    float s = length(px - centre) * perPixel - p[2];
+    float v = abs(fract(s + 0.5) - 0.5);
+    float hw = p[1] * 0.5;
+    float w = max(perPixel, p[3] * 0.5);
+    float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
+                  max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
+    return float4(p[6], p[7], p[8], saturate(cover / w));
+)");
+}
+
 // `count` squares across the height, turned by `angle`, scrolling at `speed` squares per second; the others are
 // transparent.
 EffectDef checker()
@@ -2054,7 +2079,7 @@ Registry& registry()
          withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
          withMix(blank()), withMix(solid()), withMix(strobe()), withMix(lines()),
-         withMix(checker()), withMix(gradient()), withMix(noise())}))};
+         withMix(checker()), withMix(rings()), withMix(gradient()), withMix(noise())}))};
     return effects;
 }
 

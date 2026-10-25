@@ -1651,7 +1651,13 @@ TEST_CASE("panels: Text in the Sources tab drops or double-clicks into a cell, a
     browser.selectTab(2);
     REQUIRE_FALSE(browser.effectItems().empty());
     CHECK(browser.effectItems().back().second == azl::ui::kTextSource);
+    // Text comes after every generator, so scrolled to the end it is in view however many there are.
+    juce::MouseWheelDetails down{};
+    down.deltaY = -50.0f;
+    browser.mouseWheelMove(mouse(browser, browser.getLocalBounds().getCentre(), browser.getLocalBounds().getCentre()),
+                           down);
     const juce::Point<int> textRow = browser.effectItems().back().first.getCentre();
+    REQUIRE(browser.getLocalBounds().contains(textRow));
     const azl::TextClip defaults{.text = "TEXT"};
     auto settled = [&](size_t before) {
         REQUIRE(runUntil(harness, [&] { return undoSteps(session) >= before + 1; }));
