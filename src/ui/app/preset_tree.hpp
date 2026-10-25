@@ -22,7 +22,7 @@ struct PresetRow {
 
 // A preset's groups in the order they list.
 inline const char* const kPresetGroups[] = {"builtin", "imported", "mine"};
-// "Built-in Classic", "Imported" or "Mine".
+// "Built-in", "Imported" or "Mine".
 juce::String presetGroupLabel(const std::string& group);
 
 // The preset of the type with this name that wins: mine over imported over built-in; null when there is none.

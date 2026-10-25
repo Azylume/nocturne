@@ -1380,7 +1380,7 @@ TEST_CASE("panels: context menus on clips act on the whole selection, show short
     }));
     CHECK(entryAt(w.stack.cellMenu(show.base, 1), "Transport/Random Jump").ticked);
     entryAt(menu, "Step/4 bars").run();
-    entryAt(menu, "Add effect/transform").run();
+    entryAt(menu, "Add effect/transform/Default").run();
     REQUIRE(w.until([&] {
         return clip(show.base, 1)->step == 4 && clip(show.base, 0)->effects.size() == 1 &&
                clip(show.base, 1)->effects.size() == 1 && steps() == before + 3;
@@ -1430,7 +1430,7 @@ TEST_CASE("panels: Shift-click on a layer selects its clips; an effect type come
             clickWith(w.stack, {40, row.bounds.getY() + 8}, kShift);
     CHECK(session.selectedClips() == Cells{show.cell(show.base, 0), show.cell(show.base, 1), show.cell(show.base, 2)});
 
-    entryAt(w.stack.cellMenu(show.base, 0), "Add effect/transform").run();
+    entryAt(w.stack.cellMenu(show.base, 0), "Add effect/transform/Default").run();
     REQUIRE(w.until([&] { return clip(2)->effects.size() == 1; }));
     apply(show.client, azl::AddEffect{show.base, std::nullopt, {0, "colorize", {}}, show.columns[0].id});
     REQUIRE(w.until([&] { return clip(0)->effects.size() == 2; }));
@@ -1848,7 +1848,7 @@ struct PresetShow {
 
 } // namespace
 
-TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in Classic, Imported and Mine, with no empty "
+TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in, Imported and Mine, with no empty "
           "headers, open state kept in the settings across a restart, and a search that opens what it finds")
 {
     PresetShow p;
@@ -1890,11 +1890,14 @@ TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in Clas
         clickHeader(tree, Row::Kind::Effect, "classicStripper");
         clickHeader(tree, Row::Kind::Effect, "classicColorize");
         clickHeader(tree, Row::Kind::Effect, "transform");
+        clickHeader(tree, Row::Kind::Effect, "thermal");
         CHECK(labels(tree, Row::Kind::Group, "classicStripper") ==
-              std::vector<std::string>{"Built-in Classic", "Imported", "Mine"});
-        CHECK(labels(tree, Row::Kind::Group, "classicColorize") == std::vector<std::string>{"Built-in Classic"});
-        CHECK(labels(tree, Row::Kind::Group, "transform").empty());
-        CHECK_FALSE(session.groupOpen("effect/transform", false));
+              std::vector<std::string>{"Built-in", "Imported", "Mine"});
+        CHECK(labels(tree, Row::Kind::Group, "classicColorize") == std::vector<std::string>{"Built-in"});
+        CHECK(labels(tree, Row::Kind::Group, "transform") == std::vector<std::string>{"Built-in"});
+        CHECK(presetsIn(tree, "transform", "builtin").size() >= 3);
+        CHECK(labels(tree, Row::Kind::Group, "thermal").empty());
+        CHECK_FALSE(session.groupOpen("effect/thermal", false));
         std::vector<std::string> builtin = presetsIn(tree, "classicStripper", "builtin");
         std::sort(builtin.begin(), builtin.end());
         CHECK(builtin == looks);
@@ -1919,17 +1922,17 @@ TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in Clas
         clickHeader(tree, Row::Kind::Section, "Ours");
         CHECK(labels(tree, Row::Kind::Effect, "transform").empty());
         shoot(window, "presets_browser.png");
-        clickHeader(tree, Row::Kind::Group, "Built-in Classic", "classicStripper");
+        clickHeader(tree, Row::Kind::Group, "Built-in", "classicStripper");
         CHECK(presetsIn(tree, "classicStripper", "builtin").empty());
         CHECK(presetsIn(tree, "classicStripper", "mine") == std::vector<std::string>{"My Bars"});
 
         // A search keeps what matches by preset or effect name and opens it, folded or not.
         window.browser().search().setText("bars");
-        CHECK(labels(tree, Row::Kind::Effect) == std::vector<std::string>{"classicStripper"});
+        CHECK(labels(tree, Row::Kind::Effect) == std::vector<std::string>{"stripper", "classicStripper"});
         CHECK_FALSE(presetsIn(tree, "classicStripper", "builtin").empty());
         for (const std::string& name : presetsIn(tree, "classicStripper", "builtin"))
             CHECK(juce::String(name).containsIgnoreCase("bars"));
-        CHECK(labels(tree, Row::Kind::Group, "classicStripper") == std::vector<std::string>{"Built-in Classic", "Mine"});
+        CHECK(labels(tree, Row::Kind::Group, "classicStripper") == std::vector<std::string>{"Built-in", "Mine"});
         shoot(window, "presets_search.png");
         window.browser().search().setText("Kaleido");
         const std::vector<std::string> kaleido = labels(tree, Row::Kind::Effect);
@@ -1940,7 +1943,11 @@ TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in Clas
               names(session.client().presetEntries(), "classicKaleidoscope", "builtin").size());
         window.browser().search().setText("trails");
         CHECK(labels(tree, Row::Kind::Effect) == std::vector<std::string>{"trails", "classicTrails"});
-        CHECK(labels(tree, Row::Kind::Group).empty());
+        CHECK(labels(tree, Row::Kind::Group, "trails") == std::vector<std::string>{"Built-in"});
+        CHECK(labels(tree, Row::Kind::Group, "classicTrails").empty());
+        window.browser().search().setText("reveal");
+        CHECK(presetsIn(tree, "reveal", "builtin").size() >= 3);
+        shoot(window, "presets_own.png");
         window.browser().search().setText("");
         CHECK(presetsIn(tree, "classicStripper", "builtin").empty());
     }
@@ -1959,14 +1966,15 @@ TEST_CASE("presets: the Effects tab groups presets by effect, then Built-in Clas
     CHECK(labels(tree, Row::Kind::Effect, "transform").empty());
     CHECK(presetsIn(tree, "classicStripper", "builtin").empty());
     CHECK(presetsIn(tree, "classicStripper", "imported") == std::vector<std::string>{"Wide"});
-    CHECK(labels(tree, Row::Kind::Group, "classicColorize") == std::vector<std::string>{"Built-in Classic"});
+    CHECK(labels(tree, Row::Kind::Group, "classicColorize") == std::vector<std::string>{"Built-in"});
 
     // The add-effect menu groups them the same way.
     const azl::ui::Menu menu = azl::ui::addEffectMenu(session, [](const azl::Effect&) {});
     CHECK(azl::ui::menuEntry(menu, "classicStripper/Imported/Wide"));
     CHECK(azl::ui::menuEntry(menu, "classicStripper/Mine/My Bars"));
     CHECK_FALSE(azl::ui::menuEntry(menu, "classicColorize/Mine"));
-    CHECK(azl::ui::menuEntry(menu, "transform")->sub.empty());
+    CHECK(azl::ui::menuEntry(menu, "thermal")->sub.empty());
+    CHECK(azl::ui::menuEntry(menu, "reveal/Built-in/Slow Mosaic"));
 }
 
 TEST_CASE("presets: a preset drags onto a clip, a layer and a selection with its settings, double-click adds it, and "
@@ -2077,7 +2085,7 @@ TEST_CASE("presets: an effect card's Presets box lists its groups, applies a pre
     azl::ui::PresetTree& tree = card.presetPanel()->tree();
     CHECK(labels(tree, Row::Kind::Section).empty());
     CHECK(labels(tree, Row::Kind::Effect).empty());
-    CHECK(labels(tree, Row::Kind::Group) == std::vector<std::string>{"Built-in Classic", "Imported", "Mine"});
+    CHECK(labels(tree, Row::Kind::Group) == std::vector<std::string>{"Built-in", "Imported", "Mine"});
     CHECK(card.presetPanel()->saveAs().isVisible());
     runUntil(harness, [] { return false; }, 0.3);
     shoot(window, "presets_card.png");
@@ -2089,7 +2097,7 @@ TEST_CASE("presets: an effect card's Presets box lists its groups, applies a pre
     card.presetPanel()->search().setText("wide");
     CHECK(presetsIn(tree, "classicStripper", "imported") == std::vector<std::string>{"Wide"});
     CHECK(presetsIn(tree, "classicStripper", "builtin") == std::vector<std::string>{"Wide Bars"});
-    CHECK(labels(tree, Row::Kind::Group) == std::vector<std::string>{"Built-in Classic", "Imported"});
+    CHECK(labels(tree, Row::Kind::Group) == std::vector<std::string>{"Built-in", "Imported"});
     card.presetPanel()->search().setText("");
 
     // Built-in and imported presets cannot be renamed or deleted; Mine can.
@@ -2127,7 +2135,7 @@ TEST_CASE("presets: an effect card's Presets box lists its groups, applies a pre
     azl::ui::menuEntry(again.presetMenu(rowOf(again, Row::Kind::Preset, "My Bars")->second), "Delete")->run();
     session.client().deletePreset("classicStripper", "Third");
     REQUIRE(runUntil(harness, [&] { return names(session.client().presetEntries(), "classicStripper", "mine").empty(); }));
-    CHECK(labels(again, Row::Kind::Group) == std::vector<std::string>{"Built-in Classic", "Imported"});
+    CHECK(labels(again, Row::Kind::Group) == std::vector<std::string>{"Built-in", "Imported"});
     card.closePresets();
     REQUIRE(runUntil(harness, [&] { return card.presetPanel() == nullptr; }));
 }
