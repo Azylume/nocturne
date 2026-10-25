@@ -1,0 +1,29 @@
+# Every commit of a pull request is signed off by its author (git commit -s). Runs on every pull request, docs-only
+# ones too, which ci.yml leaves out.
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Every commit is signed off by its author
+        run: |
+          status=0
+          for c in $(git rev-list --no-merges origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}); do
+            author="$(git log -1 --format='%an <%ae>' "$c")"
+            if ! git log -1 --format=%B "$c" | grep -qxF "Signed-off-by: $author"; then
+              echo "::error::$(git log -1 --format='%h %s' "$c") has no 'Signed-off-by: $author' (git commit -s)"
+              status=1
+            fi
+          done
+          exit $status

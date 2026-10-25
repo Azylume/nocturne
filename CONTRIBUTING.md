@@ -48,15 +48,18 @@ cmake --build build -j8
 ```
 
 The suite renders on the GPU and needs a logged-in session; some tests are GPU timing reports, not pass/fail checks.
-CI runs everything except the real-time and hardware tests listed in `.github/realtime-tests.txt`; run the full
-suite locally before a pull request that touches rendering, outputs, recording or the supervisor.
+CI builds once (arm64, Ninja, ccache) and runs everything except the real-time and hardware tests listed in
+`.github/realtime-tests.txt`, in parallel shards of the test files (`tools/ci-tests.sh engine N 3`, `tools/ci-tests.sh
+ui`; a case that fails is rerun once on its own and reported as flaky when it passes then); docs-only changes skip it.
+Pushes to main and a nightly run also build universal (arm64 + x86_64) and check every binary with `lipo`. Run the
+full suite locally before a pull request that touches rendering, outputs, recording or the supervisor.
 
 ## What a good change looks like
 
 - One topic per pull request, with a test that fails without it. Render changes compare against the goldens in
   `tests/golden/`; regenerate a golden with `NOCTURNE_UPDATE_GOLDEN=1` only when the new picture is the intended one,
   and say why in the pull request.
-- Say in the pull request which Mac you built and tested on: the model and Apple silicon or Intel. CI builds
+- Say in the pull request which Mac you built and tested on: the model and Apple silicon or Intel. CI tests on
   arm64 only, and the reference show machine is a 2018 Intel Mac mini, so Intel results are especially welcome.
 - Follow the code around it: naming, comment density, file layout. `CONTEXT.md` defines the domain words.
 - Architecture decisions go in `docs/adr/`. Read the relevant ADR before changing what it decided.
