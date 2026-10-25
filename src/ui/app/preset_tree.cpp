@@ -38,7 +38,7 @@ PresetRow header(PresetRow::Kind kind, int depth, std::string key, std::string t
 juce::String presetGroupLabel(const std::string& group)
 {
     if (group == "builtin")
-        return "Built-in Classic";
+        return "Built-in";
     if (group == "imported")
         return "Imported";
     return "Mine";

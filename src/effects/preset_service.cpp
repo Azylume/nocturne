@@ -308,7 +308,7 @@ nlohmann::json PresetService::all() const
 nlohmann::json PresetService::groups() const
 {
     nlohmann::json builtin = nlohmann::json::object();
-    for (const ClassicPreset& look : classicBuiltinPresets())
+    for (const ClassicPreset& look : builtinPresets())
         builtin[look.effectType][look.name] = look.params;
     nlohmann::json groups = nlohmann::json::object();
     groups["builtin"] = builtin;

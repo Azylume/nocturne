@@ -29,6 +29,9 @@ std::vector<ClassicPreset> readClassicPresets(const std::vector<std::filesystem:
 // Our own looks for the Classic effects. Every parameter is set; the ones a look does not name take their defaults.
 std::vector<ClassicPreset> classicBuiltinPresets();
 
+// The built-in presets: our own looks for Nocturne's own effects, then the Classic ones. Every parameter is set.
+std::vector<ClassicPreset> builtinPresets();
+
 // The Presets folders of that app on this machine, found by their layout: the user's under ~/Documents first, then
 // the ones installed with the app under /Applications.
 std::vector<std::filesystem::path> classicPresetRoots();

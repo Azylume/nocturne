@@ -155,6 +155,17 @@ std::vector<ClassicPreset> readClassicPresets(const std::vector<fs::path>& roots
     return presets;
 }
 
+namespace {
+
+// Each parameter a look does not name takes its default.
+void fillDefaults(ClassicPreset& look)
+{
+    for (const ParamDef& param : findEffect(look.effectType)->params)
+        look.params.emplace(param.name, param.defaultValue);
+}
+
+} // namespace
+
 std::vector<ClassicPreset> classicBuiltinPresets()
 {
     const std::vector<ClassicPreset> looks = {
@@ -209,10 +220,52 @@ std::vector<ClassicPreset> classicBuiltinPresets()
     for (ClassicPreset look : looks) {
         if (look.effectType == "classicStripper")
             look.params.emplace("blendMode", 1.0);
-        for (const ParamDef& param : findEffect(look.effectType)->params)
-            look.params.emplace(param.name, param.defaultValue);
+        fillDefaults(look);
         out.push_back(std::move(look));
     }
+    return out;
+}
+
+std::vector<ClassicPreset> builtinPresets()
+{
+    const std::vector<ClassicPreset> looks = {
+        {"transform", "Close Up", {{"scale", 1.6}}},
+        {"transform", "Picture in Picture", {{"scale", 0.45}, {"positionX", 0.25}, {"positionY", 0.22}}},
+        {"transform", "Dutch Angle", {{"scale", 1.25}, {"rotation", 12.0}}},
+        {"transform", "Upside Down", {{"rotation", 180.0}}},
+        {"colorize", "Greyscale", {{"saturation", 0.0}}},
+        {"colorize", "Amber Mono", {{"hue", 0.09}, {"saturation", 0.75}}},
+        {"colorize", "Deep Blue", {{"hue", 0.62}, {"saturation", 0.9}, {"brightness", 0.85}}},
+        {"colorize", "Negative", {{"saturation", 0.0}, {"invert", 1.0}}},
+        {"colorize", "Faded Tint", {{"hue", 0.8}, {"saturation", 0.6}, {"alpha", 0.4}}},
+        {"edgeDetection", "Faint Edges", {{"multiplier", 0.1}}},
+        {"edgeDetection", "Sharp Edges", {{"multiplier", 0.6}}},
+        {"edgeDetection", "Neon Edges", {{"multiplier", 1.5}}},
+        {"stripper", "Thin Scan", {{"number", 32.0}, {"width", 0.15}, {"speed", 0.5}}},
+        {"stripper", "Slow Blinds", {{"number", 6.0}, {"width", 0.6}, {"speed", 0.15}, {"feather", 0.3}}},
+        {"stripper", "Diagonal Rain",
+         {{"number", 24.0}, {"direction", 35.0}, {"speed", -1.5}, {"width", 0.3}, {"spread", 0.6}}},
+        {"stripper", "Bright Bars", {{"number", 10.0}, {"width", 0.4}, {"red", 1.0}, {"green", 1.0}, {"blue", 1.0},
+                                     {"add", 1.0}, {"speed", 0.3}}},
+        {"stripper", "Shuffled Slats",
+         {{"number", 16.0}, {"width", 0.7}, {"minWidth", 0.3}, {"spread", 0.4}, {"reshuffle", 4.0}, {"evolve", 1.0}}},
+        {"trails", "Short Tail", {{"feedback", 0.6}}},
+        {"trails", "Echo", {{"feedback", 0.82}}},
+        {"trails", "Long Smear", {{"feedback", 0.96}}},
+        {"reveal", "Slow Mosaic",
+         {{"columns", 16.0}, {"rows", 9.0}, {"gap", 0.02}, {"softness", 0.25}, {"evolve", 1.0}}},
+        {"reveal", "Fast Shutter", {{"columns", 1.0}, {"rows", 12.0}, {"gap", 0.0}, {"softness", 0.0},
+                                    {"reshuffle", 4.0}}},
+        {"reveal", "Big Blocks", {{"columns", 4.0}, {"rows", 3.0}, {"gap", 0.08}, {"softness", 0.1}}},
+        {"reveal", "Black Grid", {{"columns", 12.0}, {"rows", 12.0}, {"gap", 0.15}, {"black", 1.0}}},
+    };
+    std::vector<ClassicPreset> out;
+    for (ClassicPreset look : looks) {
+        fillDefaults(look);
+        out.push_back(std::move(look));
+    }
+    for (ClassicPreset& look : classicBuiltinPresets())
+        out.push_back(std::move(look));
     return out;
 }
 

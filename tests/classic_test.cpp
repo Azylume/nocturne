@@ -3,6 +3,7 @@
 #include "engine/chain_compiler.hpp"
 #include "golden.hpp"
 #include "media/composition_media.hpp"
+#include "net/websocket.hpp"
 #include "test_client.hpp"
 #include "test_paths.hpp"
 
@@ -543,6 +544,60 @@ TEST_CASE("built-in Classic looks set every parameter in range, have unique name
     CHECK(client.next()["presets"]["classicMirror"].size() == looks["classicMirror"]);
     client.send({{"type", "preset"}, {"op", "apply"}, {"effect", effect}, {"name", "Nine Petals"}});
     CHECK(client.next()["params"]["angles"] == doctest::Approx(0.81));
+    CHECK(!fs::exists(root.path / "presets.json"));
+}
+
+TEST_CASE("built-in presets: each of Nocturne's own effects has 3 to 5 looks with every parameter in range, listed by "
+          "nocturne-ctl preset list and applied by preset apply")
+{
+    const std::vector<std::string> own = {"transform", "colorize", "edgeDetection", "stripper", "trails", "reveal"};
+    std::map<std::string, std::set<std::string>> names;
+    for (const azl::ClassicPreset& look : azl::builtinPresets()) {
+        CAPTURE(look.name);
+        const azl::EffectDef* def = azl::findEffect(look.effectType);
+        REQUIRE(def);
+        CHECK(look.params.size() == def->params.size());
+        for (const azl::ParamDef& p : def->params) {
+            REQUIRE(look.params.contains(p.name));
+            CHECK(look.params.at(p.name) >= p.min);
+            CHECK(look.params.at(p.name) <= p.max);
+        }
+        CHECK(names[look.effectType].insert(look.name).second);
+    }
+    for (const std::string& type : own) {
+        CAPTURE(type);
+        CHECK(names[type].size() >= 3);
+        CHECK(names[type].size() <= 5);
+    }
+    CHECK(names["classicStripper"].size() == 6);
+
+    TempDir root;
+    azl::EngineHarness harness({.width = 320, .height = 180}, 60.0, root.path);
+    azl::WebSocketServer server(harness.document(), 0);
+    const auto ctl = [&](const std::string& args) {
+        const std::string command =
+            "'" + ctlPath().string() + "' --port " + std::to_string(server.port()) + " " + args + " 2>&1";
+        std::string out;
+        FILE* pipe = popen(command.c_str(), "r");
+        REQUIRE(pipe);
+        char buffer[512];
+        while (fgets(buffer, sizeof buffer, pipe))
+            out += buffer;
+        CHECK(pclose(pipe) == 0);
+        return out;
+    };
+    for (const std::string& type : own) {
+        CAPTURE(type);
+        const std::string listed = ctl("preset list " + type);
+        for (const std::string& name : names[type])
+            CHECK_MESSAGE(listed.find(name) != std::string::npos, name);
+    }
+    ctl("fx " + std::to_string(harness.document().document().layers[0].id) + " reveal");
+    REQUIRE(harness.document().document().layers[0].effects.size() == 1);
+    const uint64_t reveal = harness.document().document().layers[0].effects[0].id;
+    ctl("preset apply " + std::to_string(reveal) + " 'Big Blocks'");
+    CHECK(harness.document().document().layers[0].effects[0].params.at("columns") == 4.0);
+    CHECK(harness.document().document().layers[0].effects[0].params.at("rows") == 3.0);
     CHECK(!fs::exists(root.path / "presets.json"));
 }
 
