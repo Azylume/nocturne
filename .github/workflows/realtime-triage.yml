@@ -1,0 +1,78 @@
+# Runs the cases .github/realtime-tests.txt keeps out of CI, each several times on its own, on a hosted runner, and
+# writes a table of how often each passed to the run's summary (tools/realtime-triage.sh). By hand, or by a push to a
+# triage/ branch, to sort the list (issue #31).
+name: Realtime triage
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per case
+        default: "10"
+  push:
+    branches: ["triage/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja, ccache and ffmpeg
+        run: brew install ninja ccache ffmpeg
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-arm64-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-main
+            ${{ runner.os }}-arm64-
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: Pack what the tests run
+        run: tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: triage-${{ github.run_id }}
+          path: tests.tgz
+          retention-days: 1
+
+  triage:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: triage-${{ github.run_id }}
+      - name: Unpack the build
+        run: mkdir -p build && tar -C build -xzf tests.tgz
+      - name: Run each listed case
+        run: tools/realtime-triage.sh "${{ github.event.inputs.runs || '10' }}" ${{ matrix.part }} 5 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-logs-${{ matrix.part }}
+          path: build/triage/

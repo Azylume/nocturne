@@ -55,7 +55,13 @@ PY
     return $status
 }
 
-echo "== $name: $(echo "${files:-ui}" | tr ',' '\n' | wc -l | tr -d ' ') file(s)"
+listed() {
+    "$binary" ${filters[@]+"${filters[@]}"} --list-test-cases "$@" 2>/dev/null |
+        sed -n 's/.*passing the current filters: \([0-9]*\).*/\1/p'
+}
+all=$(listed)
+kept=$(listed --test-case-exclude="$skip")
+echo "== $name: $(echo "${files:-ui}" | tr ',' '\n' | wc -l | tr -d ' ') file(s), $kept of $all cases; $((all - kept)) skipped (.github/realtime-tests.txt)"
 if run "$name"; then
     exit 0
 fi
