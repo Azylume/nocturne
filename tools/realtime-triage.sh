@@ -2,7 +2,7 @@
 # Runs the cases .github/realtime-tests.txt keeps out of CI, each RUNS times on its own, to sort them: those that
 # pass every time can come off the list, those that fail every time need what the runner lacks, and the rest are
 # timing-sensitive. Prints one Markdown row per entry: passes, runs, seconds per run, the binary and, for a failure,
-# its first assertion. Entries are split into PARTS by line, this run taking PART.
+# its first assertion. Entries are split into PARTS by line, this run taking PART; TRIAGE_ONLY narrows them.
 # usage: tools/realtime-triage.sh [RUNS [PART PARTS]]   (defaults: 10, 0 1)
 set -uo pipefail
 
@@ -27,7 +27,8 @@ count() {
 echo "| entry | passed | s/run | binary | first failure |"
 echo "|---|---|---|---|---|"
 index=0
-grep -v '^#' "$ROOT/.github/realtime-tests.txt" | grep -v '^$' | while IFS= read -r entry; do
+# TRIAGE_ONLY, an extended regular expression, keeps only the entries it matches.
+grep -v '^#' "$ROOT/.github/realtime-tests.txt" | grep -v '^$' | grep -E "${TRIAGE_ONLY:-.}" | while IFS= read -r entry; do
     index=$((index + 1))
     (( index % PARTS == PART % PARTS )) || continue
     pattern=$(printf '%s' "$entry" | sed 's/,/\\,/g')
