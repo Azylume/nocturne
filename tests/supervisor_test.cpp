@@ -876,6 +876,7 @@ TEST_CASE("three crashes within a minute start safe mode with the reason")
 {
     SupervisedEngine engine;
     INFO(engine.log());
+    INFO(engine.engineLog());
     const auto running = [&] {
         size_t n = 0;
         const std::string log = engine.log();

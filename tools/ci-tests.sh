@@ -38,7 +38,7 @@ esac
 # back out of it; what the engines print on the way goes to the log.
 run() {
     local status=0
-    "$binary" "${filters[@]}" --test-case-exclude="$skip" --reporters=junit --out="$REPORTS/$1.xml" "${@:2}" \
+    "$binary" ${filters[@]+"${filters[@]}"} --test-case-exclude="$skip" --reporters=junit --out="$REPORTS/$1.xml" "${@:2}" \
         > "$REPORTS/$1.log" 2>&1 || status=$?
     /usr/bin/python3 - "$REPORTS/$1.xml" "$1" <<'PY' || status=1
 import sys, xml.etree.ElementTree as ET
