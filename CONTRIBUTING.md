@@ -42,7 +42,7 @@ To never forget it, a `commit-msg` hook can add the line (save as `.git/hooks/co
 
 ```sh
 #!/bin/sh
-git interpret-trailers --if-exists doNothing --trailer \
+git interpret-trailers --if-exists addIfDifferent --trailer \
     "Signed-off-by: $(git config user.name) <$(git config user.email)>" --in-place "$1"
 ```
 
