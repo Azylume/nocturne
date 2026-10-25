@@ -45,6 +45,8 @@ inline const ParamUnit lines{" lines", 1.0, 1};
 inline const ParamUnit linesPerSecond{" lines/s", 1.0, 2};
 inline const ParamUnit cells{" cells", 1.0, 1};
 inline const ParamUnit cellsPerSecond{" cells/s", 1.0, 2};
+inline const ParamUnit rings{" rings", 1.0, 1};
+inline const ParamUnit ringsPerSecond{" rings/s", 1.0, 2};
 inline const ParamUnit perSecond{"/s", 1.0, 2};
 } // namespace units
 
