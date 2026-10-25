@@ -176,6 +176,8 @@ TEST_CASE("midi: notes and pads fire columns and decks, macros follow a fader, a
         midi.receive(cc(20, 127, 10));
         midi.receive(cc(20, 0, 10));
         REQUIRE(runUntil(harness, [&] { return harness.document().document().deck == deck; }));
+        session.client().selectDeck(start.decks[0].id);
+        REQUIRE(runUntil(harness, [&] { return harness.document().document().deck == start.decks[0].id; }));
 
         // A macro knob: learning creates its macro; the fader then drives it once it picks it up at 0.
         const azl::ui::Menu knob = window.mid().macros().knobMenu(0);
