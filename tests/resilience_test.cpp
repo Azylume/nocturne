@@ -16,6 +16,9 @@
 #include <malloc/malloc.h>
 
 #include <algorithm>
+#include <array>
+#include <iomanip>
+#include <sstream>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -796,4 +799,75 @@ TEST_CASE("preloads open and unwanted decoders close spread out; a playing clip 
         CHECK(Clock::now() - closing >= std::chrono::milliseconds(5 * 150));
     }
     REQUIRE_MESSAGE(seen, "undecided twice in a row");
+}
+
+// Not a pass/fail check: under GPU overload with three outputs, the render rate, how long frames queue before the GPU
+// starts them, and each output's new frames and hitches per second, with the frames in flight on the GPU bounded by
+// the ring (9), by 2 and by 1, three rounds each. Issue #17: which bound to make the default.
+TEST_CASE("under GPU overload: frames in flight on the GPU, ring against 2 and 1, reported")
+{
+    registerHeavy();
+    azl::Composition c;
+    c.layers = {{.id = 1, .name = "Card", .effects = {{1, "testHeavy", {{"loops", 50.0}}}}}};
+    for (uint64_t id : {1, 2, 3})
+        c.screens.push_back(
+            {.id = id, .name = "Screen", .display = "proj-" + std::to_string(id), .slices = {{.id = id}}});
+    azl::EngineHarness harness({.width = 1920, .height = 1080}, 60.0, {}, c);
+    Client client(harness.document());
+    harness.step();
+    for (const char* id : {"proj-1", "proj-2", "proj-3"})
+        harness.displays().attach({id, id, 1280, 720, 60.0});
+
+    auto rate = [&](double seconds) {
+        const uint64_t before = harness.stats().rendered;
+        harness.runLive(seconds);
+        return (harness.stats().rendered - before) / seconds;
+    };
+    // The loop count that brings this GPU to about 45 fps: overloaded, with presents still possible.
+    double loops = 50.0;
+    while (rate(0.5) > 50.0 && loops < 5e5) {
+        loops *= 1.5;
+        apply(client, azl::SetEffectParam{1, "loops", loops});
+    }
+    REQUIRE(loops < 5e5);
+
+    struct Round {
+        int bound;
+        double fps, queueMs, maxQueueMs, newFrames, hitches, dropped;
+    };
+    std::vector<Round> rounds;
+    constexpr double kSeconds = 3.0;
+    for (int repeat = 0; repeat < 3; ++repeat)
+        for (int bound : {0, 2, 1}) {
+            harness.engine().setMaxInFlight(bound);
+            harness.runLive(0.5);
+            std::map<std::string, std::array<uint64_t, 3>> before;
+            for (azl::DisplayOutput* output : harness.outputs().all())
+                before[output->display()] = {output->stats().newFrames, output->stats().hitches,
+                                             output->stats().dropped};
+            const uint64_t rendered = harness.stats().rendered, queue = harness.stats().queueMicros;
+            harness.stats().maxQueueMicros = 0;
+            harness.runLive(kSeconds);
+            const uint64_t frames = harness.stats().rendered - rendered;
+            Round round{bound, frames / kSeconds, (harness.stats().queueMicros - queue) / 1e3 / std::max<uint64_t>(frames, 1),
+                        harness.stats().maxQueueMicros / 1e3, 0.0, 0.0, 0.0};
+            for (azl::DisplayOutput* output : harness.outputs().all()) {
+                const auto& b = before[output->display()];
+                round.newFrames += (output->stats().newFrames - b[0]) / kSeconds / 3.0;
+                round.hitches += (output->stats().hitches - b[1]) / kSeconds / 3.0;
+                round.dropped += (output->stats().dropped - b[2]) / kSeconds / 3.0;
+            }
+            rounds.push_back(round);
+        }
+    std::ostringstream report;
+    report << loops << " loops, 3 outputs at 720p60, " << kSeconds << " s rounds; per output averaged:\n";
+    report << "  in flight   render fps   queue ms (max)   new frames/s   hitches/s   dropped/s\n";
+    for (const Round& r : rounds)
+        report << "  " << std::setw(9) << (r.bound ? std::to_string(r.bound) : "ring") << "   " << std::setw(10)
+               << std::fixed << std::setprecision(1) << r.fps << "   " << std::setw(6) << r.queueMs << " (" << std::setw(5)
+               << r.maxQueueMs << ")   " << std::setw(12) << r.newFrames << "   " << std::setw(9) << r.hitches << "   "
+               << std::setw(9) << r.dropped << "\n";
+    MESSAGE(report.str());
+    for (const Round& r : rounds)
+        CHECK(r.fps > 5.0);
 }

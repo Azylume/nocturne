@@ -9,6 +9,7 @@ void applySettings(const MachineSettings& settings, Engine& engine, PreviewServi
     engine.setGuardProfile(settings.profile, settings.protectTransitions);
     engine.setBakeStatic(settings.bakeStatic);
     engine.setRenderScale(int(settings.renderScale));
+    engine.setMaxInFlight(int(settings.framesInFlight));
     engine.setCacheLimits(size_t(settings.frameCacheMB) << 20, size_t(settings.preloadMB) << 20);
     previews.setKeptClips(size_t(settings.clipPreviews));
 }

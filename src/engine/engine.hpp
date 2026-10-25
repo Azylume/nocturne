@@ -47,6 +47,10 @@ struct EngineConfig {
     // Enough for three outputs to hold one frame each while three are kept as the latest and one is being rendered,
     // with one to spare for a frame still on the GPU.
     int frameCount = 9;
+    // How many rendered frames may be on the GPU at once; a frame due while that many are waits for one to finish,
+    // up to a frame's time, and is skipped when none has. Under GPU overload frames queue up ahead of the outputs' presents (ADR 0003), and the
+    // bound lets the presents through. 0: as many as the ring allows.
+    int maxInFlight = 0;
     // Deterministic mode for the harness: a frame waits until every clip's frame for its time is decoded. Live
     // rendering never waits.
     bool waitForMedia = false;
@@ -110,6 +114,12 @@ struct RenderStats {
     // The longest a frame took on the render thread, and from its start until its GPU work completed.
     std::atomic<uint64_t> maxCpuMicros{0};
     std::atomic<uint64_t> maxDoneMicros{0};
+    // From a frame's render start until its GPU work started, summed over finished frames, and the longest: how long
+    // frames queue on the GPU.
+    std::atomic<uint64_t> queueMicros{0};
+    std::atomic<uint64_t> maxQueueMicros{0};
+    // Frames that waited for one to leave the GPU (EngineConfig::maxInFlight).
+    std::atomic<uint64_t> throttled{0};
     // Render-thread container sizes as of the last frame, to see that nothing grows over a long show.
     std::atomic<uint64_t> layerStates{0};
     std::atomic<uint64_t> fading{0};
@@ -270,6 +280,8 @@ public:
     // Any thread. When the GPU time of recent frames nears `seconds`, the most expensive layers draw at half
     // resolution, one more each time it stays near, until the frames fit again with room to spare; 0 turns it off.
     void setFrameBudget(double seconds) { frameBudget_ = seconds; }
+    // EngineConfig::maxInFlight, changed live.
+    void setMaxInFlight(int frames) { maxInFlight_ = frames; }
     // How the frame budget guard trades resolution for frame rate (guardThresholds). Any thread.
     void setGuardProfile(GuardProfile profile, bool protectTransitions)
     {
@@ -634,6 +646,7 @@ private:
     std::mutex inFlightMutex_;
     std::condition_variable inFlightDone_;
     int inFlight_ = 0;
+    std::atomic<int> maxInFlight_{0};
 };
 
 } // namespace azl
