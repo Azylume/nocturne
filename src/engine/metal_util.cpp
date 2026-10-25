@@ -85,6 +85,11 @@ NS::SharedPtr<MTL::RenderPipelineState> makePipeline(MTL::Device* device, MTL::L
     return pipeline;
 }
 
+bool archivesWork(std::string_view deviceName)
+{
+    return deviceName.find("Paravirtual") == std::string_view::npos;
+}
+
 NS::SharedPtr<MTL::RenderPipelineState> makePipeline(MTL::Device* device, const char* source, const char* vertexName,
                                                      const char* fragmentName, MTL::PixelFormat format)
 {

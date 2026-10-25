@@ -2,6 +2,8 @@
 
 #include <Metal/Metal.hpp>
 
+#include <string_view>
+
 namespace azl {
 
 // Fixed-function blending of a premultiplied colour into the target.
@@ -14,6 +16,9 @@ NS::SharedPtr<MTL::RenderPipelineState> makePipeline(MTL::Device* device, MTL::L
                                                      const char* fragmentName, MTL::PixelFormat format,
                                                      Blending blending = Blending::None,
                                                      MTL::BinaryArchive* archive = nullptr, bool* archived = nullptr);
+// Whether the device can keep a pipeline cache. Apple's Paravirtual device (a macOS VM, as on CI runners) traps inside
+// Metal's compiler adding to an archive after an engine on it was killed (issue #29), so there it runs without one.
+bool archivesWork(std::string_view deviceName);
 NS::SharedPtr<MTL::RenderPipelineState> makePipeline(MTL::Device* device, const char* source, const char* vertexName,
                                                      const char* fragmentName, MTL::PixelFormat format);
 

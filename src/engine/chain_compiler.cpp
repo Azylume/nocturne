@@ -177,6 +177,11 @@ void ChainCompiler::openArchive()
 {
     if (cachePath_.empty())
         return;
+    if (!archivesWork(device_->name()->utf8String())) {
+        std::fprintf(stderr, "nocturne: no pipeline cache on %s, which traps adding to one\n",
+                     device_->name()->utf8String());
+        return;
+    }
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     auto desc = NS::TransferPtr(MTL::BinaryArchiveDescriptor::alloc()->init());
     std::error_code ec;
