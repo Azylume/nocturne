@@ -34,7 +34,20 @@ git commit -s -m "Clips keep their speed after a relink"
 ```
 
 The name and email in the line must match the commit author. A pull request with an unsigned commit fails the DCO
-check; fix it with `git rebase --signoff main` and force-push your branch.
+check; fix the last commit with `git commit --amend -s --no-edit`, or every commit of the branch with
+`git rebase --signoff main`, and force-push your branch. This holds for maintainers and for commits an AI or other
+coding tool makes for you: have it commit with `-s`.
+
+To never forget it, a `commit-msg` hook can add the line (save as `.git/hooks/commit-msg` and make it executable):
+
+```sh
+#!/bin/sh
+git interpret-trailers --if-exists doNothing --trailer \
+    "Signed-off-by: $(git config user.name) <$(git config user.email)>" --in-place "$1"
+```
+
+Commits that reached `main` without the line before the check was required are signed off after the fact in
+[DCO-remediation.md](DCO-remediation.md); history is not rewritten.
 
 ## Build and test
 
