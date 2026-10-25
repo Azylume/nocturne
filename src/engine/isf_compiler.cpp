@@ -190,6 +190,8 @@ std::string assembled(const IsfShader& shader, const std::string& glsl)
     out += pictureMacros(shader);
     out += "#define gl_FragColor isf_out\n#define gl_FragCoord isf_FragCoord\n"
            "#define vv_FragNormCoord isf_FragNormCoord\n#define texture2D texture\n#define IMG_SIZE(i) RENDERSIZE\n"
+           // ISF v1 shaders read the picture's rect in pixels; ours is never a part of a larger image.
+           "#define _inputImage_imgRect vec4(vec2(0.0), IMG_SIZE(inputImage))\n"
 
            "#define main isf_main\n#line 1\n";
     out += glsl;
