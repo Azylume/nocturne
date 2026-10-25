@@ -13,7 +13,7 @@ Nocturne plays H.264, HEVC, ProRes and HAP, up to what the Mac decodes. It does 
 `tools/transcode-media.sh` prepares everything a composition uses, once, into one folder:
 
 ```sh
-tools/transcode-media.sh "$HOME/Documents/Resolume Arena/Compositions/Friday.avc" ~/Nocturne/media/friday
+tools/transcode-media.sh "$HOME/Documents/Resolume Arena/Compositions/Friday.avc" ~/Nocturne/shows/friday
 ```
 
 - DXV, other codecs macOS cannot decode, and anything above 1080p become H.264 1080p (`STEM.mp4`) with a keyframe
@@ -29,13 +29,13 @@ tools/transcode-media.sh "$HOME/Documents/Resolume Arena/Compositions/Friday.avc
 ## 2. Import the composition
 
 ```sh
-build/nocturne-import "$HOME/Documents/Resolume Arena/Compositions/Friday.avc" ~/Nocturne/shows/friday.json \
-    --media ~/Nocturne/media/friday \
+build/nocturne-import "$HOME/Documents/Resolume Arena/Compositions/Friday.avc" ~/Nocturne/shows/friday/friday.json \
+    --media ~/Nocturne/shows/friday \
     --mapping "path/to/your Advanced Output preset.xml"
 ```
 
 - `--media DIR` is where step 1 put the media. Each clip is found there by its file name, else by its stem with
-  `.mp4` or `.mov`. DIR also becomes the show's media root, so the show and its folder move together.
+  `.mp4` or `.mov`, and the show names it by its path inside DIR.
 - `--mapping FILE.xml` brings the screens and slices: a preset saved from Resolume's Advanced Output, or its
   `AdvancedOutput.xml`. Without it the show gets one screen with the whole composition.
 - `--displays ID,ID,...` puts the mapping's screens on these displays, in order (`build/nocturne --displays` lists
@@ -45,8 +45,13 @@ build/nocturne-import "$HOME/Documents/Resolume Arena/Compositions/Friday.avc" ~
 - `--keep-clip-chains` keeps an effect chain that every clip of a layer carries alike on each clip. By default it
   runs once on the layer instead, which compiles once instead of once per clip.
 
-Open the result in the UI (**Open** in the transport bar), or start the engine on it:
-`build/nocturne --composition ~/Nocturne/shows/friday.json`.
+**Keep the show file in its media folder**, as above. A show finds its clips relative to its media root, and when it
+is opened the media root is the show file's folder unless you name another. Then open it in the UI (**Open** in the
+transport bar), or start the engine on it: `build/nocturne --composition ~/Nocturne/shows/friday/friday.json`.
+
+With the show file somewhere else, name the media folder each time you open it:
+`build/nocturne --composition FILE --media-root DIR` or `build/nocturne-ctl load FILE DIR`. The UI's **Open**
+always uses the file's folder, so it would load the show with empty cells.
 
 ## 3. Read the report
 
@@ -101,6 +106,6 @@ with `NAME.report.md` beside it.
 ## Before the night
 
 - Play the show through on the machine that will run it, with its real displays: `build/nocturne --composition
-  ~/Nocturne/shows/friday.json`, then the UI's **Map** tab to check each screen against a projector (its **Test
+  ~/Nocturne/shows/friday/friday.json`, then the UI's **Map** tab to check each screen against a projector (its **Test
   card** helps).
 - [`show-machine.md`](show-machine.md) sets up a Mac mini to run on its own for the night.
