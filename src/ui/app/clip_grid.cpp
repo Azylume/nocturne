@@ -1,6 +1,7 @@
 #include "ui/app/clip_grid.hpp"
 
 #include "ui/app/look.hpp"
+#include "ui/app/midi.hpp"
 #include "ui/app/widgets.hpp"
 
 #include <cmath>
@@ -246,18 +247,21 @@ Menu DeckTabs::deckMenu(uint64_t id)
         }
         session_.client().edit(AddDeck{size_t(it - c.decks.begin()) + 1, copy, cells});
     };
-    return {{.label = "Rename", .run = [this, id] { rename(id); }, .tip = "Name the deck (or double-click its tab)"},
-            {.label = "Duplicate", .run = duplicate, .tip = "Add a copy of the deck right after it"},
-            {.label = "Select all clips in this deck",
-             .run = [this] { session_.selectClips(session_.deckClips()); },
-             .enabled = id == session_.composition().deck,
-             .shortcut = juce::String::fromUTF8("\xe2\x8c\x98" "A"),
-             .tip = "Select every clip of the deck in view"},
-            {},
-            {.label = "Delete",
-             .run = [this, id] { session_.client().edit(RemoveDeck{id}); },
-             .enabled = session_.composition().decks.size() > 1,
-             .tip = "Delete the deck with its columns and clips; the last deck stays"}};
+    Menu menu{{.label = "Rename", .run = [this, id] { rename(id); }, .tip = "Name the deck (or double-click its tab)"},
+              {.label = "Duplicate", .run = duplicate, .tip = "Add a copy of the deck right after it"},
+              {.label = "Select all clips in this deck",
+               .run = [this] { session_.selectClips(session_.deckClips()); },
+               .enabled = id == session_.composition().deck,
+               .shortcut = juce::String::fromUTF8("\xe2\x8c\x98" "A"),
+               .tip = "Select every clip of the deck in view"},
+              {}};
+    addMidiEntries(menu, session_, {.kind = MidiTarget::Kind::Deck, .id = id});
+    menu.push_back({});
+    menu.push_back({.label = "Delete",
+                    .run = [this, id] { session_.client().edit(RemoveDeck{id}); },
+                    .enabled = session_.composition().decks.size() > 1,
+                    .tip = "Delete the deck with its columns and clips; the last deck stays"});
+    return menu;
 }
 
 size_t DeckTabs::gapAt(int x) const
@@ -1139,6 +1143,8 @@ Menu LayerStack::cellMenu(uint64_t layer, int slot)
                             .run = [this, hash = *missing.begin()] { relinkToFile(hash); },
                             .tip = "Point the missing media at a file on the engine machine"});
     }
+    menu.push_back({});
+    addMidiEntries(menu, session_, {.kind = MidiTarget::Kind::Clip, .id = layer, .column = *column});
     return menu;
 }
 
@@ -1707,7 +1713,7 @@ Menu ColumnRow::columnMenu(int slot)
         });
         session_.client().endGesture();
     };
-    return {{.label = "Fire column",
+    Menu menu{{.label = "Fire column",
              .run = [this, id] { session_.client().triggerColumn(id); },
              .tip = "Every layer plays its clip in this column (live)"},
             {.label = "Rename", .run = [this, slot] { rename(slot); }, .tip = "Name the column (or double-click it)"},
@@ -1716,6 +1722,9 @@ Menu ColumnRow::columnMenu(int slot)
              .tip = "Select every clip of this column"},
             {},
             {.label = "Clear column", .run = clear, .tip = "Empty every cell of this column"}};
+    menu.push_back({});
+    addMidiEntries(menu, session_, {.kind = MidiTarget::Kind::Column, .id = id});
+    return menu;
 }
 
 void ColumnRow::mouseDoubleClick(const juce::MouseEvent& e)

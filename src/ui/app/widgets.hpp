@@ -44,6 +44,9 @@ using Menu = std::vector<MenuEntry>;
 void showMenu(juce::Component& target, Menu menu);
 // The Add effect submenu: an entry per effect type, or with saved presets a submenu of its default and each preset.
 Menu addEffectMenu(Session& session, const std::function<void(const Effect&)>& add);
+struct MidiTarget;
+// MIDI learn for the target, and Forget MIDI when a control is mapped to it.
+void addMidiEntries(Menu& menu, Session& session, const MidiTarget& target);
 
 // The Sources tab's text clip, beside the generator types.
 inline const std::string kTextSource = "text";

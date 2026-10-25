@@ -2,6 +2,7 @@
 
 #include "document/modulation_edits.hpp"
 #include "ui/app/look.hpp"
+#include "ui/app/midi.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -805,6 +806,22 @@ juce::String MacrosView::tipAt(juce::Point<int> point)
     return {};
 }
 
+Menu MacrosView::knobMenu(int slot)
+{
+    const Macro* macro = macroSlots(session_.composition())[size_t(slot)];
+    Menu menu{{.label = "MIDI learn",
+               .run = [this, slot] { session_.midi().learn({.kind = MidiTarget::Kind::Macro, .id = macroFor(slot)}); },
+               .tip = "Map the next knob or fader moved on a MIDI controller to this macro"}};
+    if (macro)
+        if (const MidiBinding* bound = session_.midi().bindingFor({.kind = MidiTarget::Kind::Macro, .id = macro->id}))
+            menu.push_back({.label = "Forget MIDI (" + bound->source.text() + ")",
+                            .run = [this, id = macro->id] {
+                                session_.midi().forget({.kind = MidiTarget::Kind::Macro, .id = id});
+                            },
+                            .tip = "Remove the MIDI control mapped to this macro"});
+    return menu;
+}
+
 uint64_t MacrosView::macroFor(int slot)
 {
     auto [edits, id] = ensureMacro(session_.composition(), slot);
@@ -823,6 +840,11 @@ void MacrosView::mouseDown(const juce::MouseEvent& e)
     pressed_ = slotAt(e.getPosition());
     dragging_ = false;
     dragValue_.reset();
+    if (pressed_ >= 0 && e.mods.isPopupMenu()) {
+        showMenu(*this, knobMenu(pressed_));
+        pressed_ = -1;
+        return;
+    }
     if (pressed_ < 0)
         return;
     const Macro* macro = macroSlots(session_.composition())[size_t(pressed_)];

@@ -4,6 +4,7 @@
 #include "ui/app/settings_modal.hpp"
 #include "ui/app/show_browser.hpp"
 #include "ui/app/venue_menu.hpp"
+#include "ui/app/widgets.hpp"
 
 #include <functional>
 
@@ -41,6 +42,11 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    // Right-click on Tap or Resync: MIDI learn for it.
+    void mouseDown(const juce::MouseEvent& e) override;
+    Menu midiMenu(bool tap);
+    juce::TextButton& tapButton() { return tap_; }
+    juce::TextButton& resyncButton() { return resync_; }
 
     juce::TextButton& sectionButton(int section) { return *sections_[size_t(section)]; }
     juce::TextButton& nudgeButton(bool faster) { return faster ? faster_ : slower_; }

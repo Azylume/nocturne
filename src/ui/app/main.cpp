@@ -1,5 +1,6 @@
 #include "net/websocket.hpp"
 #include "ui/app/main_component.hpp"
+#include "ui/app/midi.hpp"
 
 namespace {
 
@@ -64,6 +65,8 @@ public:
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
         window_ = std::make_unique<Window>(*session_, !hidden);
+        if (interactive)
+            session_->midi().start();
         if (!hidden && snapshot.isEmpty())
             session_->startVenues(azl::VenueSources::system(
                 azl::loadTailscaleSettings(),

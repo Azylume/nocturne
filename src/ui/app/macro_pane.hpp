@@ -124,6 +124,8 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     juce::String tipAt(juce::Point<int> point) override;
 
+    // A knob's right-click menu: MIDI learn for its macro, created if the slot has none.
+    Menu knobMenu(int slot);
     juce::TextButton& loadButton() { return load_; }
     juce::TextButton& assignButton() { return assign_; }
     juce::TextButton& addModulatorButton() { return addModulator_; }
