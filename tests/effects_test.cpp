@@ -187,8 +187,13 @@ TEST_CASE("a layer whose chain is still compiling shows nothing, never its sourc
     checkRgb(harness.readScreen(), kYellowX, kYellowY, 177, 0, 0);
 }
 
-TEST_CASE("a second start on the same pipeline cache compiles nothing")
+TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravirtual device keeps none")
 {
+    CHECK(azl::archivesWork("Apple M2 Pro"));
+    CHECK(azl::archivesWork("Intel(R) UHD Graphics 630"));
+    CHECK_FALSE(azl::archivesWork("Apple Paravirtual device"));
+    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const bool archives = azl::archivesWork(device->name()->utf8String());
     const std::filesystem::path cache =
         std::filesystem::temp_directory_path() / ("nocturne-pipelines-" + std::to_string(::getpid()) + ".metallib");
     std::filesystem::remove(cache);
@@ -197,6 +202,15 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing")
         azl::EngineHarness harness(config, 60.0, {}, twoLayers());
         harness.step();
         CHECK(harness.compileStats().pipelines > 0);
+    }
+    if (!archives) {
+        // Every start compiles, as with no cache at all.
+        CHECK_FALSE(std::filesystem::exists(cache));
+        azl::EngineHarness harness(config, 60.0, {}, twoLayers());
+        harness.step();
+        CHECK(harness.compileStats().pipelines > 0);
+        CHECK(harness.compileStats().archived == 0);
+        return;
     }
     REQUIRE(std::filesystem::exists(cache));
     {
