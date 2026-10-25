@@ -40,6 +40,7 @@ const std::vector<Look> kEffects{
     {"isfQuadTile", {{"size", 0.8}, {"rotation", 0.1}, {"shiftX", 0.2}}},
     {"isfSolarize", {{"centerBrightness", 0.4}, {"colorize", 0.6}}},
     {"isfTriangleMosaic", {{"cellSize", 0.06}, {"outlineWidth", 1.5}, {"outlineColorRed", 1.0}}},
+    {"isfRadialReplicate", {{"numberOfDivisions", 8.0}, {"preRotateAngle", 30.0}}},
 };
 
 const std::vector<Look> kGenerators{

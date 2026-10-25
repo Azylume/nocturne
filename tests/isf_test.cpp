@@ -130,6 +130,22 @@ TEST_CASE("an ISF shader translates to namespaced Metal and caches it on disk; a
     CHECK(failed.error.find("missingValue") != std::string::npos);
 }
 
+TEST_CASE("an ISF v1 shader's _inputImage_imgRect is the input's rect: origin 0, the size IMG_SIZE gives")
+{
+    const azl::IsfSource v1{"Test Rect", R"(/*{
+    "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]
+}*/
+void main() {
+    vec2 loc = _inputImage_imgRect.zw * isf_FragNormCoord + _inputImage_imgRect.xy;
+    gl_FragColor = IMG_PIXEL(inputImage, _inputImage_imgRect.zw - loc);
+}
+)"};
+    const azl::IsfMetal metal = azl::translateIsf(parsed(v1), {});
+    CHECK_MESSAGE(metal.error.empty(), metal.error);
+    CHECK(azl::isfGlsl(parsed(v1)).find("#define _inputImage_imgRect vec4(vec2(0.0), IMG_SIZE(inputImage))") !=
+          std::string::npos);
+}
+
 TEST_CASE("an ISF shader read from the cache is the same Metal as one translated, for each type it registers as")
 {
     const std::filesystem::path dir = freshDir("isf-cache-same-test");
