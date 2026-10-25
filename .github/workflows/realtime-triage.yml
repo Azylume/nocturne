@@ -9,6 +9,9 @@ on:
       runs:
         description: Runs per case
         default: "10"
+      only:
+        description: Only the entries this extended regular expression matches
+        default: ""
   push:
     branches: ["triage/**"]
 
@@ -69,6 +72,8 @@ jobs:
       - name: Unpack the build
         run: mkdir -p build && tar -C build -xzf tests.tgz
       - name: Run each listed case
+        env:
+          TRIAGE_ONLY: ${{ github.event.inputs.only || vars.TRIAGE_ONLY || '' }}
         run: tools/realtime-triage.sh "${{ github.event.inputs.runs || '10' }}" ${{ matrix.part }} 5 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Logs
         if: always()
