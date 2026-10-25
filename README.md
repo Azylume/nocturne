@@ -94,7 +94,9 @@ names shown. Then run `build/nocturne --windowed --composition examples/first-sh
 - `moon.mp4`: [NASA SVS 14992](https://commons.wikimedia.org/wiki/File:Lunar_Near_and_Far_Side_Phases_(SVS14992_-_Waxing_4K).webm) (public domain).
 - `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4`: [Beeple VJ loops](https://www.beeple-crap.com/vjloops) (CC BY, credit "Beeple").
 
-To run a Mac mini on its own for the night, see [`docs/show-machine.md`](docs/show-machine.md).
+First time? [`docs/getting-started.md`](docs/getting-started.md) walks from a fresh clone to a show playing on
+Autopilot. Coming from Resolume: [`docs/resolume-import.md`](docs/resolume-import.md). To run a Mac mini on its own
+for the night, see [`docs/show-machine.md`](docs/show-machine.md).
 
 **Status:** early. It has played real club nights on a Mac mini, and the interfaces still change. macOS only for now.
 - No downloadable app yet: you build it.
