@@ -672,7 +672,7 @@ void Session::animate(const ParamRef& ref, const std::string& source)
     if (const Modulator* existing = animationOf(*composition_, ref))
         client_.edit(SetModulator{withSource(*existing, *info, source)});
     else
-        client_.edit(AddModulator{std::nullopt, newAnimation(*info, source)});
+        client_.edit(AddModulator{std::nullopt, newAnimation(*composition_, *info, source)});
     setAnimationOpen(ref, true);
 }
 

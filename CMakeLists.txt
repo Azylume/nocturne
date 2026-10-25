@@ -182,6 +182,7 @@ add_library(nocturne_engine STATIC
   src/engine/desk_service.cpp
   src/engine/engine.cpp
   src/engine/envelope.cpp
+  src/engine/auto_range.cpp
   src/engine/frame_guard.cpp
   src/engine/frame_ring.cpp
   src/engine/frame_trace.cpp

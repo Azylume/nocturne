@@ -130,6 +130,10 @@ struct Modulator {
     double release = 0.0;
     double hold = 0.0;
     EnvelopePreset envelope = EnvelopePreset::None;
+    // An audio modulator maps its feature's running range (engine/auto_range.hpp) onto min..max instead of raw 0..1,
+    // so it swings the same at any input level. Off unless set: a show saved without it keeps its raw mapping; the UI
+    // and nocturne-ctl turn it on for the audio modulators they create.
+    bool autoRange = false;
     ModTarget target;
     Combine combine = Combine::Add;
     Curve curve;

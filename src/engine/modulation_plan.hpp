@@ -4,6 +4,7 @@
 #include "document/composition.hpp"
 #include "effects/chain_planner.hpp"
 #include "effects/colour.hpp"
+#include "engine/auto_range.hpp"
 #include "engine/envelope.hpp"
 
 #include <array>
@@ -76,6 +77,13 @@ public:
     std::vector<ParamValue> params() const;
     // Each modulator's source (0..1) before its curve.
     std::vector<MacroValue> modulators() const;
+    // The running range each Auto range modulator maps, by modulator id, as of the last evaluated frame.
+    struct RangeValue {
+        uint64_t id;
+        double low;
+        double high;
+    };
+    std::vector<RangeValue> ranges() const;
     // Each palette slot's colour as the last frame drew it.
     std::vector<Rgba> paletteColours() const;
     // Render thread only: the colour a colour linked to this palette colour shows; none when no palette holds it.
@@ -116,6 +124,7 @@ private:
         double max = 1.0;
         size_t slot = 0;
         std::vector<LfoPoint> points;
+        bool autoRange = false;
     };
     struct Link {
         size_t macro = 0;
@@ -286,6 +295,11 @@ private:
     std::unique_ptr<std::atomic<float>[]> published_;
     std::vector<double> sourceValues_;
     std::vector<EnvelopeState> envelopes_;
+    // One running range per audio feature an Auto range modulator reads, shared by every modulator reading it, and
+    // its low and high as last published.
+    std::array<AutoRange, kAudioFeatures> ranges_{};
+    std::array<bool, kAudioFeatures> ranged_{};
+    std::unique_ptr<std::atomic<float>[]> publishedRanges_;
     // Each beat LFO's periods so far, advanced by the beats between frames; NaN until it starts.
     std::vector<double> cycles_;
     double beat_ = 0.0;

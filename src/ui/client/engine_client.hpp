@@ -94,6 +94,8 @@ void followHistory(History& history, size_t undo, size_t redo, const std::string
 struct ModulationState {
     std::map<uint64_t, double> macros;
     std::map<uint64_t, double> modulators;
+    // The running range (low, high) each Auto range audio modulator maps.
+    std::map<uint64_t, std::pair<double, double>> ranges;
     std::map<std::tuple<uint64_t, uint64_t, std::string>, double> params;
     // Modulators whose target parameter does not exist.
     std::vector<uint64_t> dangling;

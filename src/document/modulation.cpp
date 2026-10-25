@@ -392,6 +392,30 @@ std::optional<size_t> paletteHueSlot(std::string_view param)
     return slot >= 1 ? std::optional(slot - 1) : std::nullopt;
 }
 
+std::optional<std::pair<double, double>> animationRange(const Composition& composition, const ParamRef& param)
+{
+    struct Default {
+        std::string_view type, param;
+        double from, to;
+    };
+    static constexpr Default kDefaults[] = {{"reveal", "progress", 0.35, 0.65},
+                                            {"stripper", "width", 0.3, 0.7},
+                                            {"colorize", "brightness", 0.5, 1.0},
+                                            {"transform", "scale", 0.9, 1.15},
+                                            {"", "opacity", 0.4, 1.0}};
+    std::string_view type;
+    if (param.effect) {
+        const Effect* effect = effectById(composition, param.effect);
+        if (!effect)
+            return std::nullopt;
+        type = effect->type;
+    }
+    for (const Default& d : kDefaults)
+        if (d.type == type && d.param == param.param)
+            return std::pair(d.from, d.to);
+    return std::nullopt;
+}
+
 std::string paletteHueParam(size_t slot)
 {
     return std::string(kPaletteHue) + std::to_string(slot + 1);
@@ -771,6 +795,8 @@ void to_json(nlohmann::json& j, const Modulator& m)
         j["hold"] = m.hold;
     if (m.envelope != EnvelopePreset::None)
         j["envelope"] = kEnvelopeNames[size_t(m.envelope)];
+    if (m.autoRange)
+        j["autoRange"] = true;
     if (!m.points.empty())
         j["points"] = m.points;
 }
@@ -792,6 +818,7 @@ void from_json(const nlohmann::json& j, Modulator& m)
     m.attack = j.value("attack", times.attack);
     m.hold = j.value("hold", times.hold);
     m.release = j.value("release", times.release);
+    m.autoRange = j.value("autoRange", false);
     const nlohmann::json& target = j.at("target");
     if (target.contains("macro"))
         m.target.macro = target.at("macro").get<uint64_t>();

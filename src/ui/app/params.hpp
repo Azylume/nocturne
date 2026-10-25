@@ -79,6 +79,9 @@ std::string animationSource(const Modulator& modulator);
 // anything else an eighth of its range either way; an audio source rises from the value to where the LFO's upper end
 // would be.
 Modulator newAnimation(const ParamInfo& info, const std::string& source);
+// The same with Auto range on for an audio source, sweeping the parameter's usual range (animationRange) where it has
+// one: what Animate makes.
+Modulator newAnimation(const Composition& composition, const ParamInfo& info, const std::string& source);
 Modulator withSource(const Modulator& modulator, const ParamInfo& info, const std::string& source);
 
 // A range of a parameter as fractions of its span, from the base value plus a source's min..max offsets.
