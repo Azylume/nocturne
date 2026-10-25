@@ -50,3 +50,7 @@
 *map arrangement: a hidden screen's output keeps presenting*
 *an effect edit on the selected clip recompiles its preview off the render thread*
 *clip previews turn on and off live*
+# On the hosted runner's Apple Paravirtual device, an engine restarted by the supervisor into the pipeline cache its
+# killed predecessor left open dies inside Metal's compiler (SIGTRAP, "Unbalanced call to dispatch_group_leave()"
+# under -[MTLCompiler newRenderPipelineStateWithDescriptorInternal:...destinationBinaryArchive:]). Real GPUs are fine.
+*three crashes within a minute start safe mode*
