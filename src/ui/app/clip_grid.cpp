@@ -352,6 +352,11 @@ void LayerStack::sessionChanged(int changes)
 {
     if (!(changes & ~(Session::Modulation | Session::Audio | Session::Previews)))
         return;
+    if (const int active = activeSlot(); active != activeSlot_) {
+        activeSlot_ = active;
+        if (onActiveSlot && active >= 0)
+            onActiveSlot(active);
+    }
     if (!(changes & ~(Session::Clock | Session::Modulation | Session::Audio | Session::Previews)))
         return repaintLiveCells();
     if (changes & Session::Document) {
@@ -402,15 +407,16 @@ int LayerStack::layout(int width)
     width_ = width;
     const Metrics& m = metrics();
     const int n = slots();
-    tileWidth_ = std::max(16, (width - m.layerControlWidth - m.gap * (n + 2)) / n);
+    tileWidth_ = std::max(m.cellWidth, (width - m.layerControlWidth - m.gap * (n + 2)) / n);
+    contentWidth_ = std::max(width, m.layerControlWidth + m.gap * (n + 2) + tileWidth_ * n);
     rowHeight_ = std::max(kControlHeight, tileWidth_ * 9 / 16 + m.labelHeight);
     int y = 0;
     for (Row& row : rows_) {
         const int height = row.group ? kControlHeight : rowHeight_;
-        row.bounds = {0, y, width, height};
+        row.bounds = {0, y, contentWidth_, height};
         y += height + 3;
     }
-    addLayer_ = {m.gap, y, m.layerControlWidth, 20};
+    addLayer_ = {m.gap + scrollX_, y, m.layerControlWidth, 20};
     return y + 24;
 }
 
@@ -421,6 +427,30 @@ juce::Rectangle<int> LayerStack::columnArea(int slot) const
     return {x, 0, tileWidth_, 0};
 }
 
+int LayerStack::activeSlot() const
+{
+    const Deck* deck = session_.shownDeck();
+    if (!deck)
+        return -1;
+    const uint64_t stepped = session_.composition().columnAutopilot.mode != AutopilotMode::Off
+                                 ? session_.client().clock().columns.column
+                                 : 0;
+    const uint64_t active = stepped ? stepped : session_.composition().column;
+    for (size_t slot = 0; slot < deck->columns.size(); ++slot)
+        if (deck->columns[slot].id == active)
+            return int(slot);
+    return -1;
+}
+
+void LayerStack::setScrollX(int x)
+{
+    if (x == scrollX_)
+        return;
+    scrollX_ = x;
+    addLayer_.setX(metrics().gap + x);
+    repaint();
+}
+
 juce::Rectangle<int> LayerStack::cellBounds(const Row& row, int slot) const
 {
     const auto column = columnArea(slot);
@@ -429,7 +459,7 @@ juce::Rectangle<int> LayerStack::cellBounds(const Row& row, int slot) const
 
 juce::Rectangle<int> LayerStack::controlBounds(const Row& row) const
 {
-    return {metrics().gap, row.bounds.getY(), metrics().layerControlWidth, kControlHeight};
+    return {metrics().gap + scrollX_, row.bounds.getY(), metrics().layerControlWidth, kControlHeight};
 }
 
 const LayerStack::Row* LayerStack::findRow(uint64_t layer) const
@@ -501,7 +531,6 @@ void LayerStack::paint(juce::Graphics& g)
     for (const Row& row : rows_) {
         if (!g.clipRegionIntersects(row.bounds))
             continue;
-        paintControl(g, row);
         if (row.group) {
             const auto strip = juce::Rectangle<int>(columnArea(0).getX(), row.bounds.getY(),
                                                     columnArea(slots() - 1).getRight() - columnArea(0).getX(),
@@ -513,6 +542,14 @@ void LayerStack::paint(juce::Graphics& g)
             if (g.clipRegionIntersects(cellBounds(row, slot)))
                 paintCell(g, row, slot);
     }
+    // The controls stay pinned at the left while the cells scroll under them.
+    if (scrollX_ > 0) {
+        g.setColour(p.background);
+        g.fillRect(scrollX_, 0, metrics().gap * 2 + metrics().layerControlWidth, getHeight());
+    }
+    for (const Row& row : rows_)
+        if (g.clipRegionIntersects(row.bounds))
+            paintControl(g, row);
     fillWithText(g, addLayer_, p.header, p.muted, "+ Layer");
 }
 
@@ -1571,8 +1608,13 @@ void ColumnRow::paint(juce::Graphics& g)
                                  ? session_.client().clock().columns.column
                                  : 0;
     const uint64_t active = stepped ? stepped : session_.composition().column;
+    // The column headers scroll with the cells, under the pinned Composition header.
+    g.saveState();
+    g.reduceClipRegion(composition.getRight(), 0, getWidth() - composition.getRight(), getHeight());
     for (int slot = 0; slot < stack_.slots(); ++slot) {
-        const auto area = stack_.columnArea(slot).withHeight(getHeight());
+        const auto area = headerArea(slot);
+        if (!area.intersects(getLocalBounds()))
+            continue;
         if (!deck || slot >= int(deck->columns.size())) {
             fillWithText(g, area, juce::Colour(0xff1e1e1e), juce::Colour(0xff555555), juce::String(slot + 1),
                          juce::Justification::centred);
@@ -1584,6 +1626,23 @@ void ColumnRow::paint(juce::Graphics& g)
                      column.name.empty() ? juce::String(slot + 1) : utf8(column.name),
                      juce::Justification::centred, 2);
     }
+    g.restoreState();
+}
+
+juce::Rectangle<int> ColumnRow::headerArea(int slot) const
+{
+    return stack_.columnArea(slot).withHeight(getHeight()).translated(-stack_.scrollX(), 0);
+}
+
+int ColumnRow::slotAt(juce::Point<int> point) const
+{
+    if (point.x < metrics().gap + metrics().layerControlWidth)
+        return -1;
+    const Deck* deck = session_.shownDeck();
+    for (int slot = 0; deck && slot < int(deck->columns.size()); ++slot)
+        if (headerArea(slot).contains(point))
+            return slot;
+    return -1;
 }
 
 bool ColumnRow::isInterestedInDragSource(const SourceDetails& details)
@@ -1628,7 +1687,7 @@ void ColumnRow::rename(int slot)
     if (!deck || slot < 0 || slot >= int(deck->columns.size()))
         return;
     const Column& column = deck->columns[size_t(slot)];
-    editInline(editor_, *this, stack_.columnArea(slot).withHeight(getHeight()), utf8(column.name),
+    editInline(editor_, *this, headerArea(slot), utf8(column.name),
                [this, id = column.id](const juce::String& name) {
                    session_.client().edit(Rename{"column", id, name.toStdString()});
                });
@@ -1659,25 +1718,16 @@ Menu ColumnRow::columnMenu(int slot)
             {.label = "Clear column", .run = clear, .tip = "Empty every cell of this column"}};
 }
 
-static int columnSlotAt(const Session& session, const LayerStack& stack, juce::Point<int> point, int height)
-{
-    const Deck* deck = session.shownDeck();
-    for (int slot = 0; deck && slot < int(deck->columns.size()); ++slot)
-        if (stack.columnArea(slot).withHeight(height).contains(point))
-            return slot;
-    return -1;
-}
-
 void ColumnRow::mouseDoubleClick(const juce::MouseEvent& e)
 {
-    rename(columnSlotAt(session_, stack_, e.getPosition(), getHeight()));
+    rename(slotAt(e.getPosition()));
 }
 
 juce::String ColumnRow::tipAt(juce::Point<int> point)
 {
     if (point.x < metrics().gap + metrics().layerControlWidth)
         return "The composition: click to edit its effects; drop an effect here to add it";
-    if (columnSlotAt(session_, stack_, point, getHeight()) >= 0)
+    if (slotAt(point) >= 0)
         return "Trigger the column: every layer's clip in it; double-click renames, right-click for more";
     return {};
 }
@@ -1685,7 +1735,7 @@ juce::String ColumnRow::tipAt(juce::Point<int> point)
 void ColumnRow::mouseUp(const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu()) {
-        if (const int slot = columnSlotAt(session_, stack_, e.getPosition(), getHeight()); slot >= 0)
+        if (const int slot = slotAt(e.getPosition()); slot >= 0)
             showMenu(*this, columnMenu(slot));
         return;
     }
@@ -1693,10 +1743,8 @@ void ColumnRow::mouseUp(const juce::MouseEvent& e)
         session_.selectComposition();
         return;
     }
-    const Deck* deck = session_.shownDeck();
-    for (int slot = 0; deck && slot < int(deck->columns.size()); ++slot)
-        if (stack_.columnArea(slot).withHeight(getHeight()).contains(e.getPosition()))
-            return session_.client().triggerColumn(deck->columns[size_t(slot)].id);
+    if (const int slot = slotAt(e.getPosition()); slot >= 0)
+        session_.client().triggerColumn(session_.shownDeck()->columns[size_t(slot)].id);
 }
 
 ClipGrid::ClipGrid(Session& session) : decks_(session), stack_(session), columns_(session, stack_)
@@ -1704,8 +1752,39 @@ ClipGrid::ClipGrid(Session& session) : decks_(session), stack_(session), columns
     addAndMakeVisible(decks_);
     addAndMakeVisible(columns_);
     viewport_.setViewedComponent(&stack_, false);
-    viewport_.setScrollBarsShown(true, false);
+    viewport_.setScrollBarsShown(true, true);
+    viewport_.onScrolled = [this](int x) {
+        if (!showing_ && x != stack_.scrollX())
+            lastUserScroll_ = juce::Time::getMillisecondCounter();
+        stack_.setScrollX(x);
+        columns_.repaint();
+    };
+    stack_.onActiveSlot = [this](int slot) {
+        if (!userScrolling())
+            showSlot(slot);
+    };
     addAndMakeVisible(viewport_);
+}
+
+bool ClipGrid::userScrolling() const
+{
+    return juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown() ||
+           juce::Time::getMillisecondCounter() - lastUserScroll_ < kUserScrollHoldMs;
+}
+
+void ClipGrid::showSlot(int slot)
+{
+    if (slot < 0 || slot >= stack_.slots())
+        return;
+    const juce::ScopedValueSetter<bool> showing(showing_, true);
+    const auto column = stack_.columnArea(slot);
+    const int left = viewport_.getViewPositionX();
+    const int width = viewport_.getViewWidth();
+    const int pinned = metrics().gap * 2 + metrics().layerControlWidth;
+    if (column.getX() - pinned < left)
+        viewport_.setViewPosition(column.getX() - pinned, viewport_.getViewPositionY());
+    else if (column.getRight() + metrics().gap > left + width)
+        viewport_.setViewPosition(column.getRight() + metrics().gap - width, viewport_.getViewPositionY());
 }
 
 void ClipGrid::paint(juce::Graphics& g)
@@ -1723,7 +1802,9 @@ void ClipGrid::resized()
     area.removeFromTop(m.gap);
     viewport_.setBounds(area);
     const int width = area.getWidth() - viewport_.getScrollBarThickness();
-    stack_.setSize(width, stack_.layout(width));
+    const int height = stack_.layout(width);
+    stack_.setSize(stack_.contentWidth(), height);
+    stack_.setScrollX(viewport_.getViewPositionX());
     columns_.repaint();
 }
 

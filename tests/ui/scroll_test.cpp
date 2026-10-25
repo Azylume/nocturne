@@ -1,6 +1,7 @@
 #include "net/websocket.hpp"
 #include "test_client.hpp"
 #include "ui/app/bottom_panes.hpp"
+#include "ui/app/main_component.hpp"
 #include "ui/app/map_view.hpp"
 
 #include <functional>
@@ -172,4 +173,56 @@ TEST_CASE("scroll: the Map's tree of screens scrolls")
     const auto area = map.treeArea();
     checkScrolls(map, area.getCentre(), [&] { return map.treeRowAreas().front().getY(); },
                  [&] { return area.contains(map.treeRowAreas().back()); });
+}
+
+TEST_CASE("scroll: a deck of many columns keeps its cell size and scrolls sideways under pinned layer controls")
+{
+    Engine e;
+    uint64_t deck = e.harness.document().document().decks[0].id;
+    for (int i = 0; i < 44; ++i)
+        apply(e.client, azl::AddColumn{deck, std::nullopt, {0, "Col " + std::to_string(i + 5)}, {}});
+    const std::vector<azl::Column> columns = e.harness.document().document().decks[0].columns;
+    REQUIRE(columns.size() == 48);
+    azl::ui::Session session("127.0.0.1", e.server.port());
+    azl::ui::MainComponent window(session);
+    window.setSize(1100, 700);
+    REQUIRE(runUntil(e.harness, [&] { return session.client().synced() && window.grid().stack().slots() == 49; }));
+    azl::ui::ClipGrid& grid = window.grid();
+    azl::ui::LayerStack& stack = grid.stack();
+    const int cell = azl::ui::Look::metrics().cellWidth;
+    const uint64_t layer = stack.rows().front().layer;
+
+    // The cells are the fixed width at this window and at a narrower one, and the stack is wider than the viewport.
+    CHECK(stack.columnArea(0).getWidth() == cell);
+    CHECK(stack.getWidth() > grid.viewport().getViewWidth());
+    CHECK(stack.columnArea(47).getRight() <= stack.getWidth());
+    window.setSize(700, 700);
+    CHECK(stack.columnArea(0).getWidth() == cell);
+    CHECK(grid.viewport().getHorizontalScrollBar().isVisible());
+
+    // Scrolled sideways, the layer controls and the Composition header stay where they were; the column headers move.
+    const auto controlBefore = stack.controlArea(layer);
+    grid.viewport().setViewPosition(600, 0);
+    CHECK(stack.scrollX() == 600);
+    CHECK(stack.controlArea(layer).getY() == controlBefore.getY());
+    CHECK(stack.controlArea(layer).getX() - 600 == controlBefore.getX());
+    CHECK(stack.controlArea(layer).getRight() - 600 == controlBefore.getRight());
+
+    // A column triggered by the engine, far to the right, is scrolled into view; one in view moves nothing.
+    grid.viewport().setViewPosition(0, 0);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(2100);
+    e.client.send({{"type", "trigger"}, {"op", "column"}, {"column", columns[40].id}});
+    REQUIRE(runUntil(e.harness, [&] { return stack.activeSlot() == 40 && stack.scrollX() > 0; }));
+    const int at = grid.viewport().getViewPositionX();
+    CHECK(stack.columnArea(40).getRight() <= at + grid.viewport().getViewWidth());
+    CHECK(stack.columnArea(40).getX() >= stack.controlArea(layer).getRight());
+    e.client.send({{"type", "trigger"}, {"op", "column"}, {"column", columns[39].id}});
+    REQUIRE(runUntil(e.harness, [&] { return stack.activeSlot() == 39; }));
+    CHECK(grid.viewport().getViewPositionX() == at);
+
+    // Not while the user has just scrolled.
+    grid.viewport().setViewPosition(0, 0);
+    e.client.send({{"type", "trigger"}, {"op", "column"}, {"column", columns[45].id}});
+    REQUIRE(runUntil(e.harness, [&] { return stack.activeSlot() == 45; }));
+    CHECK(grid.viewport().getViewPositionX() == 0);
 }

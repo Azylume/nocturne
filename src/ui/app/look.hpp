@@ -51,6 +51,8 @@ struct Metrics {
     int layerControlWidth = 140;
     int chevronBox = 22;
     int columns = 12;
+    // A clip cell is never narrower: with more columns than fit, the grid scrolls sideways.
+    int cellWidth = 86;
     int gap = 2;
     float fontSize = 12.0f;
     float smallFontSize = 11.0f;

@@ -2,6 +2,7 @@
 
 #include "ui/app/widgets.hpp"
 
+#include <functional>
 #include <optional>
 #include <set>
 #include <vector>
@@ -53,10 +54,19 @@ public:
     explicit LayerStack(Session& session);
     ~LayerStack() override;
 
-    // Lays out for this width; returns the height the rows need.
+    // Lays out for this width; returns the height the rows need. The cells fill the width, but never narrower than
+    // Metrics::cellWidth: then contentWidth() is wider and the grid scrolls sideways.
     int layout(int width);
+    int contentWidth() const { return contentWidth_; }
     int slots() const;
     juce::Rectangle<int> columnArea(int slot) const;
+    // The slot of the column playing: stepped by the column Autopilot, else the composition's; -1 when none.
+    int activeSlot() const;
+    // How far the grid is scrolled sideways: the layer controls and "+ Layer" stay pinned there.
+    void setScrollX(int x);
+    int scrollX() const { return scrollX_; }
+    // Called with the slot when the playing column changes.
+    std::function<void(int)> onActiveSlot;
 
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -135,8 +145,11 @@ private:
     std::unique_ptr<juce::FileChooser> chooser_;
     std::vector<Row> rows_;
     int width_ = 0;
+    int contentWidth_ = 0;
     int tileWidth_ = 0;
     int rowHeight_ = 0;
+    int scrollX_ = 0;
+    int activeSlot_ = -1;
     juce::Rectangle<int> addLayer_;
     Hit pressed_;
     bool dragging_ = false;
@@ -169,6 +182,9 @@ public:
 private:
     void sessionChanged(int) override { repaint(); }
     void rename(int slot);
+    // The column's header, in this row: the stack's column area scrolled with it.
+    juce::Rectangle<int> headerArea(int slot) const;
+    int slotAt(juce::Point<int> point) const;
 
     Session& session_;
     LayerStack& stack_;
@@ -176,6 +192,9 @@ private:
     std::unique_ptr<juce::TextEditor> editor_;
 };
 
+// The deck tabs, the column row and the layer stack in a viewport that scrolls both ways; the column row follows it
+// sideways. A column that starts playing by itself (the column Autopilot, a Cue) is scrolled into view, unless the
+// user is dragging in the grid or on a scrollbar.
 class ClipGrid : public juce::Component {
 public:
     explicit ClipGrid(Session& session);
@@ -184,12 +203,25 @@ public:
     LayerStack& stack() { return stack_; }
     ColumnRow& columns() { return columns_; }
     DeckTabs& decks() { return decks_; }
+    juce::Viewport& viewport() { return viewport_; }
+    // Scrolls so the column's cells are in view.
+    void showSlot(int slot);
 
 private:
+    struct GridViewport : juce::Viewport {
+        std::function<void(int)> onScrolled;
+        void visibleAreaChanged(const juce::Rectangle<int>& area) override { onScrolled(area.getX()); }
+    };
+    // A mouse button is down, or the user scrolled sideways within the last two seconds.
+    bool userScrolling() const;
+    static constexpr uint32_t kUserScrollHoldMs = 2000;
+
     DeckTabs decks_;
     LayerStack stack_;
     ColumnRow columns_;
-    juce::Viewport viewport_;
+    GridViewport viewport_;
+    bool showing_ = false;
+    uint32_t lastUserScroll_ = 0;
 };
 
 } // namespace azl::ui
