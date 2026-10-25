@@ -244,6 +244,11 @@ juce::StringArray MidiControl::openInputs() const
 
 void MidiControl::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)
 {
+    receive(message);
+}
+
+void MidiControl::receive(const juce::MidiMessage& message)
+{
     {
         std::lock_guard lock(queueMutex_);
         // A controller sending faster than the UI drains keeps its newest messages.
@@ -261,14 +266,20 @@ void MidiControl::handleAsyncUpdate()
         std::lock_guard lock(queueMutex_);
         messages.swap(queue_);
     }
-    // Of a burst of one continuous control only its last value counts; notes all do, in order.
+    // Of a burst of a control that moves a parameter or a macro only its last value counts. Every other message is
+    // handled in order: a pad's press and release, a key, and anything while learning.
+    const auto coalesced = [this](const MidiSource& source) {
+        return !learning_ && source.kind != MidiSource::Kind::Note &&
+               std::any_of(bindings_.begin(), bindings_.end(),
+                           [&](const MidiBinding& b) { return b.source == source && b.target.continuous(); });
+    };
     std::map<MidiSource, size_t> lastOf;
     for (size_t i = 0; i < messages.size(); ++i)
-        if (auto s = MidiSource::of(messages[i]); s && s->first.kind != MidiSource::Kind::Note)
+        if (auto s = MidiSource::of(messages[i]); s && coalesced(s->first))
             lastOf[s->first] = i;
     for (size_t i = 0; i < messages.size(); ++i) {
         auto s = MidiSource::of(messages[i]);
-        if (s && s->first.kind != MidiSource::Kind::Note && lastOf[s->first] != i)
+        if (s && lastOf.contains(s->first) && lastOf[s->first] != i)
             continue;
         handle(messages[i]);
     }

@@ -91,6 +91,8 @@ public:
 
     // A message as if from an input, on the message thread: what every input's messages go through.
     void handle(const juce::MidiMessage& message);
+    // A message as an input delivers it, from any thread: queued, and handled with the rest of its burst.
+    void receive(const juce::MidiMessage& message);
 
 private:
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
