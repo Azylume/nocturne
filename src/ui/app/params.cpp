@@ -254,6 +254,9 @@ Modulator withSource(const Modulator& modulator, const ParamInfo& info, const st
         m.feature = source;
     }
     m.name = "Animate " + info.label;
+    // A beat LFO switched to an audio source learns its feature's range, as a new audio animation does.
+    if (modulator.source == ModulatorSource::Lfo && m.source == ModulatorSource::Audio)
+        m.autoRange = true;
     return m;
 }
 
@@ -271,6 +274,20 @@ Modulator newAnimation(const ParamInfo& info, const std::string& source)
     const double to = whole ? info.max : info.wraps ? info.value + swing : info.fit(info.value + swing);
     m.min = source == "beat" ? from - info.value : 0.0;
     m.max = to - info.value;
+    return m;
+}
+
+Modulator newAnimation(const Composition& composition, const ParamInfo& info, const std::string& source)
+{
+    Modulator m = newAnimation(info, source);
+    if (m.source != ModulatorSource::Audio)
+        return m;
+    // An audio animation learns its feature's range, and sweeps the parameter's usual range where it has one.
+    m.autoRange = true;
+    if (const auto range = animationRange(composition, info.ref)) {
+        m.min = info.fit(range->first) - info.value;
+        m.max = info.fit(range->second) - info.value;
+    }
     return m;
 }
 

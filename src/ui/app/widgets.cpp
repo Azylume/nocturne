@@ -959,8 +959,17 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
     for (int beats : kBeats)
         beats_.addItem(juce::String(beats) + (beats == 1 ? " beat" : " beats"), beats);
     for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &stop_, &envelope_,
-                                                                      &from_, &to_, &lfo_})
+                                                                      &from_, &to_, &lfo_, &autoRange_, &learned_})
         addAndMakeVisible(c);
+    autoRange_.setTooltip("Map the range the feature has had over the last 30 s of music, not raw 0..1, so it swings "
+                          "the same at any input level");
+    autoRange_.onClick = [this] {
+        const bool on = autoRange_.getToggleState();
+        send([on](Modulator& m, const ParamInfo&) { m.autoRange = on; });
+    };
+    learned_.setTooltip("The range of the feature Auto range has learned, which it maps onto from..to");
+    learned_.setFont(Look::smallFont());
+    learned_.setJustificationType(juce::Justification::centredRight);
     stop_.setTooltip("Stop animating");
     source_.setTooltip("What animates it: an LFO on the beat, or the kick, snare, hat, bass or the Low, Mid or High band of the audio input");
     shape_.setTooltip("The LFO's wave shape");
@@ -1030,6 +1039,16 @@ void AnimateBox::refresh()
     const Ends ends = endsOf(*info, m->min, m->max);
     from_.setValue(info->fit(ends.from) * scale_);
     to_.setValue(info->fit(ends.to) * scale_);
+    autoRange_.setToggleState(m->autoRange, juce::dontSendNotification);
+    juce::String learned;
+    if (m->autoRange) {
+        const auto& ranges = session_.modulation().ranges;
+        const auto range = ranges.find(m->id);
+        learned = range == ranges.end() ? juce::String("learning")
+                                        : "learned " + juce::String(range->second.first * 100.0, 0) + "-" +
+                                              juce::String(range->second.second * 100.0, 0) + " %";
+    }
+    learned_.setText(learned, juce::dontSendNotification);
     const bool beat = m->source == ModulatorSource::Lfo;
     if (beat != beat_) {
         beat_ = beat;
@@ -1040,7 +1059,9 @@ void AnimateBox::refresh()
 int AnimateBox::preferredHeight() const
 {
     const Modulator* m = animationOf(session_.composition(), ref_);
-    return kHeight + (m && m->source == ModulatorSource::Lfo ? LfoEditor::kHeight + 3 : 0);
+    if (!m)
+        return kHeight;
+    return kHeight + (m->source == ModulatorSource::Lfo ? LfoEditor::kHeight + 3 : kAudioLine);
 }
 
 void AnimateBox::resized()
@@ -1068,6 +1089,13 @@ void AnimateBox::resized()
     from_.setBounds(third.removeFromLeft(third.getWidth() / 2 - 8));
     third.removeFromLeft(16);
     to_.setBounds(third);
+    autoRange_.setVisible(!beat_);
+    learned_.setVisible(!beat_);
+    if (!beat_) {
+        auto fourth = line();
+        autoRange_.setBounds(fourth.removeFromLeft(fourth.getWidth() / 2));
+        learned_.setBounds(fourth);
+    }
     lfo_.setVisible(beat_);
     lfo_.setBounds(area.removeFromTop(LfoEditor::kHeight));
 }
@@ -1161,6 +1189,9 @@ void ParamRow::refresh()
 void ParamRow::refreshDriven()
 {
     const auto driven = session_.drivenValue(ref_);
+    // The learned range an open Auto range box shows moves on its own, slower than the driven value.
+    if (animate_ && animate_->autoRangeButton().getToggleState())
+        animate_->refresh();
     if (driven == shownDriven_)
         return;
     shownDriven_ = driven;

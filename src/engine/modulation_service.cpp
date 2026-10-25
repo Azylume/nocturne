@@ -240,6 +240,10 @@ Message ModulationService::state() const
     nlohmann::json modulators = nlohmann::json::array();
     for (const auto& [id, value] : plan->modulators())
         modulators.push_back({{"id", id}, {"value", value}});
+    for (const auto& [id, low, high] : plan->ranges())
+        for (nlohmann::json& m : modulators)
+            if (m["id"] == id)
+                m["range"] = {low, high};
     nlohmann::json params = nlohmann::json::array();
     for (const auto& [param, value] : plan->params()) {
         nlohmann::json p = param;

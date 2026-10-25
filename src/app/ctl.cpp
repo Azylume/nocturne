@@ -372,15 +372,19 @@ macros and modulators (undoable edits; a driven value is its base plus offsets, 
                                     a beat LFO (sine, saw, square, ramp, random, custom; peaks on the beat) over BEATS beats
                                     (1/16..64); POINTS make it custom: up to 16 PHASE:VALUE (0..1, phase below 1, in
                                     order), comma separated, "s" after one eases it into the next (e.g. 0:1s,0.5:0s)
-  mod audio TARGET FEATURE [MIN MAX [CURVE]] [combine=add|multiply]
+  mod audio TARGET FEATURE [MIN MAX [CURVE]] [combine=add|multiply] [autorange=on|off]
                                     an audio feature (level, sub, bass, lowMid, mid, highMid, high, kick, snare, hat,
-                                    or lowBand, midBand, highBand split at the edges `bands` sets)
+                                    or lowBand, midBand, highBand split at the edges `bands` sets); with autorange (on
+                                    for new ones) it maps the feature's running range over the last 30 s, not raw 0..1,
+                                    so it swings the same at any input level
   mod rm MODULATOR
   mod set MODULATOR KEY=VALUE ...   change shape, points, beats, phase, feature, attack, hold, release (ms), min, max,
-                                    curve or combine; attack, hold or release make the envelope custom
+                                    curve, combine or autorange (on|off); attack, hold or release make the envelope
+                                    custom
   modenv MODULATOR|all PRESET       an audio modulator's envelope, or every one's: meter (new ones start on it), punchy,
                                     smooth, breathe, gate (instant on, fixed decay) or custom
-  mod state                         the live values of macros, modulators and driven parameters
+  mod state                         the live values of macros, modulators (with the range an autorange one maps) and
+                                    driven parameters
   macroset save NAME | load NAME | list
                                     Macro Sets on the engine machine: macro names, values and modulators by
                                     slot; loading keeps each macro's targets (undoable)
@@ -1424,6 +1428,8 @@ void modulatorArgs(azl::Message& m, const std::vector<std::string>& c, size_t fr
             m[key] = std::stod(value);
         else if (key == "attack" || key == "hold" || key == "release")
             setEnvelopeTime(m, key, std::stod(value));
+        else if (key == "autorange")
+            m["autoRange"] = onOff(value);
         else
             usage(2);
     }
@@ -1480,6 +1486,7 @@ std::optional<azl::Message> modMessage(const std::vector<std::string>& c)
         } else {
             m["feature"] = c[3];
             m["envelope"] = "meter";
+            m["autoRange"] = true;
         }
         modulatorArgs(m, c, c[1] == "lfo" ? 5 : 4);
         return edit({{"op", "addModulator"}, {"modulator", m}});

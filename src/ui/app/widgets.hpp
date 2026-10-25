@@ -239,10 +239,14 @@ public:
     NumberField& toField() { return to_; }
     juce::ComboBox& shapeBox() { return shape_; }
     LfoEditor& lfoEditor() { return lfo_; }
-    // Taller by the LFO editor for a beat LFO.
+    // An audio source's Auto range switch, and the range it has learned, read-only ("learned 4-38 %").
+    juce::ToggleButton& autoRangeButton() { return autoRange_; }
+    juce::String learnedText() const { return learned_.getText(); }
+    // Taller by the LFO editor for a beat LFO, by the Auto range line for an audio source.
     int preferredHeight() const;
 
     static constexpr int kHeight = 64;
+    static constexpr int kAudioLine = 21;
 
 private:
     void send(const std::function<void(Modulator&, const ParamInfo&)>& change);
@@ -255,6 +259,8 @@ private:
     EnvelopeControls envelope_;
     NumberField from_, to_;
     LfoEditor lfo_;
+    juce::ToggleButton autoRange_{"Auto range"};
+    juce::Label learned_;
     bool beat_ = true;
 };
 

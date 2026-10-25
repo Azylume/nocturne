@@ -35,6 +35,11 @@ nlohmann::json toJson(const SetMacros& e);
 
 std::optional<Edit> modulationEditFromJson(const std::string& op, const nlohmann::json& j);
 
+// The range, in the parameter's own units, an audio modulator made with Animate sweeps on a commonly animated
+// parameter, so a new one looks right on any music: Reveal's progress 0.35..0.65, Stripper's width 0.3..0.7, Colorize's
+// brightness 0.5..1, Transform's scale 0.9..1.15 and a layer's opacity 0.4..1. None for other parameters.
+std::optional<std::pair<double, double>> animationRange(const Composition& composition, const ParamRef& param);
+
 // Drops the macro targets and modulators on these layers or effects, naming each in `dropped`; returns the edit
 // restoring them, or nothing when none was there.
 std::optional<SetMacros> dropTargets(Composition& composition, const std::set<uint64_t>& layers,

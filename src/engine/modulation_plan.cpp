@@ -121,7 +121,9 @@ ModulationPlan::ModulationPlan(const Composition& composition)
         sources_.push_back({m.id, m.source, m.shape, m.beats, m.phase, feature ? size_t(*feature) : 0,
                             sensitivity == composition.sensitivity.end() ? 1.0 : sensitivity->second,
                             m.envelope, {m.attack / 1000.0, m.hold / 1000.0, m.release / 1000.0}, m.combine, lut(m.curve), m.min, m.max, slot,
-                            m.points});
+                            m.points, m.source == ModulatorSource::Audio && m.autoRange});
+        if (sources_.back().autoRange)
+            ranged_[sources_.back().feature] = true;
         usesAudio_ = usesAudio_ || m.source == ModulatorSource::Audio;
     }
     std::sort(effectParams_.begin(), effectParams_.end(),
@@ -173,6 +175,11 @@ ModulationPlan::ModulationPlan(const Composition& composition)
     sourceValues_.resize(sources_.size());
     envelopes_.resize(sources_.size());
     cycles_.resize(sources_.size(), std::numeric_limits<double>::quiet_NaN());
+    publishedRanges_ = std::make_unique<std::atomic<float>[]>(2 * kAudioFeatures);
+    for (size_t f = 0; f < kAudioFeatures; ++f) {
+        publishedRanges_[2 * f].store(0.0f, std::memory_order_relaxed);
+        publishedRanges_[2 * f + 1].store(1.0f, std::memory_order_relaxed);
+    }
     published_ = std::make_unique<std::atomic<float>[]>(slots_.size() + sources_.size() + stepped_.size() +
                                                         4 * palettes_.drawn.size());
     for (size_t i = 0; i < slots_.size(); ++i) {
@@ -510,6 +517,9 @@ void ModulationPlan::carry(const ModulationPlan& previous)
                 cycles_[i] = previous.cycles_[j];
                 envelopes_[i] = previous.envelopes_[j];
             }
+    for (size_t f = 0; f < kAudioFeatures; ++f)
+        if (ranged_[f] && previous.ranged_[f])
+            ranges_[f] = previous.ranges_[f];
     beat_ = previous.beat_;
     for (Derived& d : derived_)
         for (const Derived& p : previous.derived_)
@@ -586,10 +596,20 @@ void ModulationPlan::evaluate(double seconds, double beat, const AudioFrame& aud
     const double beats = beat - beat_;
     const bool jumped = beats < 0.0 || beats > 1.0;
     beat_ = beat;
+    // Music is live input above -60 dB. Each ranged feature learns once a frame, whatever reads it.
+    const bool music = audio.live && audio.values[size_t(AudioFeature::Level)] > 1e-3f;
+    for (size_t f = 0; f < kAudioFeatures; ++f)
+        if (ranged_[f]) {
+            ranges_[f].learn(audio.values[f], dt, music);
+            publishedRanges_[2 * f].store(float(ranges_[f].range().low), std::memory_order_relaxed);
+            publishedRanges_[2 * f + 1].store(float(ranges_[f].range().high), std::memory_order_relaxed);
+        }
     for (size_t i = 0; i < sources_.size(); ++i) {
         const Source& s = sources_[i];
         cycles_[i] = std::isnan(cycles_[i]) || jumped ? beat / s.beats : cycles_[i] + beats / s.beats;
         double v = s.kind == ModulatorSource::Lfo ? lfoAt(s.shape, cycles_[i] + s.phase, s.points) : double(audio.values[s.feature]);
+        if (s.autoRange)
+            v = ranges_[s.feature].map(v);
         v = std::clamp(v * s.sensitivity, 0.0, 1.0);
         if (s.kind == ModulatorSource::Audio && s.envelope == EnvelopePreset::None) {
             const double tau = v > sourceValues_[i] ? s.times.attack : s.times.release;
@@ -792,6 +812,16 @@ std::vector<ModulationPlan::MacroValue> ModulationPlan::modulators() const
     std::vector<MacroValue> values;
     for (size_t i = 0; i < sources_.size(); ++i)
         values.push_back({sources_[i].id, published_[slots_.size() + i].load(std::memory_order_relaxed)});
+    return values;
+}
+
+std::vector<ModulationPlan::RangeValue> ModulationPlan::ranges() const
+{
+    std::vector<RangeValue> values;
+    for (const Source& s : sources_)
+        if (s.autoRange)
+            values.push_back({s.id, publishedRanges_[2 * s.feature].load(std::memory_order_relaxed),
+                              publishedRanges_[2 * s.feature + 1].load(std::memory_order_relaxed)});
     return values;
 }
 

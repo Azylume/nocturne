@@ -3030,14 +3030,27 @@ TEST_CASE("panels: the LFO editor offers every shape and edits a custom curve, o
     session.client().undo();
     REQUIRE(runUntil(harness, [&] { return points().size() == 3; }));
 
-    // An audio source has no LFO editor and the row shrinks back.
+    // An audio source has no LFO editor and the row shrinks back, to the Auto range line, which a beat LFO switched to
+    // audio turns on.
     box.sourceBox().setSelectedId(5);
     REQUIRE(runUntil(harness, [&] { return show.document().modulators[0].source == azl::ModulatorSource::Audio; }));
+    CHECK(show.document().modulators[0].autoRange);
     REQUIRE(runUntil(harness, [&] {
         azl::ui::AnimateBox* now = row->animateBox();
         return now && !now->lfoEditor().isVisible() && row->getHeight() == row->preferredHeight() &&
-               now->preferredHeight() == azl::ui::AnimateBox::kHeight;
+               now->preferredHeight() == azl::ui::AnimateBox::kHeight + azl::ui::AnimateBox::kAudioLine &&
+               now->autoRangeButton().isVisible() && now->autoRangeButton().getToggleState();
     }));
+    // The switch turns it off and on, one undo step each; while on, the box shows the range learned so far.
+    azl::ui::AnimateBox& audioBox = *row->animateBox();
+    REQUIRE(runUntil(harness, [&] { return audioBox.learnedText().startsWith("learn"); }));
+    audioBox.autoRangeButton().setToggleState(false, juce::sendNotification);
+    REQUIRE(runUntil(harness, [&] { return !show.document().modulators[0].autoRange; }));
+    REQUIRE(runUntil(harness, [&] { return audioBox.learnedText().isEmpty(); }));
+    audioBox.autoRangeButton().setToggleState(true, juce::sendNotification);
+    REQUIRE(runUntil(harness, [&] { return show.document().modulators[0].autoRange; }));
+    REQUIRE(runUntil(harness, [&] { return audioBox.learnedText() == "learned 0-100 %"; }));
+    shoot(window, "71-auto-range.png");
 }
 
 TEST_CASE("panels: a macro's LFO modulator row shows its curve editor, an audio one does not")

@@ -468,8 +468,11 @@ void EngineClient::receiveModulation(const Message& message)
         ModulationState state;
         for (const auto& m : message.value("macros", Message::array()))
             state.macros[m.value("id", uint64_t(0))] = m.value("value", 0.0);
-        for (const auto& m : message.value("modulators", Message::array()))
+        for (const auto& m : message.value("modulators", Message::array())) {
             state.modulators[m.value("id", uint64_t(0))] = m.value("value", 0.0);
+            if (const Message range = m.value("range", Message::array()); range.size() == 2)
+                state.ranges[m.value("id", uint64_t(0))] = {range[0].get<double>(), range[1].get<double>()};
+        }
         for (const auto& p : message.value("params", Message::array()))
             state.params[{p.value("layer", uint64_t(0)), p.value("effect", uint64_t(0)), p.value("param", "")}] =
                 p.value("value", 0.0);

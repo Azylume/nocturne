@@ -61,7 +61,17 @@ TEST_CASE("an animation sweeps the parameter's range as offsets from its value")
     CHECK(min == doctest::Approx(2.0));
     CHECK(max == doctest::Approx(4.0));
 
+    // What Animate makes: an audio one learns its feature's range and sweeps a scale's usual range, 0.9..1.15; a beat
+    // LFO is as before.
+    const ParamInfo baseScale = *paramInfo(composition, {0, 3, "scale"});
+    const Modulator animated = newAnimation(composition, baseScale, "kick");
+    CHECK(animated.autoRange);
+    CHECK(baseScale.value + animated.min == doctest::Approx(0.9));
+    CHECK(baseScale.value + animated.max == doctest::Approx(1.15));
+    CHECK_FALSE(newAnimation(composition, baseScale, "beat").autoRange);
+    CHECK(newAnimation(composition, baseScale, "beat").min == beat.min);
     const Modulator kick = newAnimation(scale, "kick");
+    CHECK(kick.autoRange);
     CHECK(kick.source == ModulatorSource::Audio);
     CHECK(kick.feature == "kick");
     CHECK(kick.envelope == azl::EnvelopePreset::Meter);

@@ -615,6 +615,20 @@ TEST_CASE("a load's notice of dropped removed effects is passed on; a load witho
     CHECK(listener.notices == std::vector<std::string>{notice});
 }
 
+TEST_CASE("the modulation state's running range of an Auto range modulator reaches the client")
+{
+    Fed fed;
+    fed.client.receive({{"type", "modulation"},
+                        {"op", "state"},
+                        {"modulators", {{{"id", 2}, {"value", 0.4}, {"range", {0.05, 0.3}}}, {{"id", 3}, {"value", 0.1}}}}});
+    const azl::ui::ModulationState state = fed.client.modulation();
+    CHECK(state.modulators.at(2) == doctest::Approx(0.4));
+    REQUIRE(state.ranges.contains(2));
+    CHECK(state.ranges.at(2).first == doctest::Approx(0.05));
+    CHECK(state.ranges.at(2).second == doctest::Approx(0.3));
+    CHECK_FALSE(state.ranges.contains(3));
+}
+
 TEST_CASE("a change's notice of what went with a removed effect is passed on, after the document it changed")
 {
     struct Notices : Recorder {

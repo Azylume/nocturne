@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -1743,4 +1744,222 @@ TEST_CASE("audio bands: their edges are an undoable edit kept with the show; old
         client.next();
     }
     CHECK(harness.document().document().bandEdges == azl::kDefaultBandEdges);
+}
+
+TEST_CASE("auto range: learns the 10th and 90th percentile of the music, blends in from 0..1, ignores silence")
+{
+    azl::AutoRange range;
+    CHECK(range.range().low == 0.0);
+    CHECK(range.range().high == 1.0);
+    // Silence and frames without music teach nothing.
+    for (int i = 0; i < 600; ++i)
+        range.learn(0.0, 1.0 / kFps, false);
+    CHECK(range.heard() == 0.0);
+    CHECK(range.map(0.5) == 0.5);
+    // A feature uniform between 0.02 and 0.2: after a second it has moved part of the way, after a minute it holds
+    // close to its 10th and 90th percentiles, 0.038 and 0.182, within the 1 dB bins.
+    uint32_t seed = 1;
+    auto uniform = [&] {
+        seed = seed * 1664525u + 1013904223u;
+        return 0.02 + 0.18 * double(seed >> 8) / double(1 << 24);
+    };
+    for (int i = 0; i < 60; ++i)
+        range.learn(uniform(), 1.0 / kFps, true);
+    CHECK(range.range().high < 0.9);
+    CHECK(range.range().high > 0.5);
+    for (int i = 0; i < 60 * 60; ++i)
+        range.learn(uniform(), 1.0 / kFps, true);
+    CHECK(range.range().low == doctest::Approx(0.038).epsilon(0.15));
+    CHECK(range.range().high == doctest::Approx(0.182).epsilon(0.15));
+    CHECK(range.map(0.01) == 0.0);
+    CHECK(range.map(0.5) == 1.0);
+    CHECK(range.map(0.11) == doctest::Approx(0.5).epsilon(0.15));
+    // A long silence afterwards changes nothing; a steady feature never collapses the range to nothing.
+    for (int i = 0; i < 60 * 60; ++i)
+        range.learn(0.0, 1.0 / kFps, false);
+    CHECK(range.range().high == doctest::Approx(0.182).epsilon(0.15));
+    azl::AutoRange steady;
+    for (int i = 0; i < 60 * 60; ++i)
+        steady.learn(0.3, 1.0 / kFps, true);
+    CHECK(steady.range().high - steady.range().low > 0.2 * steady.range().high);
+}
+
+TEST_CASE("auto range: the cost per frame is a bin and a compare, a few nanoseconds")
+{
+    azl::AutoRange range;
+    uint32_t seed = 1;
+    std::vector<float> values(1 << 16);
+    for (float& v : values) {
+        seed = seed * 1664525u + 1013904223u;
+        v = float(seed >> 8) / float(1 << 24);
+    }
+    double sum = 0.0;
+    const auto start = std::chrono::steady_clock::now();
+    constexpr int kFrames = 1'000'000;
+    for (int i = 0; i < kFrames; ++i) {
+        range.learn(values[size_t(i) & 0xffff], 1.0 / kFps, true);
+        sum += range.map(values[size_t(i * 7) & 0xffff]);
+    }
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / kFrames;
+    MESSAGE("auto range: " << ns << " ns per frame (learn and map)");
+    CHECK(sum > 0.0);
+    CHECK(ns < 500.0);
+}
+
+namespace {
+
+// The target's values under `seconds` of the techno loop at `gain` through a manual-gain analysis (so the input level
+// reaches the features), after `silence` seconds of nothing, read at 60 fps.
+std::vector<double> drivenUnderLoop(const azl::Composition& composition, double gain, double seconds,
+                                    double silence = 0.0, const ParamRef& param = {})
+{
+    TechnoLoop loop;
+    loop.gain = gain;
+    loop.bars = int(seconds / (4.0 * loop.beat())) + 1;
+    const std::vector<float> samples = loop.render();
+    azl::AudioAnalyzer analyzer(48000.0, manualGain());
+    azl::ModulationPlan plan(composition);
+    std::vector<double> values;
+    const size_t perFrame = 800;
+    const std::vector<float> quiet(perFrame, 0.0f);
+    const int silent = int(silence * kFps);
+    for (int f = 0; f < silent + int(seconds * kFps); ++f) {
+        const float* chunk = f < silent ? quiet.data() : samples.data() + size_t(f - silent) * perFrame;
+        if (f >= silent && size_t(f - silent + 1) * perFrame > samples.size())
+            break;
+        azl::AudioFrame last;
+        analyzer.process(chunk, perFrame, f / kFps, true, [&](const azl::AudioFrame& frame) { last = frame; });
+        plan.evaluate(last.time, f / kFps * loop.bpm / 60.0, last);
+        if (param.param.empty())
+            values.push_back(plan.opacity(1, 0.0f));
+        else
+            for (const auto& p : plan.params())
+                if (p.param == param)
+                    values.push_back(p.value);
+    }
+    return values;
+}
+
+// The 10th to 90th percentile spread of the values from `from` on.
+double swing(std::vector<double> values, size_t from)
+{
+    values.erase(values.begin(), values.begin() + std::ptrdiff_t(std::min(from, values.size())));
+    std::sort(values.begin(), values.end());
+    return values[values.size() * 9 / 10] - values[values.size() / 10];
+}
+
+} // namespace
+
+TEST_CASE("auto range: the same beat at -20 dB and at 0 dB swings the target the same; without it ten times less")
+{
+    azl::Composition composition;
+    composition.layers.push_back({.id = 1, .name = "Layer 1", .opacity = 0.0});
+    Modulator bass = audio("bass", {0, opacity()});
+    bass.id = 1;
+    azl::setEnvelope(bass, azl::EnvelopePreset::Meter);
+    composition.modulators = {bass};
+    // Half a minute of the loop; the swing over its second half. 0 dB is the loop at half scale, where the manual
+    // 0 dB gain reads its bass just below full (at full scale the bass clips at 1 and its shape changes).
+    const size_t settled = size_t(15 * kFps);
+    const double rawLoud = swing(drivenUnderLoop(composition, 0.5, 30.0), settled);
+    const double rawQuiet = swing(drivenUnderLoop(composition, 0.05, 30.0), settled);
+    composition.modulators[0].autoRange = true;
+    const double loud = swing(drivenUnderLoop(composition, 0.5, 30.0), settled);
+    const double quiet = swing(drivenUnderLoop(composition, 0.05, 30.0), settled);
+    INFO("raw " << rawLoud << " / " << rawQuiet << ", auto range " << loud << " / " << quiet);
+    CHECK(rawQuiet < rawLoud * 0.2);
+    CHECK(loud > 5.0 * rawQuiet);
+    CHECK(quiet == doctest::Approx(loud).epsilon(0.1));
+}
+
+TEST_CASE("auto range: kick to Reveal's progress with Animate's defaults stays within 0.35..0.65, from silence on")
+{
+    azl::Composition composition = revealComposition();
+    const ParamRef progress{0, 1, "progress"};
+    composition.layers[0].effects[0].params["progress"] = 0.5;
+    const auto defaults = azl::animationRange(composition, progress);
+    REQUIRE(defaults);
+    CHECK(defaults->first == 0.35);
+    CHECK(defaults->second == 0.65);
+    // As the UI's Animate makes it: Meter envelope, Auto range, offsets from the value to the default range.
+    Modulator kick = audio("kick", {0, progress}, defaults->first - 0.5, defaults->second - 0.5);
+    kick.id = 1;
+    kick.autoRange = true;
+    azl::setEnvelope(kick, azl::EnvelopePreset::Meter);
+    composition.modulators = {kick};
+    for (double gain : {1.0, 0.1}) {
+        CAPTURE(gain);
+        // Five seconds of silence, then the music: the first seconds of it included.
+        const std::vector<double> values = drivenUnderLoop(composition, gain, 20.0, 5.0, progress);
+        REQUIRE(values.size() > size_t(20 * kFps));
+        const auto [low, high] = std::minmax_element(values.begin(), values.end());
+        CHECK(*low >= 0.35 - 1e-6);
+        CHECK(*high <= 0.65 + 1e-6);
+        // And it moves: once warmed up, each kick takes it near the top of that range (the Meter's release keeps it
+        // from falling all the way between kicks at 128 BPM).
+        const auto [settledLow, settledHigh] = std::minmax_element(values.begin() + int(10 * kFps), values.end());
+        CHECK(*settledHigh > 0.6);
+        CHECK(*settledHigh - *settledLow > 0.1);
+    }
+}
+
+TEST_CASE("auto range: saved with the modulator, off for one saved without it, and reported with the live values")
+{
+    Modulator m = audio("kick", {0, opacity()});
+    m.id = 3;
+    CHECK_FALSE(nlohmann::json(m).contains("autoRange"));
+    CHECK_FALSE(nlohmann::json(m).get<Modulator>().autoRange);
+    m.autoRange = true;
+    CHECK(nlohmann::json(m)["autoRange"] == true);
+    CHECK(nlohmann::json(m).get<Modulator>().autoRange);
+
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, revealComposition());
+    Client client(harness.document());
+    const Message added = apply(client, azl::AddModulator{std::nullopt, audio("bass", {0, revealEvolve()})});
+    Modulator stored = added["modulator"].get<Modulator>();
+    CHECK_FALSE(stored.autoRange);
+    harness.step();
+    CHECK_FALSE(state(client)["modulators"][0].contains("range"));
+    stored.autoRange = true;
+    apply(client, azl::SetModulator{stored});
+    CHECK(harness.document().document().modulators[0].autoRange);
+    harness.step();
+    const Message live = state(client)["modulators"][0];
+    REQUIRE(live.contains("range"));
+    // Nothing heard yet: the range is raw 0..1.
+    CHECK(live["range"][0] == 0.0);
+    CHECK(live["range"][1] == 1.0);
+    client.send(msg::undo());
+    client.next();
+    CHECK_FALSE(harness.document().document().modulators[0].autoRange);
+}
+
+TEST_CASE("auto range: nocturne-ctl makes audio modulators with it on, sets it and shows the range in mod state")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, revealComposition());
+    azl::WebSocketServer server(harness.document(), 0);
+    const auto ctl = [&](const std::string& args) {
+        const std::string command =
+            "'" + ctlPath().string() + "' --port " + std::to_string(server.port()) + " " + args + " 2>&1";
+        std::string out;
+        FILE* pipe = popen(command.c_str(), "r");
+        REQUIRE(pipe);
+        char buffer[512];
+        while (fgets(buffer, sizeof buffer, pipe))
+            out += buffer;
+        CHECK(pclose(pipe) == 0);
+        return out;
+    };
+    ctl("mod audio fx.1.evolve bass 0 1");
+    REQUIRE(harness.document().document().modulators.size() == 1);
+    const uint64_t id = harness.document().document().modulators[0].id;
+    CHECK(harness.document().document().modulators[0].autoRange);
+    ctl("mod audio fx.1.evolve kick 0 1 autorange=off");
+    CHECK_FALSE(harness.document().document().modulators[1].autoRange);
+    harness.step();
+    CHECK(ctl("mod state").find("\"range\"") != std::string::npos);
+    ctl("mod set " + std::to_string(id) + " autorange=off");
+    CHECK_FALSE(harness.document().document().modulators[0].autoRange);
+    harness.step();
+    CHECK(ctl("mod state").find("\"range\"") == std::string::npos);
 }
