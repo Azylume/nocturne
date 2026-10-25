@@ -31,6 +31,9 @@ struct MachineSettings {
     bool bakeStatic = false;
     // The size the composition renders at, in percent of the output's (100, 83 or 67), scaled up once at the output.
     uint64_t renderScale = 100;
+    // How many rendered frames may be on the GPU at once (EngineConfig::maxInFlight): 1, 2, or 0 for as many as the
+    // frame ring holds. Under GPU overload a bound lets the outputs' presents through sooner, at some render rate.
+    uint64_t framesInFlight = 0;
 
     bool operator==(const MachineSettings&) const = default;
 };

@@ -74,7 +74,8 @@ nlohmann::json toJson(const MachineSettings& settings)
             {"preloadMB", settings.preloadMB},
             {"clipPreviews", settings.clipPreviews},
             {"bakeStatic", settings.bakeStatic},
-            {"renderScale", settings.renderScale}};
+            {"renderScale", settings.renderScale},
+            {"framesInFlight", settings.framesInFlight}};
 }
 
 MachineSettings applied(const nlohmann::json& j, MachineSettings settings)
@@ -102,6 +103,8 @@ MachineSettings applied(const nlohmann::json& j, MachineSettings settings)
             throw std::invalid_argument("renderScale must be 100, 83 or 67");
         settings.renderScale = v.get<uint64_t>();
     }
+    if (j.contains("framesInFlight"))
+        settings.framesInFlight = limited(j, "framesInFlight", 0, 2);
     if (j.contains("frameCacheMB"))
         settings.frameCacheMB = limited(j, "frameCacheMB", 64, 65536);
     if (j.contains("preloadMB"))

@@ -227,6 +227,7 @@ Engine::Engine(MTL::Device* device, EngineConfig config, MediaLibrary* library)
       effectSteps_(clock_, cues_, seed_)
 {
     seed_ = config.seed;
+    maxInFlight_ = config.maxInFlight;
     bakeStatic_ = config.bakeStatic;
     keyedSeed_ = config.seed;
     starting_ = config.holdStart;
@@ -258,6 +259,17 @@ void Engine::renderFrame(double seconds)
 {
     AZL_ZONE("render frame");
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    if (const int bound = maxInFlight_; bound > 0) {
+        // Waits for a frame to leave the GPU rather than skipping this one: the GPU goes straight on to the next
+        // frame, while only `bound` are ever queued ahead of the outputs' presents. A GPU stuck for a frame's time is
+        // the ring's problem, not this wait's.
+        std::unique_lock lock(inFlightMutex_);
+        if (inFlight_ >= bound) {
+            stats_.throttled++;
+            inFlightDone_.wait_for(lock, std::chrono::duration<double>(frameDt_ > 0.0 ? frameDt_ : 1.0 / 60.0),
+                                   [&] { return inFlight_ < bound; });
+        }
+    }
     std::shared_ptr<Frame> frame = ring_->claim();
     if (!frame) {
         stats_.skipped++;
@@ -403,6 +415,10 @@ void Engine::renderFrame(double seconds)
         recentGpu_ = (recentGpu_ * 7 + gpu) / 8;
         stats_.maxGpuMicros = std::max(stats_.maxGpuMicros.load(), gpu);
         stats_.maxDoneMicros = std::max(stats_.maxDoneMicros.load(), microsSince(frame->started));
+        const auto queued =
+            uint64_t(std::max(0.0, traceFromHost(done->GPUStartTime()) - traceSeconds(frame->started)) * 1e6);
+        stats_.queueMicros += queued;
+        stats_.maxQueueMicros = std::max(stats_.maxQueueMicros.load(), queued);
         if (profile)
             profile_->finish(*profile, done->status() == MTL::CommandBufferStatusCompleted, done->GPUStartTime(),
                              done->GPUEndTime());

@@ -48,6 +48,11 @@ TEST_CASE("machine settings: fields are validated")
     CHECK_THROWS_AS(azl::applied({{"renderScale", 50}}, s), std::invalid_argument);
     CHECK_THROWS_AS(azl::applied({{"renderScale", 83.5}}, s), std::invalid_argument);
     CHECK_THROWS_AS(azl::applied({{"renderScale", "83"}}, s), std::invalid_argument);
+    CHECK(s.framesInFlight == 0);
+    CHECK(azl::applied({{"framesInFlight", 1}}, s).framesInFlight == 1);
+    CHECK(azl::applied({{"framesInFlight", 2}}, s).framesInFlight == 2);
+    CHECK_THROWS_AS(azl::applied({{"framesInFlight", 3}}, s), std::invalid_argument);
+    CHECK(azl::toJson(s)["framesInFlight"] == 0);
 }
 
 TEST_CASE("machine settings: a flag overrides the kept value and is named as the override")

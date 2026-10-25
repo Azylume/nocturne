@@ -54,3 +54,5 @@
 # killed predecessor left open dies inside Metal's compiler (SIGTRAP, "Unbalanced call to dispatch_group_leave()"
 # under -[MTLCompiler newRenderPipelineStateWithDescriptorInternal:...destinationBinaryArchive:]). Real GPUs are fine.
 *three crashes within a minute start safe mode*
+# A GPU timing report of three outputs under overload (issue #17), not a check: for the show machine.
+*under GPU overload: frames in flight on the GPU*
