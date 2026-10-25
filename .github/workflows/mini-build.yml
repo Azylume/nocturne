@@ -1,0 +1,49 @@
+# Builds what tools/deploy-mini.sh installs on the Intel Mac mini, for x86_64 on a hosted runner, so a laptop can
+# deploy without compiling for a second architecture: download the artifact, unpack it and run
+#   BUILD=<unpacked dir> tools/deploy-mini.sh
+# By hand, or by a push to a mini/ branch.
+name: Mini build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["mini/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja and ccache
+        run: brew install ninja ccache
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-x86_64-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure (x86_64)
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=x86_64
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: Pack what deploy-mini.sh installs
+        # A tar keeps the bundles' signatures and the executable bits; an artifact alone would not.
+        run: tar -C build -czf mini-build.tgz nocturne_tests nocturne-hap-encode Nocturne.app "Nocturne UI.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mini-build-${{ github.sha }}
+          path: mini-build.tgz
+          retention-days: 7
