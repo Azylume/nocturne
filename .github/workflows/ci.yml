@@ -1,46 +1,144 @@
+# Builds once (arm64, Ninja, ccache) and runs the tests in parallel shards (tools/ci-tests.sh) from that build;
+# on main and nightly also proves the universal (arm64 + x86_64) build compiles. Docs-only changes run nothing here
+# (dco.yml still checks every pull request). A newer push to a pull request cancels the run in progress; pushes to
+# main all run to the end.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - ".github/workflows/dco.yml"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - ".github/workflows/dco.yml"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Install ninja, ccache and ffmpeg
+        run: brew install ninja ccache ffmpeg
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-arm64-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-main
+            ${{ runner.os }}-arm64-
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: ccache statistics
+        run: ccache -s
+      - name: Pack what the tests run
+        # A tar keeps the bundles' signatures and the executable bits; an artifact alone would not.
+        run: tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ github.run_id }}
+          path: tests.tgz
+          retention-days: 1
+
+  # The tests find the bundles and the source tree at the paths compiled in, so every shard checks out and unpacks
+  # the build where the build job had them.
+  test:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [engine-0, engine-1, engine-2, ui]
+    name: test (${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@v5
       - name: Install ffmpeg
         run: brew install ffmpeg
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES=arm64
-      - name: Build
-        run: cmake --build build -j4
-      - name: Test
-        env:
-          NOCTURNE_NO_AUDIO_INPUT: "1"
-        run: |
-          skip=$(grep -v '^#' .github/realtime-tests.txt | sed 's/,/\\,/g' | paste -sd, -)
-          build/nocturne_tests --test-case-exclude="$skip"
-          tests/mini_host_test.sh
-          build/src/ui/nocturne_ui_tests --test-case-exclude="$skip"
-
-  dco:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-      - name: Every commit is signed off by its author
+          name: tests-${{ github.run_id }}
+      - name: Unpack the build
+        run: mkdir -p build && tar -C build -xzf tests.tgz
+      - name: Run the shard
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
-          status=0
-          for c in $(git rev-list --no-merges origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}); do
-            author="$(git log -1 --format='%an <%ae>' "$c")"
-            if ! git log -1 --format=%B "$c" | grep -qxF "Signed-off-by: $author"; then
-              echo "::error::$(git log -1 --format='%h %s' "$c") has no 'Signed-off-by: $author' (git commit -s)"
-              status=1
-            fi
-          done
-          exit $status
+          case "${{ matrix.shard }}" in
+            ui) tools/ci-tests.sh ui && tests/mini_host_test.sh ;;
+            engine-*) tools/ci-tests.sh engine "${SHARD#engine-}" 3 ;;
+          esac
+      - name: Test report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: build/test-reports/*.xml
+          annotate_only: true
+          detailed_summary: true
+          include_passed: false
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.shard }}
+          path: build/test-reports/
+
+  universal:
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja and ccache
+        run: brew install ninja ccache
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-universal
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure (arm64 + x86_64)
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build
+      - name: Every binary in both bundles holds both slices
+        run: tools/check-universal.sh build/Nocturne.app "build/Nocturne UI.app"

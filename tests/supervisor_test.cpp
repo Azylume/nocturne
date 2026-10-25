@@ -9,7 +9,9 @@
 #include "supervisor/state_saver.hpp"
 
 #include <arpa/inet.h>
+#include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <future>
@@ -874,12 +876,24 @@ TEST_CASE("three crashes within a minute start safe mode with the reason")
 {
     SupervisedEngine engine;
     INFO(engine.log());
+    const auto running = [&] {
+        size_t n = 0;
+        const std::string log = engine.log();
+        for (size_t at = log.find("engine running"); at != std::string::npos; at = log.find("engine running", at + 1))
+            ++n;
+        return n;
+    };
     for (int crash = 1; crash <= 3; ++crash) {
         CAPTURE(crash);
-        REQUIRE(eventually([&] { return engine.log().find("engine running") != std::string::npos; }, 15.0));
+        // The crash-th engine has drawn its first frame: its "engine running" line, not an earlier engine's.
+        REQUIRE(eventually([&] { return running() >= size_t(crash) && engine.status()["starts"] == crash; }, 15.0));
         const pid_t pid = engine.engine();
-        REQUIRE(::kill(pid, SIGKILL) == 0);
-        REQUIRE(eventually([&] { return engine.engine() != pid && engine.engine() > 0; }, 10.0));
+        REQUIRE(pid > 0);
+        if (::kill(pid, SIGKILL) != 0)
+            FAIL("engine " << pid << " of start " << crash << " could not be killed: " << std::strerror(errno)
+                           << "\n" << engine.log());
+        REQUIRE(eventually([&] { return engine.status()["starts"] == crash + 1 || engine.status()["mode"] == "safe"; },
+                           10.0));
     }
     REQUIRE(eventually([&] { return engine.status()["mode"] == "safe"; }, 5.0));
     const Message status = engine.status();

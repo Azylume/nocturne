@@ -1,6 +1,6 @@
 # Test cases CI skips: they need a real GPU, real displays, a hardware video encoder, real-time scheduling or engine
 # processes started under the supervisor, which GitHub's macOS runners do not provide. They run in the full local
-# suite (`ctest`) and on the show machine.
+# suite (`ctest`) and on the show machine. tools/ci-tests.sh reads this list; a new entry needs a reviewer's OK.
 *--composition starts the engine on the file*
 *a disconnected display parks its output*
 *a full disk stops the recording cleanly*
