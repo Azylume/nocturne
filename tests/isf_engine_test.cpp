@@ -41,6 +41,8 @@ const std::vector<Look> kEffects{
     {"isfSolarize", {{"centerBrightness", 0.4}, {"colorize", 0.6}}},
     {"isfTriangleMosaic", {{"cellSize", 0.06}, {"outlineWidth", 1.5}, {"outlineColorRed", 1.0}}},
     {"isfRadialReplicate", {{"numberOfDivisions", 8.0}, {"preRotateAngle", 30.0}}},
+    {"isfKaleidoscopeTile", {{"size", 0.4}, {"sides", 8.0}, {"rotation", 0.2}}},
+    {"isfMultiHueShift", {{"shiftLow", 0.3}, {"shiftMid", 0.6}, {"shiftHigh", 0.15}}},
 };
 
 const std::vector<Look> kGenerators{
