@@ -73,7 +73,7 @@ jobs:
         run: mkdir -p build && tar -C build -xzf tests.tgz
       - name: Run each listed case
         env:
-          TRIAGE_ONLY: ${{ github.event.inputs.only || vars.TRIAGE_ONLY || '' }}
+          TRIAGE_ONLY: 'restart|engine|crash|safe mode|Show lock|audio input picked|recording settings|Autopilot resumes|Machines tab|parity: a trigger'
         run: tools/realtime-triage.sh "${{ github.event.inputs.runs || '10' }}" ${{ matrix.part }} 5 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Logs
         if: always()
