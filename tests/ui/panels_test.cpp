@@ -1380,7 +1380,7 @@ TEST_CASE("panels: context menus on clips act on the whole selection, show short
     }));
     CHECK(entryAt(w.stack.cellMenu(show.base, 1), "Transport/Random Jump").ticked);
     entryAt(menu, "Step/4 bars").run();
-    entryAt(menu, "Add effect/transform").run();
+    entryAt(menu, "Add effect/transform/Default").run();
     REQUIRE(w.until([&] {
         return clip(show.base, 1)->step == 4 && clip(show.base, 0)->effects.size() == 1 &&
                clip(show.base, 1)->effects.size() == 1 && steps() == before + 3;
@@ -1430,7 +1430,7 @@ TEST_CASE("panels: Shift-click on a layer selects its clips; an effect type come
             clickWith(w.stack, {40, row.bounds.getY() + 8}, kShift);
     CHECK(session.selectedClips() == Cells{show.cell(show.base, 0), show.cell(show.base, 1), show.cell(show.base, 2)});
 
-    entryAt(w.stack.cellMenu(show.base, 0), "Add effect/transform").run();
+    entryAt(w.stack.cellMenu(show.base, 0), "Add effect/transform/Default").run();
     REQUIRE(w.until([&] { return clip(2)->effects.size() == 1; }));
     apply(show.client, azl::AddEffect{show.base, std::nullopt, {0, "colorize", {}}, show.columns[0].id});
     REQUIRE(w.until([&] { return clip(0)->effects.size() == 2; }));
