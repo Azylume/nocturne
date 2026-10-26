@@ -67,15 +67,28 @@ public:
     // Called after displays were attached, detached or reconfigured (mirrored, moved).
     void onChange(std::function<void()> callback) { changed_ = std::move(callback); }
 
+    // A key pressed in an output's window: Escape asks to release that display (its screen goes to no display, the
+    // show runs on), the platform's quit key (Cmd+Q) asks to end the engine. Called on the thread that owns the
+    // displays with the display's id; a platform without windows never calls it.
+    enum class OutputKey { release, quit };
+    using OutputKeyHandler = std::function<void(OutputKey key, const std::string& display)>;
+    void onOutputKey(OutputKeyHandler handler) { outputKey_ = std::move(handler); }
+
 protected:
     void changed() const
     {
         if (changed_)
             changed_();
     }
+    void outputKey(OutputKey key, const std::string& display) const
+    {
+        if (outputKey_)
+            outputKey_(key, display);
+    }
 
 private:
     std::function<void()> changed_;
+    OutputKeyHandler outputKey_;
 };
 
 inline std::vector<std::string> displayIds(const Displays& displays)
