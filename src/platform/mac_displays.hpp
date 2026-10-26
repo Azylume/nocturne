@@ -23,9 +23,19 @@ bool hidesCursor(bool windowed, int virtualDisplays);
 enum class CursorStep { none, hide, show };
 CursorStep cursorStep(bool overOutput, bool hidden, bool visible);
 
-// What a key down in an output window asks for, given the key's code, whether Command is held and the characters
-// without modifiers: Escape releases the display, Cmd+Q quits, anything else nothing.
-std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, bool command, const std::string& characters);
+// The modifiers held with a key, as the decision below sees them.
+struct KeyModifiers {
+    bool command = false;
+    bool option = false;
+    bool control = false;
+    bool shift = false;
+};
+
+// What a key down in an output window asks for, given the key's code, the modifiers held and the characters without
+// modifiers: Escape alone releases the display, Q with Command alone quits, anything else (Cmd+Option+Q, Cmd+Shift+Q,
+// which is log out) nothing.
+std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, KeyModifiers modifiers,
+                                                const std::string& characters);
 
 class MacDisplays : public Displays {
 public:

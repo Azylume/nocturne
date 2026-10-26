@@ -237,12 +237,15 @@ CursorStep cursorStep(bool overOutput, bool hidden, bool visible)
     return CursorStep::none;
 }
 
-std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, bool command, const std::string& characters)
+std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, KeyModifiers modifiers,
+                                                const std::string& characters)
 {
     constexpr unsigned short kEscapeKeyCode = 53; // kVK_Escape, without Carbon
-    if (keyCode == kEscapeKeyCode && !command)
+    const bool none = !modifiers.command && !modifiers.option && !modifiers.control && !modifiers.shift;
+    const bool commandOnly = modifiers.command && !modifiers.option && !modifiers.control && !modifiers.shift;
+    if (keyCode == kEscapeKeyCode && none)
         return Displays::OutputKey::release;
-    if (command && (characters == "q" || characters == "Q"))
+    if (commandOnly && (characters == "q" || characters == "Q"))
         return Displays::OutputKey::quit;
     return std::nullopt;
 }
@@ -515,8 +518,13 @@ struct MacDisplays::Impl {
         if (display.empty())
             return event;
         const char* characters = event.charactersIgnoringModifiers.UTF8String;
-        const std::optional<Displays::OutputKey> key = outputKeyFor(
-            event.keyCode, (event.modifierFlags & NSEventModifierFlagCommand) != 0, characters ? characters : "");
+        const NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+        const KeyModifiers modifiers{.command = (flags & NSEventModifierFlagCommand) != 0,
+                                     .option = (flags & NSEventModifierFlagOption) != 0,
+                                     .control = (flags & NSEventModifierFlagControl) != 0,
+                                     .shift = (flags & NSEventModifierFlagShift) != 0};
+        const std::optional<Displays::OutputKey> key =
+            outputKeyFor(event.keyCode, modifiers, characters ? characters : "");
         if (!key)
             return event;
         owner->outputKey(*key, display);

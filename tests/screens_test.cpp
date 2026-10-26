@@ -622,17 +622,25 @@ TEST_CASE("the cursor hides over an output, again when it comes back, and shows 
     CHECK(azl::cursorStep(false, false, true) == CursorStep::none);
 }
 
-TEST_CASE("Escape in an output window releases its display and Cmd+Q quits; other keys pass")
+TEST_CASE("Escape alone in an output window releases its display and Cmd+Q alone quits; other keys pass")
 {
     using Key = azl::Displays::OutputKey;
+    using Mods = azl::KeyModifiers;
     constexpr unsigned short kEscape = 53;
     constexpr unsigned short kQ = 12;
-    CHECK(azl::outputKeyFor(kEscape, false, "\x1b") == Key::release);
-    CHECK(azl::outputKeyFor(kQ, true, "q") == Key::quit);
-    CHECK(azl::outputKeyFor(kQ, true, "Q") == Key::quit);
-    CHECK_FALSE(azl::outputKeyFor(kQ, false, "q").has_value());
-    CHECK_FALSE(azl::outputKeyFor(kEscape, true, "\x1b").has_value());
-    CHECK_FALSE(azl::outputKeyFor(49, false, " ").has_value());
+    const Mods none{};
+    const Mods command{.command = true};
+    CHECK(azl::outputKeyFor(kEscape, none, "\x1b") == Key::release);
+    CHECK(azl::outputKeyFor(kQ, command, "q") == Key::quit);
+    CHECK(azl::outputKeyFor(kQ, command, "Q") == Key::quit);
+    CHECK_FALSE(azl::outputKeyFor(kQ, none, "q").has_value());
+    CHECK_FALSE(azl::outputKeyFor(kEscape, command, "\x1b").has_value());
+    CHECK_FALSE(azl::outputKeyFor(kEscape, Mods{.shift = true}, "\x1b").has_value());
+    CHECK_FALSE(azl::outputKeyFor(49, none, " ").has_value());
+    // Cmd+Option+Q and Cmd+Shift+Q (log out on macOS) are not the quit key.
+    CHECK_FALSE(azl::outputKeyFor(kQ, Mods{.command = true, .option = true}, "q").has_value());
+    CHECK_FALSE(azl::outputKeyFor(kQ, Mods{.command = true, .shift = true}, "q").has_value());
+    CHECK_FALSE(azl::outputKeyFor(kQ, Mods{.command = true, .control = true}, "q").has_value());
 }
 
 // Escape on an output goes through the document, like `nocturne-ctl screendisplay SCREEN none`: the screen keeps its
