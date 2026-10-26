@@ -12,7 +12,7 @@ shaders, copied snippets), check its licence here and add a row to ADR 0012's ta
 - **Commits** carry `Signed-off-by:` (DCO); no CLA.
 - **Unsure:** stop and ask the maintainer before adding it.
 
-## ISF import (ticket 95), checked 2026-10-18
+## ISF import, checked 2026-10-18
 
 | Component | Version | Licence | Use | Compatible |
 |---|---|---|---|---|
@@ -64,14 +64,14 @@ Every other shader in ISF-Files 395072d, and why it is not vendored. The first g
 - gl-transitions, BSD with its author: licence fine, not picked (three transitions were enough; many sample away from their pixel) (2): Inverted Page Curl, Stereo Viewer.
 - credited to Vidvox: left out for what the importer cannot run yet (multi-pass, persistent buffers, custom vertex shaders, audio, extra image inputs) or as not needed; each gets its own header check before it is added (134): Apply Alpha, Auto Color Tone, Auto Colors Histogram, Bad TV, Basic Shape, Bloom, Bordered Box, Broken LCD, Checkerboard, Chroma Desaturation Mask, Chroma Mask, Circle Splash Distortion, Circle Warp, Circle Wrap Distortion, Circular Feedback Mask, Circular Screen, City Lights, Collage, Color Bars, Color Blowout, Color History, Color Levels, Color Relookup, Color Replacement, Color Schemes, Color Test Grid, ConstantAlpha, Corner Color Tint, Corner Colors, Cursor Overlay, Cursor, Diagonal Blur, Diagonalize, Dilate-Fast, Dilate, Doodler Overlay, Doodler, Dot Screen (needs its own vertex shader), Double Vision, Duotone From Histogram, Echo Trace, Edge Blowout, Edge Distort, Edge Trace, Edges, Emboss, Erode-Fast, Erode, Etch-a-Sketch, FFT Color Lines, FFT Filled Waveform, FFT Spectrogram, FastMosh, Flip H, Flip V, Flipbook, Freeze Frame, Ghosting, Glitch Shifter, Gloom, Glow-Fast, Glow, Grid Warp, Hatch Blur, Highlighter Overlay, Histogram Viewer, Hyperspace, JPEG Block Corruption, LGG, Life, Line Screen, Lines, Long Exposure, Micro Buffer RGB, Micro Buffer, Mirror Edge, Motion Heat Map, Motion Mask, Multi-Pixellate, MultiFrame 2x2, MultiFrame 3x3, Night Vision, Noise Adapt, Noise Displace, Noise Pixellate, Noise, Pattern Glitch, Pixel Shifter, Poly Glitch, RGB Invert, RGB Strobe, RGBA Swap, Random Checkerboard, Random Freeze, Random Lines, Random Shape Blast, Random Shape, Random Squares Mask, Random Stripes, Resize Glitch, Ridgelines, Rotate, Set Alpha, Shake, Shape Mask, Sharpen Luminance, Sharpen RGB, Shockwave Pulse, Shockwave, Show Alpha, Simplex Noise, Sine Warp Tile, Sketch, Slit Scan Mask, Slit Scan, Soft Blur, Soft Flip, Sorting Smear, Sphere Map, Strobe, Time Glitch RGB, Trail Mask, Trapezoid Distortion, Triangle Warp, Triangles, Triple Rotate, Unsharp Mask, VU Meter, Vertex Manipulator, Vertical Tearing, Video Snake, XYZoom, Zoom.
 
-### User ISF shaders (ticket 116)
+### User ISF shaders
 
 The engine also reads ISF shaders from its machine's user folder (`<state>/isf-user/`). Those files are the user's own:
 they are never vendored into this repository, never uploaded or synced by us (the media sync and the media upload do
 not see the folder), and only go to the engine's own clients so a UI can show their parameters. Their licence is the
 user's responsibility.
 
-## Pro DJ Link references (tickets 89 and 112, checked 2026-10-18)
+## Pro DJ Link references (checked 2026-10-18)
 
 | Project | Licence | Compatible | Used how |
 |---|---|---|---|
@@ -82,7 +82,7 @@ user's responsibility.
 The DJ link receiver and the simulator (`tools/djlink-sim`) are written from the documented layouts; nothing from these
 projects is vendored, so ADR 0012's dependency tables do not change.
 
-## HAP playback and transcode (ticket 94, checked 2026-10-18)
+## HAP playback and transcode (checked 2026-10-18)
 
 | Project | Licence | Compatible | Used how |
 |---|---|---|---|
