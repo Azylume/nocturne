@@ -622,6 +622,34 @@ TEST_CASE("the cursor hides over an output, again when it comes back, and shows 
     CHECK(azl::cursorStep(false, false, true) == CursorStep::none);
 }
 
+TEST_CASE("Escape in an output window releases its display and Cmd+Q quits; other keys pass")
+{
+    using Key = azl::Displays::OutputKey;
+    constexpr unsigned short kEscape = 53;
+    constexpr unsigned short kQ = 12;
+    CHECK(azl::outputKeyFor(kEscape, false, "\x1b") == Key::release);
+    CHECK(azl::outputKeyFor(kQ, true, "q") == Key::quit);
+    CHECK(azl::outputKeyFor(kQ, true, "Q") == Key::quit);
+    CHECK_FALSE(azl::outputKeyFor(kQ, false, "q").has_value());
+    CHECK_FALSE(azl::outputKeyFor(kEscape, true, "\x1b").has_value());
+    CHECK_FALSE(azl::outputKeyFor(49, false, " ").has_value());
+}
+
+// Escape on an output goes through the document, like `nocturne-ctl screendisplay SCREEN none`: the screen keeps its
+// slices and masks, its output parks, and the inverse edit gives the display back.
+TEST_CASE("a screen released from its display keeps its mapping and takes the display back on the inverse edit")
+{
+    azl::Composition composition;
+    composition.screens.push_back({.id = 7, .display = "window-1", .slices = {{}}});
+    azl::Edit release = azl::SetScreenDisplay{7, std::string()};
+    azl::Edit inverse = azl::applyEdit(composition, release);
+    CHECK(composition.screens[0].display.empty());
+    CHECK(composition.screens[0].slices.size() == 1);
+    REQUIRE(std::holds_alternative<azl::SetScreenDisplay>(inverse));
+    azl::applyEdit(composition, inverse);
+    CHECK(composition.screens[0].display == "window-1");
+}
+
 namespace {
 
 constexpr uint32_t kEpson = 0x4ca3;

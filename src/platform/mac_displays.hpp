@@ -3,6 +3,8 @@
 #include "output/displays.hpp"
 
 #include <memory>
+#include <optional>
+#include <string>
 
 namespace azl {
 
@@ -20,6 +22,10 @@ bool hidesCursor(bool windowed, int virtualDisplays);
 // the WindowServer shows it (it can show it again behind the engine's back).
 enum class CursorStep { none, hide, show };
 CursorStep cursorStep(bool overOutput, bool hidden, bool visible);
+
+// What a key down in an output window asks for, given the key's code, whether Command is held and the characters
+// without modifiers: Escape releases the display, Cmd+Q quits, anything else nothing.
+std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, bool command, const std::string& characters);
 
 class MacDisplays : public Displays {
 public:

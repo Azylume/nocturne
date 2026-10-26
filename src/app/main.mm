@@ -998,6 +998,23 @@ int run(const EngineConfig& opt)
                                      });
     keeperOnMain = &outputService;
     outputService.keep();
+    // Escape in an output window frees that display: its screen goes to no display, as `screendisplay SCREEN none`
+    // or a display coming back would (a machine-local placement, no undo step), the Map shows it, and the show runs
+    // on. Cmd+Q there ends the engine. Main thread, like every display change.
+    displays.onOutputKey([&document, &outputs](azl::Displays::OutputKey key, const std::string& display) {
+        if (key == azl::Displays::OutputKey::quit) {
+            quit();
+            return;
+        }
+        azl::DisplayOutput* output = outputs.find(display);
+        if (!output)
+            return;
+        try {
+            document.perform(azl::SetScreenDisplay{output->screen(), std::string()}, "escape");
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "escape: cannot free display %s: %s\n", display.c_str(), e.what());
+        }
+    });
     azl::TriggerService triggerService(document, engine, azl::engineTime);
     azl::CueService cueService(document, engine, azl::engineTime);
     std::unique_ptr<azl::WallCueService> wallCues;

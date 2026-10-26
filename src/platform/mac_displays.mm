@@ -67,6 +67,18 @@ bool cursorVisible()
 
 @class AZLCursorHider;
 
+// Borderless windows refuse key status by default, which would leave an output deaf to Escape and Cmd+Q. A click on
+// the output makes it key; the engine never takes focus by itself.
+@interface AZLOutputWindow : NSWindow
+@end
+
+@implementation AZLOutputWindow
+- (BOOL)canBecomeKeyWindow
+{
+    return YES;
+}
+@end
+
 // Hides the cursor while the mouse is over any output window: from the tracking areas' events, and every half second
 // against the WindowServer, which can show it again (a display reattach, wake). Falls back to a blank cursor, which
 // only works while the engine is frontmost.
@@ -225,6 +237,16 @@ CursorStep cursorStep(bool overOutput, bool hidden, bool visible)
     return CursorStep::none;
 }
 
+std::optional<Displays::OutputKey> outputKeyFor(unsigned short keyCode, bool command, const std::string& characters)
+{
+    constexpr unsigned short kEscapeKeyCode = 53; // kVK_Escape, without Carbon
+    if (keyCode == kEscapeKeyCode && !command)
+        return Displays::OutputKey::release;
+    if (command && (characters == "q" || characters == "Q"))
+        return Displays::OutputKey::quit;
+    return std::nullopt;
+}
+
 namespace {
 
 constexpr CGFloat kWindowedWidth = 960;
@@ -281,23 +303,42 @@ int virtualIndex(const std::string& id, int count)
     return index >= 1 && index <= count ? index : 0;
 }
 
-NSWindow* borderlessWindow(NSScreen* screen)
+// Every output window carries its display's id, so a key event tells which display it was pressed on.
+constexpr const char* kOutputIdentifierPrefix = "nocturne.output.";
+
+NSString* outputIdentifier(const std::string& display)
 {
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:screen.frame
-                                                   styleMask:NSWindowStyleMaskBorderless
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
+    return [NSString stringWithUTF8String:(kOutputIdentifierPrefix + display).c_str()];
+}
+
+// The display id of an output window, or empty for any other window.
+std::string outputDisplay(NSWindow* window)
+{
+    const char* identifier = window.identifier.UTF8String;
+    if (!identifier || std::strncmp(identifier, kOutputIdentifierPrefix, std::strlen(kOutputIdentifierPrefix)) != 0)
+        return {};
+    return identifier + std::strlen(kOutputIdentifierPrefix);
+}
+
+NSWindow* borderlessWindow(NSScreen* screen, const std::string& display)
+{
+    NSWindow* window = [[AZLOutputWindow alloc] initWithContentRect:screen.frame
+                                                          styleMask:NSWindowStyleMaskBorderless
+                                                            backing:NSBackingStoreBuffered
+                                                              defer:NO];
     window.level = NSMainMenuWindowLevel + 1;
+    window.identifier = outputIdentifier(display);
     return window;
 }
 
-NSWindow* titledWindow(NSRect frame, const std::string& title)
+NSWindow* titledWindow(NSRect frame, const std::string& display)
 {
     NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskMiniaturizable
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
-    window.title = [NSString stringWithUTF8String:("Nocturne " + title).c_str()];
+    window.title = [NSString stringWithUTF8String:("Nocturne " + display).c_str()];
+    window.identifier = outputIdentifier(display);
     return window;
 }
 
@@ -464,7 +505,23 @@ struct MacDisplays::Impl {
     bool windowed = false;
     int virtualDisplays = 0;
     id observer = nil;
+    id keyMonitor = nil;
     std::atomic<bool> changePending{false};
+
+    // Escape or Cmd+Q in an output window, on the main thread; any other key, or any other window, passes through.
+    NSEvent* keyDown(NSEvent* event)
+    {
+        const std::string display = outputDisplay(event.window);
+        if (display.empty())
+            return event;
+        const char* characters = event.charactersIgnoringModifiers.UTF8String;
+        const std::optional<Displays::OutputKey> key = outputKeyFor(
+            event.keyCode, (event.modifierFlags & NSEventModifierFlagCommand) != 0, characters ? characters : "");
+        if (!key)
+            return event;
+        owner->outputKey(*key, display);
+        return nil;
+    }
 
     // One reconfiguration calls back once per display; they make one change.
     static void reconfigured(CGDirectDisplayID, CGDisplayChangeSummaryFlags flags, void* context)
@@ -492,12 +549,18 @@ MacDisplays::MacDisplays(bool windowed, int virtualDisplays) : impl_(std::make_u
                                                           changed();
                                                       }];
     CGDisplayRegisterReconfigurationCallback(&Impl::reconfigured, impl_.get());
+    Impl* impl = impl_.get();
+    impl_->keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                              handler:^NSEvent*(NSEvent* event) {
+                                                                  return impl->keyDown(event);
+                                                              }];
 }
 
 MacDisplays::~MacDisplays()
 {
     CGDisplayRemoveReconfigurationCallback(&Impl::reconfigured, impl_.get());
     [[NSNotificationCenter defaultCenter] removeObserver:impl_->observer];
+    [NSEvent removeMonitor:impl_->keyMonitor];
 }
 
 std::vector<DisplayInfo> MacDisplays::attached() const
@@ -532,7 +595,7 @@ std::unique_ptr<Surface> MacDisplays::open(const std::string& id, MTL::Device* d
     NSScreen* screen = screenWithIdentity(id);
     if (!screen)
         return nullptr;
-    NSWindow* window = impl_->windowed ? titledWindow(centred(screen), id) : borderlessWindow(screen);
+    NSWindow* window = impl_->windowed ? titledWindow(centred(screen), id) : borderlessWindow(screen, id);
     const CGFloat scale = screen.backingScaleFactor;
     const NSSize size = window.contentView.bounds.size;
     return std::make_unique<MacSurface>(window, device, CGSizeMake(size.width * scale, size.height * scale),
