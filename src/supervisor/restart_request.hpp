@@ -7,6 +7,10 @@ namespace azl::restart {
 constexpr int kNormal = 75;
 constexpr int kSafeMode = 76;
 
+// The exit code with which the engine asks nocturne-supervisor to stop it and exit without starting it again (a client
+// asked to stop the show). SIGTERM to the supervisor does the same.
+constexpr int kStop = 77;
+
 // Set in the engine's environment by the supervisor, so the engine knows someone hears the request.
 constexpr const char* kSupervisedVariable = "NOCTURNE_SUPERVISED";
 

@@ -939,6 +939,14 @@ std::set<std::string> Session::sourcesToWatch() const
     return sources;
 }
 
+void Session::setEngineError(const juce::String& message)
+{
+    if (message == engineError_)
+        return;
+    engineError_ = message;
+    notify(Connection);
+}
+
 void Session::connect()
 {
     token_ = tokenFor(host_);
@@ -946,6 +954,7 @@ void Session::connect()
         startLocalPreviews(localOptions_);
     updateWatch();
     connectGraceUntil_ = isLocalHost(host_) ? now() + kConnectGraceSeconds : 0.0;
+    engineError_.clear();
     connection_ = std::make_unique<azl::ui::Connection>(client_, host_, port_, surfaces_, token_);
 }
 

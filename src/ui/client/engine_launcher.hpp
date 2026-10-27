@@ -1,49 +1,69 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
+#include <string>
 
 #include <sys/types.h>
 
 namespace azl::ui {
 
-// Starts a local Nocturne engine for the standalone app and stops only the one it started.
+// Starts a local Nocturne engine for the standalone app and is the watchdog for it.
 //
-// Loopback only: it reuses an engine that already answers on the local control port, and it never kills an engine it
-// did not start. In the single-bundle release the engine binaries sit next to the UI binary in Contents/MacOS, so the
-// UI finds the supervisor by the running executable's bundle path, not the build directory. Not thread-safe; use it
-// from the message thread only.
+// On a machine where the UI runs the UI owns the engine directly: it spawns the `nocturne` binary beside it (not
+// nocturne-supervisor, which is only for show machines, started by tools/autostart.sh or the setup script), with the
+// engine on 127.0.0.1 and a heartbeat pipe so the engine quits when the UI quits, even on a force-quit. It restarts an
+// engine that dies, but at most twice in a minute; after that it gives up and reports a failure. It reuses an engine
+// that already answers on the local port and never stops one it did not start. Loopback only. Not thread-safe; use it
+// from the message thread.
 class EngineLauncher {
 public:
     struct Hooks {
         // True when an engine already answers on the local control port.
         std::function<bool()> reachable;
-        // Starts the bundled supervisor; returns its pid, or 0 when it could not start one.
+        // Starts the engine; returns its pid, or 0 when it could not start one.
         std::function<pid_t()> spawn;
-        // Stops the supervisor this launcher started.
+        // True while the engine with this pid is still running; reaps it (and frees its resources) when it has exited.
+        std::function<bool(pid_t)> alive;
+        // Stops the running engine this launcher started.
         std::function<void(pid_t)> stop;
+        // Seconds from a steady clock, for the restart window.
+        std::function<double()> now;
     };
 
     explicit EngineLauncher(Hooks hooks);
 
-    // Ensures a local engine is up. Does nothing when it already owns one; reuses a reachable engine; otherwise spawns
-    // one. Safe to call repeatedly: it probes before spawning, so it never starts a second engine while one is
-    // running. Calling it again after a reused engine has gone (its owner quit) adopts the role and spawns our own.
+    // Ensures a local engine. Does nothing once it owns one or has given up; reuses a reachable engine; otherwise
+    // spawns one. Safe to call repeatedly: it probes before spawning, so it never starts a second engine.
     void ensureRunning();
+
+    // Call periodically. Restarts an owned engine that has died, up to twice in 60 s; after that it gives up, stops
+    // trying, and failure() explains why. Does nothing for an engine it did not start.
+    void poll();
 
     // Stops the engine only when this launcher started it. Safe to call when it did not.
     void shutdown();
 
-    // True once this launcher has started (and so owns) an engine.
+    // True while this launcher owns a running engine.
     bool startedByUs() const { return ownedPid_ != 0; }
 
+    // Why the watchdog gave up (the engine kept dying, or could not start); empty while all is well.
+    const std::string& failure() const { return failure_; }
+
 private:
+    static constexpr int kMaxRestarts = 2;
+    static constexpr double kWindowSeconds = 60.0;
+
     Hooks hooks_;
     pid_t ownedPid_ = 0;
+    std::deque<double> restarts_;
+    std::string failure_;
 };
 
-// The hooks the real app uses: probe 127.0.0.1:port, spawn the nocturne-supervisor that sits next to the running
-// executable (its default State and Logs directories), and stop it with SIGTERM (then SIGKILL if it lingers).
+// The hooks the real app uses: probe 127.0.0.1:port; spawn the `nocturne` beside the running executable with
+// --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine quits); reap or
+// stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI looks.
 EngineLauncher::Hooks defaultEngineHooks(uint16_t port);
 
 }

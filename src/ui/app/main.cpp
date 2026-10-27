@@ -8,19 +8,24 @@
 
 namespace {
 
-// Keeps a local engine under the standalone app. While the UI stays disconnected from its loopback engine for a few
-// seconds and does not own one, it reruns EngineLauncher: that probes first, so a supervisor-managed restart (nothing
-// is listening only for an instant) never makes it spawn a second engine, but an engine stopped for good by another
-// UI instance that has quit is adopted and started again here. Runs on the message thread.
+// Runs the engine watchdog on the message thread. Each tick it restarts an engine of ours that died (the launcher
+// bounds that to twice a minute, then gives up); if it gives up, the failure shows in the UI. When the UI reused
+// another instance's engine and that engine has gone (the other instance quit), it starts one of its own after a few
+// seconds disconnected.
 class EngineKeepalive : public juce::Timer {
 public:
     EngineKeepalive(azl::ui::EngineLauncher& launcher, azl::ui::Session& session) : launcher_(launcher), session_(session)
     {
-        startTimer(2000);
+        startTimer(1000);
     }
 
     void timerCallback() override
     {
+        launcher_.poll();
+        if (!launcher_.failure().empty()) {
+            session_.setEngineError(launcher_.failure());
+            return;
+        }
         if (session_.client().connected() || launcher_.startedByUs()) {
             down_ = 0;
             return;
@@ -30,7 +35,7 @@ public:
     }
 
 private:
-    static constexpr int kDownToAdopt = 5; // About 10 s disconnected, longer than a supervisor restart.
+    static constexpr int kDownToAdopt = 10; // About 10 s disconnected before taking over a reused engine that is gone.
     azl::ui::EngineLauncher& launcher_;
     azl::ui::Session& session_;
     int down_ = 0;
@@ -93,9 +98,10 @@ public:
         if (!hidden)
             juce::Process::setDockIconVisible(true);
         const bool interactive = !hidden && snapshot.isEmpty();
-        // The single-bundle app owns its engine: if nothing answers on the local port, start the supervisor that sits
-        // beside this binary in Contents/MacOS. It reuses an engine that is already up and stops only one it started.
-        // A dev build with separate bundles has no supervisor next to the UI, so this is a no-op there.
+        // The single-bundle app owns its engine: if nothing answers on the local port, start the nocturne engine that
+        // sits beside this binary in Contents/MacOS (loopback only), and watch it (EngineKeepalive). It reuses an
+        // engine that is already up and stops only one it started. A dev build with separate bundles has no engine
+        // next to the UI, so this is a no-op there.
         if (interactive && isLoopbackHost(host)) {
             launcher_ = std::make_unique<azl::ui::EngineLauncher>(azl::ui::defaultEngineHooks(uint16_t(port)));
             launcher_->ensureRunning();

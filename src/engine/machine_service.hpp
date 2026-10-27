@@ -43,6 +43,8 @@ struct MachineSources {
     std::filesystem::path showLock;
     // Unset while the engine runs without a supervisor.
     MachineActions::Restart restart;
+    // Unset while the engine runs without a supervisor.
+    MachineActions::Stop stop;
     UpdateSource update;
     // The venue clock (Unix seconds; unset: the system's) and its zone, for the Gig windows that refuse Update.
     std::function<double()> wall;

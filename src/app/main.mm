@@ -1153,6 +1153,7 @@ int run(const EngineConfig& opt)
     StatsPrinter* printer = &stats;
     int exitCode = 0;
     azl::MachineActions::Restart restart = azl::restartRequest(&exitCode, quit);
+    azl::MachineActions::Stop stop = azl::stopRequest(&exitCode, quit);
     const azl::UpdateSource update = restart && !opt.state.empty() ? azl::installedUpdate(stateDir) : azl::UpdateSource{};
     azl::MachineService machine(
         document, engine, displays, &known, azl::engineTime,
@@ -1166,6 +1167,7 @@ int run(const EngineConfig& opt)
          .unmirror = [&outputService] { return outputService.unmirrorNow(); },
          .showLock = opt.state.empty() ? std::filesystem::path() : stateDir / "show-lock.json",
          .restart = std::move(restart),
+         .stop = std::move(stop),
          .update = update,
          .wall = azl::unixTime});
     machine.setAudio(&analysis);

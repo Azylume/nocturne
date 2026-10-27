@@ -66,21 +66,20 @@ The first time Nocturne runs it asks for two macOS permissions:
 
 ## Stopping the engine
 
-Opening Nocturne starts its engine in the background; quitting Nocturne (Cmd-Q) stops it. The engine listens on
-`127.0.0.1` only, so nothing on your network can reach it.
+Opening Nocturne starts its engine in the background; quitting Nocturne stops it. Quitting any way works — a clean
+Quit (Cmd-Q), a crash, or even Force Quit all stop the engine, because its life is tied to the app's. The engine
+listens on `127.0.0.1` only, so nothing on your network can reach it.
 
-If Nocturne ever quits or crashes without stopping the engine, the next launch simply reuses the one still running —
+If an engine is ever left running (for example after a hard power loss), the next launch of Nocturne simply reuses it —
 you do not get a second. To stop a leftover engine by hand, run:
 
 ```sh
-pkill nocturne-supervisor
+pkill nocturne
 ```
-
-The supervisor stops the engine when it goes, so that one command stops both.
 
 ## Uninstall
 
-Quit Nocturne (and `pkill nocturne-supervisor` if anything is still running), then drag `Nocturne.app` to the Trash.
+Quit Nocturne (and `pkill nocturne` if anything is still running), then drag `Nocturne.app` to the Trash.
 The preview app does not install a login item or any background service of its own; it runs the engine only while the
 app is open.
 

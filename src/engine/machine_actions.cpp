@@ -28,8 +28,8 @@ bool readLock(const std::filesystem::path& file)
 
 } // namespace
 
-MachineActions::MachineActions(std::filesystem::path lockFile, Restart restart)
-    : lockFile_(std::move(lockFile)), restart_(std::move(restart)), locked_(readLock(lockFile_))
+MachineActions::MachineActions(std::filesystem::path lockFile, Restart restart, Stop stop)
+    : lockFile_(std::move(lockFile)), restart_(std::move(restart)), stop_(std::move(stop)), locked_(readLock(lockFile_))
 {
     if (locked_)
         std::printf("show lock: on\n");
@@ -43,6 +43,8 @@ bool MachineActions::handle(const Message& message, const DocumentServer::Sink& 
         restart(client, false, "restart", "Restart engine", reply);
     else if (op == "safeMode")
         restart(client, true, "safeMode", "Safe mode", reply);
+    else if (op == "stop")
+        stop(client, reply);
     else if (op == "lock")
         lock(message, reply);
     else
@@ -74,6 +76,18 @@ void MachineActions::restart(ClientId client, bool safeMode, const char* op, con
     std::fflush(stdout);
     reply({{"type", "machine"}, {"op", op}});
     restart_(safeMode);
+}
+
+void MachineActions::stop(ClientId client, const DocumentServer::Sink& reply)
+{
+    if (const std::optional<std::string> refused = refusal("Stop"))
+        return reply(error(*refused));
+    if (!stop_)
+        return reply(error("Stop needs the supervisor, and this engine runs without one"));
+    std::printf("Stop asked for from client %llu\n", (unsigned long long)client);
+    std::fflush(stdout);
+    reply({{"type", "machine"}, {"op", "stop"}});
+    stop_();
 }
 
 void MachineActions::lock(const Message& message, const DocumentServer::Sink& reply)

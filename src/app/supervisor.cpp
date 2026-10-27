@@ -473,6 +473,11 @@ private:
             say("engine " + describe(status));
             return;
         }
+        if (hang.empty() && exitedWith(status, azl::restart::kStop)) {
+            stopping_ = true;
+            say("stop asked for from a client; stopping");
+            return;
+        }
         if (hang.empty() && exitedWith(status, azl::restart::kNormal)) {
             say("engine restart asked for from a client");
             return;
