@@ -1,6 +1,10 @@
 #include "net/websocket.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
+#include "ui/client/engine_launcher.hpp"
+
+#include <algorithm>
+#include <cctype>
 
 namespace {
 
@@ -61,6 +65,13 @@ public:
         if (!hidden)
             juce::Process::setDockIconVisible(true);
         const bool interactive = !hidden && snapshot.isEmpty();
+        // The single-bundle app owns its engine: if nothing answers on the local port, start the supervisor that sits
+        // beside this binary in Contents/MacOS. It reuses an engine that is already up and stops only one it started.
+        // A dev build with separate bundles has no supervisor next to the UI, so this is a no-op there.
+        if (interactive && isLoopbackHost(host)) {
+            launcher_ = std::make_unique<azl::ui::EngineLauncher>(azl::ui::defaultEngineHooks(uint16_t(port)));
+            launcher_->ensureRunning();
+        }
         session_ = std::make_unique<azl::ui::Session>(
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
@@ -98,11 +109,22 @@ public:
     {
         window_.reset();
         session_.reset();
+        if (launcher_)
+            launcher_->shutdown();
     }
 
     void systemRequestedQuit() override { quit(); }
 
 private:
+    // True when the host names this machine over loopback, so starting a local engine is the right thing.
+    static bool isLoopbackHost(const std::string& host)
+    {
+        std::string lower = host;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return char(std::tolower(c)); });
+        return lower.empty() || lower == "localhost" || lower == "127.0.0.1" || lower == "::1";
+    }
+
     // shot.png -> shot-2.png
     static juce::File snapshotFile(const juce::String& path, int n)
     {
@@ -135,6 +157,7 @@ private:
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
+    std::unique_ptr<azl::ui::EngineLauncher> launcher_;
     std::unique_ptr<azl::ui::Session> session_;
     std::unique_ptr<Window> window_;
 };

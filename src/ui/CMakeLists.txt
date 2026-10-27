@@ -11,7 +11,7 @@ FetchContent_Declare(juce
 FetchContent_MakeAvailable(juce)
 
 add_library(nocturne_ui_client STATIC client/engine_client.cpp client/connection.cpp client/return_video_client.cpp
-  client/return_audio_player.cpp)
+  client/return_audio_player.cpp client/engine_launcher.cpp)
 target_include_directories(nocturne_ui_client PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(nocturne_ui_client PUBLIC nocturne_net nocturne_venues nocturne_audio "-framework IOSurface"
   "-framework CoreFoundation")
@@ -84,7 +84,8 @@ add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_S
   ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
+  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/engine_launcher_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots")
