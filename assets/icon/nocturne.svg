@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Placeholder Nocturne app icon: a crescent moon over the wordmark, on night blue. Original art for the preview
+     release, to be replaced by a designed icon later. Source of assets/icon/nocturne.icns via assets/icon/make-icns.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141733"/>
+      <stop offset="1" stop-color="#070812"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#cdd6ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#cdd6ff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The crescent: a full moon with an offset disc of the background punched out. -->
+    <mask id="crescent">
+      <rect width="1024" height="1024" fill="black"/>
+      <circle cx="512" cy="392" r="190" fill="white"/>
+      <circle cx="590" cy="352" r="168" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#night)"/>
+  <circle cx="470" cy="420" r="330" fill="url(#glow)" opacity="0.35"/>
+  <rect width="1024" height="1024" fill="#e8ecff" mask="url(#crescent)"/>
+
+  <!-- A scatter of stars. -->
+  <g fill="#aab4e6">
+    <circle cx="300" cy="250" r="5"/>
+    <circle cx="742" cy="300" r="7"/>
+    <circle cx="690" cy="520" r="4"/>
+    <circle cx="340" cy="560" r="6"/>
+    <circle cx="800" cy="470" r="4"/>
+  </g>
+
+  <text x="512" y="760" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="132" font-weight="600" letter-spacing="10" fill="#e8ecff">NOCTURNE</text>
+  <text x="512" y="838" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="44" font-weight="400" letter-spacing="18" fill="#8a93c8">AUTOPILOT&#160;VJ</text>
+</svg>
