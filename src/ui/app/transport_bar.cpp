@@ -179,6 +179,8 @@ std::pair<juce::String, juce::Colour> TransportBar::statusText() const
         return {session_.status(), session_.statusIsError() ? p.fault : p.text};
     const juce::String where = utf8(session_.host()) + ":" + juce::String(session_.port());
     if (!session_.client().connected()) {
+        if (session_.engineError().isNotEmpty())
+            return {session_.engineError(), p.fault};
         juce::String text = "connecting to " + where;
         if (!session_.connectionError().empty())
             text << ": " << utf8(session_.connectionError());

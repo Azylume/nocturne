@@ -1,8 +1,45 @@
 #include "net/websocket.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
+#include "ui/client/engine_launcher.hpp"
+
+#include <algorithm>
+#include <cctype>
 
 namespace {
+
+// Runs the engine watchdog on the message thread. Each tick it restarts an engine of ours that died (the launcher
+// bounds that to twice a minute, then gives up); if it gives up, the failure shows in the UI. When the UI reused
+// another instance's engine and that engine has gone (the other instance quit), it starts one of its own after a few
+// seconds disconnected.
+class EngineKeepalive : public juce::Timer {
+public:
+    EngineKeepalive(azl::ui::EngineLauncher& launcher, azl::ui::Session& session) : launcher_(launcher), session_(session)
+    {
+        startTimer(1000);
+    }
+
+    void timerCallback() override
+    {
+        launcher_.poll();
+        if (!launcher_.failure().empty()) {
+            session_.setEngineError(launcher_.failure());
+            return;
+        }
+        if (session_.client().connected() || launcher_.startedByUs()) {
+            down_ = 0;
+            return;
+        }
+        if (++down_ >= kDownToAdopt)
+            launcher_.ensureRunning();
+    }
+
+private:
+    static constexpr int kDownToAdopt = 10; // About 10 s disconnected before taking over a reused engine that is gone.
+    azl::ui::EngineLauncher& launcher_;
+    azl::ui::Session& session_;
+    int down_ = 0;
+};
 
 // nocturne-ui [--host H] [--port N] [--jpeg-previews] [--remote-previews | --local-previews] [--hidden]
 // [--snapshot FILE [--snapshots N] [--snapshot-after S]] [--map [--map-screen N] [--map-point K] [--map-input]]:
@@ -61,10 +98,20 @@ public:
         if (!hidden)
             juce::Process::setDockIconVisible(true);
         const bool interactive = !hidden && snapshot.isEmpty();
+        // The single-bundle app owns its engine: if nothing answers on the local port, start the nocturne engine that
+        // sits beside this binary in Contents/MacOS (loopback only), and watch it (EngineKeepalive). It reuses an
+        // engine that is already up and stops only one it started. A dev build with separate bundles has no engine
+        // next to the UI, so this is a no-op there.
+        if (interactive && isLoopbackHost(host)) {
+            launcher_ = std::make_unique<azl::ui::EngineLauncher>(azl::ui::defaultEngineHooks(uint16_t(port)));
+            launcher_->ensureRunning();
+        }
         session_ = std::make_unique<azl::ui::Session>(
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
         window_ = std::make_unique<Window>(*session_, !hidden);
+        if (launcher_)
+            keepalive_ = std::make_unique<EngineKeepalive>(*launcher_, *session_);
         if (interactive)
             session_->midi().start();
         if (!hidden && snapshot.isEmpty())
@@ -96,13 +143,25 @@ public:
 
     void shutdown() override
     {
+        keepalive_.reset();
         window_.reset();
         session_.reset();
+        if (launcher_)
+            launcher_->shutdown();
     }
 
     void systemRequestedQuit() override { quit(); }
 
 private:
+    // True when the host names this machine over loopback, so starting a local engine is the right thing.
+    static bool isLoopbackHost(const std::string& host)
+    {
+        std::string lower = host;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return char(std::tolower(c)); });
+        return lower.empty() || lower == "localhost" || lower == "127.0.0.1" || lower == "::1";
+    }
+
     // shot.png -> shot-2.png
     static juce::File snapshotFile(const juce::String& path, int n)
     {
@@ -135,6 +194,8 @@ private:
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
+    std::unique_ptr<azl::ui::EngineLauncher> launcher_;
+    std::unique_ptr<EngineKeepalive> keepalive_;
     std::unique_ptr<azl::ui::Session> session_;
     std::unique_ptr<Window> window_;
 };

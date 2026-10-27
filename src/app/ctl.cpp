@@ -130,6 +130,8 @@ commands:
   machine testcard on|off           the test card on every screen
   machine identify [SECONDS]        every output shows its screen's name and display large (default 3 s)
   machine unmirror                  end mirroring between displays that carry different screens now
+  machine stop                      the supervisor stops the engine and exits without restarting it (SIGTERM does
+                                    the same); a show machine then needs tools/autostart.sh restart to run again
   machine restart|safemode          the supervisor starts the engine again, or in safe mode (from safe mode, restart
                                     leaves it); refused while the Show lock is on
   machine lock on|off               the venue's Show lock: while on, every client is refused restart, safe mode and
@@ -1055,7 +1057,7 @@ std::optional<azl::Message> machineMessage(const std::vector<std::string>& c)
     if (c.size() == 1)
         return azl::Message{{"type", "machine"}, {"op", "status"}};
     const std::string& op = c[1];
-    if (c.size() == 2 && (op == "unmirror" || op == "restart"))
+    if (c.size() == 2 && (op == "unmirror" || op == "restart" || op == "stop"))
         return azl::Message{{"type", "machine"}, {"op", op}};
     if (c.size() == 2 && op == "safemode")
         return azl::Message{{"type", "machine"}, {"op", "safeMode"}};

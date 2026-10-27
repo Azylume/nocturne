@@ -1,0 +1,21 @@
+# The downloadable preview is one ad-hoc signed Nocturne.app that starts its own engine
+
+To hand someone a Nocturne they can try without building it, the download is a single `Nocturne.app`: the JUCE UI binary and the engine binaries (`nocturne`, `nocturne-supervisor`, `nocturne-ctl`, `nocturne-desk`) share one `Contents/MacOS`. Opening it starts a show. There is no Apple Developer ID yet, so it is ad-hoc signed and unsigned to Gatekeeper; a signed, notarised DMG is [#32](https://github.com/Azylume/nocturne/issues/32).
+
+- **The UI owns the engine directly and is its watchdog, over loopback only.** On an interactive launch against a loopback host the UI ensures a local engine (`EngineLauncher`): it reuses one already answering on `127.0.0.1:7400`, otherwise spawns the `nocturne` engine beside it with `--loopback --port` and watches it. It restarts an engine that dies, but at most twice in a minute, then gives up and shows an error, so a crash loop does not spin forever. On quit it stops only the engine it started, never one it did not. The UI does **not** spawn `nocturne-supervisor`: the supervisor is for show machines, started by `tools/autostart.sh` or the setup script ([#66](https://github.com/Azylume/nocturne/issues/66)). The UI stays a pure protocol client otherwise: no new listeners, loopback only, and a loopback client needs no pairing token (`SECURITY.md`, "Network trust"), so the trust model is untouched.
+
+- **The engine dies with the UI, even on a force-quit.** The UI gives the engine a heartbeat pipe (`NOCTURNE_HEARTBEAT_FD`), the same mechanism the supervisor uses: the UI holds one end, the engine the other, and when the UI process goes — a clean quit, a crash or a Force Quit — the pipe closes and the engine quits too. It is not given `NOCTURNE_SUPERVISED`, so a UI-spawned engine never exits to ask for a restart; the UI is its only watchdog. The supervisor stays stoppable the same way: SIGTERM, or a client's `machine stop`, makes it stop the engine and exit without restarting it.
+
+  Considered and rejected having the UI spawn `nocturne-supervisor`: it put a second watchdog and the venue desk inside a laptop app that does not need them, and the supervisor's restart loop fought the UI's own lifetime.
+
+  The restart budget (two in a minute) is the launcher's; the real spawn, reap and pipe live in its hooks, so the budget and reuse logic are unit-tested without a live engine (`tests/ui/engine_launcher_test.cpp`).
+
+- **This is a release-time merge, not the dev or show layout.**
+
+A normal build still makes the two bundles ADR 0010 describes (`Nocturne.app` the headless engine, `Nocturne UI.app` the client), and `tools/sign-bundle.sh` still signs them with "Nocturne Dev". Only `tools/make-bundle.sh` folds them into the one preview bundle. The show machine keeps its headless `Nocturne.app` under the LaunchAgent (`tools/autostart.sh`), unchanged. A dev build has no engine next to the UI, so `EngineLauncher` finds nothing to spawn and is a no-op there.
+
+- **Ad-hoc signing is the minimum Apple silicon needs.** Apple silicon refuses to run unsigned arm64 code at all, so `make-bundle.sh` ad-hoc signs every nested binary and then the bundle inside-out, with the hardened runtime and `tools/nocturne.entitlements` (audio input, network client and server). `codesign --verify --deep --strict` passes; `spctl` still rejects it, because it is not notarised. That rejection is what `docs/install.md` tells a user to get past once.
+
+- **Amends ADR 0010.** ADR 0010 keeps the UI and engine as separate bundles for the dev and show machines, and the reasons there (the Mini's one microphone grant, a UI change not re-signing the engine, a crash staying in its own process) still hold for those machines. They do not apply to a throwaway preview a user downloads, opens once and trashes, which is better served by a single app. 0010 stays in force everywhere except this preview bundle.
+
+- **Considered:** shipping only the headless `Nocturne.app` and having the user run it and connect the UI by hand (rejected: not "open one app and a show plays"); installing a LaunchAgent on first launch (rejected: a preview should leave no login item behind, and that is the supervisor path for show machines, not a laptop preview). A signed, notarised build (#32) will revisit the entitlements and the Gatekeeper story.

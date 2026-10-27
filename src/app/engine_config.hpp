@@ -26,6 +26,8 @@ struct EngineConfig {
     uint32_t width = 1920;
     uint32_t height = 1080;
     uint16_t port;
+    // The preview app sets this so its UI-spawned engine listens on 127.0.0.1 alone, off the LAN.
+    bool loopback = false;
     std::string library;
     // Unset: what the state keeps, else the engine's default.
     std::optional<size_t> clipCacheMB;

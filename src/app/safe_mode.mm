@@ -78,10 +78,10 @@ dispatch_source_t stopOnSignal(int sig)
 // The machine status and the guarded actions, and nothing of the document.
 class SafeModeProtocol {
 public:
-    SafeModeProtocol(const app::EngineConfig& opt, MachineActions::Restart restart)
+    SafeModeProtocol(const app::EngineConfig& opt, MachineActions::Restart restart, MachineActions::Stop stop)
         : reason_(opt.safeMode), document_(Composition{}, [](auto) {}),
           actions_(opt.state.empty() ? std::filesystem::path() : std::filesystem::path(opt.state) / "show-lock.json",
-                   std::move(restart))
+                   std::move(restart), std::move(stop))
     {
         document_.setReadOnly("the engine is in safe mode: " + reason_, {"machine"});
         document_.handle("machine", [this](const Message& message, DocumentServer::Sink reply) {
@@ -140,6 +140,18 @@ MachineActions::Restart restartRequest(int* exitCode, void (*quit)())
     };
 }
 
+MachineActions::Stop stopRequest(int* exitCode, void (*quit)())
+{
+    if (!std::getenv(restart::kSupervisedVariable))
+        return nullptr;
+    return [exitCode, quit] {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
+            *exitCode = restart::kStop;
+            quit();
+        });
+    };
+}
+
 int runSafeMode(const app::EngineConfig& opt)
 {
     const std::string& reason = opt.safeMode;
@@ -175,7 +187,8 @@ int runSafeMode(const app::EngineConfig& opt)
     std::fflush(stdout);
 
     int exitCode = 0;
-    auto protocol = std::make_unique<SafeModeProtocol>(opt, restartRequest(&exitCode, stopApp));
+    auto protocol =
+        std::make_unique<SafeModeProtocol>(opt, restartRequest(&exitCode, stopApp), stopRequest(&exitCode, stopApp));
 
     dispatch_source_t onInt = stopOnSignal(SIGINT);
     dispatch_source_t onTerm = stopOnSignal(SIGTERM);

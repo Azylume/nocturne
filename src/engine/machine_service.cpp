@@ -57,7 +57,7 @@ Message thermalJson(const Thermal& thermal)
 MachineService::MachineService(DocumentServer& document, Engine& engine, Displays& displays, const KnownDisplays* known,
                                Now now, Post post, MachineSources sources)
     : document_(document), engine_(engine), displays_(displays), known_(known), now_(std::move(now)),
-      post_(std::move(post)), sources_(std::move(sources)), actions_(sources_.showLock, sources_.restart),
+      post_(std::move(post)), sources_(std::move(sources)), actions_(sources_.showLock, sources_.restart, sources_.stop),
       update_(sources_.update)
 {
     document_.handle("machine", [this](const Message& message, DocumentServer::Sink reply) { handle(message, reply); });

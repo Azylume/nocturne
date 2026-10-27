@@ -362,7 +362,7 @@ add_executable(nocturne_tests tests/main.cpp tests/harness_test.cpp tests/golden
   tests/generator_test.cpp tests/prototype_gaps_test.cpp tests/continuity_test.cpp
   tests/record_test.mm tests/resilience_test.cpp tests/still_test.cpp tests/colour_test.cpp tests/engine_config_test.cpp
   tests/autopilot_stepper_test.cpp tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
-  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
+  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_actions_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
   tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
   tests/hap_test.cpp tests/hap_codec_test.cpp tests/hap_playback_test.cpp

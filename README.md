@@ -77,6 +77,18 @@ on its own, the UI is just a window into it, and the show knows its clips by con
 - Optional: an audio input for audio-reactive modulation, Pro DJ Link players on the network to follow the DJ.
 - To build: Xcode command line tools, CMake 3.24+, Homebrew `ffmpeg`.
 
+## Download
+
+There is an early **unsigned preview**: one `Nocturne.app` that holds the UI and the engine, so opening it starts a
+show on its own. Grab `Nocturne-<version>-unsigned.dmg` from the [latest release](https://github.com/Azylume/nocturne/releases).
+
+This build has **no Apple Developer ID** yet, so macOS will say it "cannot verify the developer". It is ad-hoc signed
+so Apple silicon will run it, but Gatekeeper still blocks a plain double-click. To open it the first time, and to
+verify the download with its checksum, follow [`docs/install.md`](docs/install.md). A signed, notarised build comes
+later ([#32](https://github.com/Azylume/nocturne/issues/32)).
+
+To build it yourself instead, read on.
+
 ## Run it
 
 ```sh
@@ -99,7 +111,7 @@ Autopilot. Coming from Resolume: [`docs/resolume-import.md`](docs/resolume-impor
 for the night, see [`docs/show-machine.md`](docs/show-machine.md).
 
 **Status:** early. It has played real club nights on a Mac mini, and the interfaces still change. macOS only for now.
-- No downloadable app yet: you build it.
+- The downloadable app is an unsigned preview ([Download](#download)); signed and notarised comes later.
 - No MIDI or OSC control yet. Play it from the UI or `nocturne-ctl`, or let Autopilot and Cues run it.
 - No DXV. Convert those clips (`tools/transcode-media.sh` does it for an imported Resolume show).
 - Resolume import is a translation, not a copy. Read the report.

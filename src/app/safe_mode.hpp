@@ -16,4 +16,8 @@ int runSafeMode(const app::EngineConfig& opt);
 // set to the request's exit code and `quit` is called on the main thread. Null without a supervisor.
 MachineActions::Restart restartRequest(int* exitCode, void (*quit)());
 
+// The Stop a supervised engine offers: it quits with the stop exit code so the supervisor stops it and does not restart
+// it. Null when the engine is not supervised.
+MachineActions::Stop stopRequest(int* exitCode, void (*quit)());
+
 } // namespace azl

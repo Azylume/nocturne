@@ -568,8 +568,8 @@ private:
 // Serves the protocol, retrying in the background while the port is taken: the show plays without it meanwhile.
 class Listener {
 public:
-    Listener(azl::DocumentServer& document, uint16_t port, std::string token)
-        : document_(document), port_(port), token_(std::move(token)),
+    Listener(azl::DocumentServer& document, uint16_t port, std::string token, bool loopback = false)
+        : document_(document), port_(port), token_(std::move(token)), loopback_(loopback),
           queue_(dispatch_queue_create("nocturne.listener", DISPATCH_QUEUE_SERIAL))
     {
         dispatch_async(queue_, ^{ attempt(); });
@@ -586,8 +586,8 @@ private:
         if (stopped_)
             return;
         try {
-            server_ = std::make_unique<azl::WebSocketServer>(document_, port_, azl::Pairing{token_});
-            std::printf("protocol on ws://0.0.0.0:%u\n", unsigned(server_->port()));
+            server_ = std::make_unique<azl::WebSocketServer>(document_, port_, azl::Pairing{token_}, loopback_);
+            std::printf("protocol on ws://%s:%u\n", loopback_ ? "127.0.0.1" : "0.0.0.0", unsigned(server_->port()));
         } catch (const std::exception& e) {
             std::printf("protocol: %s, trying again\n", e.what());
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * int64_t(NSEC_PER_SEC)), queue_, ^{ attempt(); });
@@ -598,6 +598,7 @@ private:
     azl::DocumentServer& document_;
     uint16_t port_;
     const std::string token_;
+    const bool loopback_;
     dispatch_queue_t queue_;
     std::atomic<bool> stopped_{false};
     std::unique_ptr<azl::WebSocketServer> server_;
@@ -1096,7 +1097,7 @@ int run(const EngineConfig& opt)
             roots.push_back(std::filesystem::absolute(opt.mediaRoot));
         return roots;
     });
-    Listener listener(document, opt.port, pairingToken(stateDir));
+    Listener listener(document, opt.port, pairingToken(stateDir), opt.loopback);
     std::unique_ptr<azl::ClockResponder> clockResponder;
     try {
         clockResponder = std::make_unique<azl::ClockResponder>(opt.port, azl::engineTime);
@@ -1152,6 +1153,7 @@ int run(const EngineConfig& opt)
     StatsPrinter* printer = &stats;
     int exitCode = 0;
     azl::MachineActions::Restart restart = azl::restartRequest(&exitCode, quit);
+    azl::MachineActions::Stop stop = azl::stopRequest(&exitCode, quit);
     const azl::UpdateSource update = restart && !opt.state.empty() ? azl::installedUpdate(stateDir) : azl::UpdateSource{};
     azl::MachineService machine(
         document, engine, displays, &known, azl::engineTime,
@@ -1165,6 +1167,7 @@ int run(const EngineConfig& opt)
          .unmirror = [&outputService] { return outputService.unmirrorNow(); },
          .showLock = opt.state.empty() ? std::filesystem::path() : stateDir / "show-lock.json",
          .restart = std::move(restart),
+         .stop = std::move(stop),
          .update = update,
          .wall = azl::unixTime});
     machine.setAudio(&analysis);

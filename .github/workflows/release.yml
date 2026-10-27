@@ -1,0 +1,79 @@
+# Builds the unsigned preview DMG on a v* tag and attaches it to a DRAFT GitHub Release. Nothing here runs on pull
+# requests, so it is never a required check; CI (ci.yml) stays the gate. A human reviews the draft and publishes it.
+# This build carries no Apple Developer ID; it is ad-hoc signed so Apple Silicon will run it, and Gatekeeper still
+# refuses it (#32 is the signed, notarised one).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for a manual build, e.g. 0.1.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja, ccache and ffmpeg
+        run: brew install ninja ccache ffmpeg
+      - name: ccache
+        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
+        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639 # v1.2
+        with:
+          key: ${{ runner.os }}-universal-release
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Version from the tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure (universal, arm64 + x86_64, Release)
+        # CMakeLists defaults to RelWithDebInfo; a release DMG is an explicit Release build.
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build the UI and engine bundles
+        run: cmake --build build --target nocturne-ui app
+      - name: Assemble the standalone bundle
+        run: tools/make-bundle.sh --version "${{ steps.version.outputs.version }}" --build "${{ github.run_number }}"
+      - name: Build the DMG and checksum
+        run: tools/make-dmg.sh --version "${{ steps.version.outputs.version }}"
+      - name: Draft release with the DMG and checksum
+        if: startsWith(github.ref, 'refs/tags/')
+        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          draft: true
+          name: Nocturne ${{ steps.version.outputs.version }} (unsigned preview)
+          body: |
+            Unsigned preview build. macOS cannot verify the developer; see docs/install.md to open it.
+            A signed, notarised DMG comes later (#32).
+
+            Verify the download: `shasum -a 256 -c Nocturne-${{ steps.version.outputs.version }}-unsigned.dmg.sha256`
+          files: |
+            build/release/Nocturne-${{ steps.version.outputs.version }}-unsigned.dmg
+            build/release/Nocturne-${{ steps.version.outputs.version }}-unsigned.dmg.sha256
+      - name: Upload the DMG as a workflow artifact (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-dmg-${{ steps.version.outputs.version }}
+          path: build/release/Nocturne-*-unsigned.dmg*

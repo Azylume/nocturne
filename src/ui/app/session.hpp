@@ -87,6 +87,10 @@ public:
     uint16_t port() const { return port_; }
     // Why the engine cannot be reached, e.g. its name does not resolve; empty once connected.
     const std::string& connectionError() const { return connectionError_; }
+    // The standalone app's watchdog gave up on its local engine (it kept crashing); empty otherwise. Shown in the UI
+    // in place of "connecting…" so a user sees why nothing plays.
+    const juce::String& engineError() const { return engineError_; }
+    void setEngineError(const juce::String& message);
     // Hearing the engine machine's audio input here; a switch to another engine ends it.
     void setListening(bool on);
     bool listening() const { return client_.listening(); }
@@ -361,6 +365,8 @@ private:
     juce::String status_;
     bool statusError_ = false;
     std::string connectionError_;
+    double connectGraceUntil_ = 0.0;
+    juce::String engineError_;
     juce::String pendingError_;
     std::mutex errorMutex_;
     double statusUntil_ = 0.0;
