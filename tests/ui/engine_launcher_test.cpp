@@ -72,6 +72,25 @@ TEST_CASE("the launcher spawns at most one engine across repeated ensureRunning 
     CHECK(rec.reachableCalls == 1);
 }
 
+TEST_CASE("a reuser adopts the engine and spawns its own when the one it reused goes away")
+{
+    Recorder rec;
+    rec.engineUp = true;
+    EngineLauncher launcher(rec.hooks());
+
+    launcher.ensureRunning(); // Reuses the running engine; owns nothing.
+    CHECK(rec.spawnCalls == 0);
+    CHECK_FALSE(launcher.startedByUs());
+
+    rec.engineUp = false;     // The owning UI quit and stopped the engine; nothing answers now.
+    launcher.ensureRunning(); // The surviving UI takes over and starts its own.
+    CHECK(rec.spawnCalls == 1);
+    CHECK(launcher.startedByUs());
+
+    launcher.shutdown();
+    CHECK(rec.stopCalls == 1); // Now it owns one, so it stops it on quit.
+}
+
 TEST_CASE("a failed spawn leaves the launcher owning nothing to stop")
 {
     Recorder rec;

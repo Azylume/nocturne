@@ -39,8 +39,10 @@ struct Pairing {
 // another machine as not "loopback".
 class WebSocketServer {
 public:
-    // Listens on every interface, so LAN clients can connect. Port 0 picks a free port. Throws when it cannot listen.
-    WebSocketServer(DocumentServer& document, uint16_t port, Pairing pairing = {});
+    // Listens on every interface, so LAN clients can connect; with loopbackOnly it binds 127.0.0.1 alone, so a
+    // preview a user downloads never exposes its control port on the venue or cafe network. Port 0 picks a free port.
+    // Throws when it cannot listen.
+    WebSocketServer(DocumentServer& document, uint16_t port, Pairing pairing = {}, bool loopbackOnly = false);
     ~WebSocketServer();
 
     uint16_t port() const { return port_; }

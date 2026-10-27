@@ -12,6 +12,9 @@ namespace {
 
 constexpr double kStatusSeconds = 6.0;
 constexpr double kFocusSeconds = 1.0;
+// A local engine the app just spawned takes a few seconds to its first frame; show "connecting…" without the
+// errno until this passes, so a freshly started engine never flashes a connection error.
+constexpr double kConnectGraceSeconds = 8.0;
 
 juce::Image imageOf(const PreviewPicture& picture)
 {
@@ -899,7 +902,10 @@ void Session::timerCallback()
         status_.clear();
         notify(Status);
     }
-    if (std::string error = connection_->lastError(); error != connectionError_) {
+    std::string error = connection_->lastError();
+    if (!error.empty() && now() < connectGraceUntil_)
+        error.clear(); // A local engine is still coming up; stay on "connecting…" rather than show its errno.
+    if (error != connectionError_) {
         connectionError_ = std::move(error);
         notify(Connection);
     }
@@ -939,6 +945,7 @@ void Session::connect()
     if (localRender_ == LocalRender::On || (localRender_ == LocalRender::Auto && !isLocalHost(host_)))
         startLocalPreviews(localOptions_);
     updateWatch();
+    connectGraceUntil_ = isLocalHost(host_) ? now() + kConnectGraceSeconds : 0.0;
     connection_ = std::make_unique<azl::ui::Connection>(client_, host_, port_, surfaces_, token_);
 }
 

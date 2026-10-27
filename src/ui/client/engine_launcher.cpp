@@ -77,9 +77,8 @@ EngineLauncher::EngineLauncher(Hooks hooks) : hooks_(std::move(hooks)) {}
 
 void EngineLauncher::ensureRunning()
 {
-    if (ensured_)
-        return;
-    ensured_ = true;
+    if (ownedPid_ != 0)
+        return; // We already started one; the supervisor restarts it if it crashes.
     if (hooks_.reachable && hooks_.reachable())
         return; // An engine is already up; reuse it and never spawn a second.
     if (hooks_.spawn)
@@ -97,13 +96,22 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port)
 {
     EngineLauncher::Hooks hooks;
     hooks.reachable = [port] { return portAnswers(port); };
-    hooks.spawn = [] () -> pid_t {
+    hooks.spawn = [port] () -> pid_t {
         const fs::path supervisor = executableDir() / "nocturne-supervisor";
         std::error_code ec;
         if (!fs::exists(supervisor, ec))
             return 0; // Not a single-bundle build (e.g. a dev build with separate bundles); do not spawn.
         const std::string path = supervisor.string();
-        char* argv[] = {const_cast<char*>(path.c_str()), nullptr};
+        std::string portText = std::to_string(port);
+        // The preview's engine and venue desk listen on 127.0.0.1 only, so a downloaded app never opens a control
+        // port on the venue or cafe network; remote control stays the explicit ctl/pairing path over a tunnel. The
+        // engine listens on the same port the UI connects to, so a --port N on the UI reaches its own engine.
+        char supervisorArg[] = "--desk-loopback";
+        char dashes[] = "--";
+        char loopbackArg[] = "--loopback";
+        char portArg[] = "--port";
+        char* argv[] = {const_cast<char*>(path.c_str()), supervisorArg, dashes, loopbackArg,
+                        portArg, portText.data(), nullptr};
         pid_t pid = 0;
         if (::posix_spawn(&pid, path.c_str(), nullptr, nullptr, argv, environ) != 0)
             return 0;

@@ -26,7 +26,9 @@ public:
 
     explicit EngineLauncher(Hooks hooks);
 
-    // Reuses a reachable engine; otherwise spawns one, once. Calling it again never spawns a second engine.
+    // Ensures a local engine is up. Does nothing when it already owns one; reuses a reachable engine; otherwise spawns
+    // one. Safe to call repeatedly: it probes before spawning, so it never starts a second engine while one is
+    // running. Calling it again after a reused engine has gone (its owner quit) adopts the role and spawns our own.
     void ensureRunning();
 
     // Stops the engine only when this launcher started it. Safe to call when it did not.
@@ -37,7 +39,6 @@ public:
 
 private:
     Hooks hooks_;
-    bool ensured_ = false;
     pid_t ownedPid_ = 0;
 };
 

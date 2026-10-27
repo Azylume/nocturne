@@ -8,6 +8,34 @@
 
 namespace {
 
+// Keeps a local engine under the standalone app. While the UI stays disconnected from its loopback engine for a few
+// seconds and does not own one, it reruns EngineLauncher: that probes first, so a supervisor-managed restart (nothing
+// is listening only for an instant) never makes it spawn a second engine, but an engine stopped for good by another
+// UI instance that has quit is adopted and started again here. Runs on the message thread.
+class EngineKeepalive : public juce::Timer {
+public:
+    EngineKeepalive(azl::ui::EngineLauncher& launcher, azl::ui::Session& session) : launcher_(launcher), session_(session)
+    {
+        startTimer(2000);
+    }
+
+    void timerCallback() override
+    {
+        if (session_.client().connected() || launcher_.startedByUs()) {
+            down_ = 0;
+            return;
+        }
+        if (++down_ >= kDownToAdopt)
+            launcher_.ensureRunning();
+    }
+
+private:
+    static constexpr int kDownToAdopt = 5; // About 10 s disconnected, longer than a supervisor restart.
+    azl::ui::EngineLauncher& launcher_;
+    azl::ui::Session& session_;
+    int down_ = 0;
+};
+
 // nocturne-ui [--host H] [--port N] [--jpeg-previews] [--remote-previews | --local-previews] [--hidden]
 // [--snapshot FILE [--snapshots N] [--snapshot-after S]] [--map [--map-screen N] [--map-point K] [--map-input]]:
 // connects to the engine on H, a name or an address (default the last H given, else this machine), at port N (default
@@ -76,6 +104,8 @@ public:
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
         window_ = std::make_unique<Window>(*session_, !hidden);
+        if (launcher_)
+            keepalive_ = std::make_unique<EngineKeepalive>(*launcher_, *session_);
         if (interactive)
             session_->midi().start();
         if (!hidden && snapshot.isEmpty())
@@ -107,6 +137,7 @@ public:
 
     void shutdown() override
     {
+        keepalive_.reset();
         window_.reset();
         session_.reset();
         if (launcher_)
@@ -158,6 +189,7 @@ private:
     };
 
     std::unique_ptr<azl::ui::EngineLauncher> launcher_;
+    std::unique_ptr<EngineKeepalive> keepalive_;
     std::unique_ptr<azl::ui::Session> session_;
     std::unique_ptr<Window> window_;
 };

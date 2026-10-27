@@ -47,6 +47,8 @@ const char* const kEngineUsage = R"(usage: nocturne [options]
   --port N        protocol WebSocket port on every interface (default 7400). Clients on other machines must present
                   this machine's pairing token, kept in the --state folder (default ~/Library/Application
                   Support/Nocturne/State) as "token" and shown by nocturne-ctl token; clients on this machine need none
+  --loopback      bind the protocol port to 127.0.0.1 alone, so nothing on the LAN can reach it (the preview app sets
+                  this; remote control then goes through an ssh or Tailscale tunnel)
   --library DIR   media library index folder (default ~/Library/Application Support/Nocturne/MediaLibrary)
   --clip-cache MB bound on the two GOPs a clip playing backward holds (default 2048)
   --preload MB    bound on the frames of clips preloaded for the next trigger (default 3072)
@@ -253,6 +255,7 @@ bool readFileFlag(const std::string& arg, Args& in, EngineConfig& c)
 bool readNetworkFlag(const std::string& arg, Args& in, EngineConfig& c)
 {
     if (arg == "--port") c.port = uint16_t(std::atoi(in.value()));
+    else if (arg == "--loopback") c.loopback = true;
     else if (arg == "--node") c.node = true;
     else if (arg == "--follow") {
         c.follow = in.value();

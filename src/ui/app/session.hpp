@@ -361,6 +361,7 @@ private:
     juce::String status_;
     bool statusError_ = false;
     std::string connectionError_;
+    double connectGraceUntil_ = 0.0;
     juce::String pendingError_;
     std::mutex errorMutex_;
     double statusUntil_ = 0.0;

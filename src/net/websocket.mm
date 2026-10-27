@@ -376,12 +376,21 @@ struct WebSocketServer::Impl : std::enable_shared_from_this<Impl> {
     }
 };
 
-WebSocketServer::WebSocketServer(DocumentServer& document, uint16_t port, Pairing pairing)
+WebSocketServer::WebSocketServer(DocumentServer& document, uint16_t port, Pairing pairing, bool loopbackOnly)
     : impl_(std::make_shared<Impl>(document, std::move(pairing)))
 {
     Impl* impl = impl_.get();
     std::weak_ptr<Impl> weak = impl_;
-    impl->listener = nw_listener_create_with_port(std::to_string(port).c_str(), serverParameters(impl->queue));
+    const std::string portText = std::to_string(port);
+    if (loopbackOnly) {
+        // A local endpoint fixed to 127.0.0.1 binds the loopback interface alone; nothing on the LAN can reach it.
+        nw_parameters_t params = serverParameters(impl->queue);
+        nw_endpoint_t local = nw_endpoint_create_host("127.0.0.1", portText.c_str());
+        nw_parameters_set_local_endpoint(params, local);
+        impl->listener = nw_listener_create(params);
+    } else {
+        impl->listener = nw_listener_create_with_port(portText.c_str(), serverParameters(impl->queue));
+    }
     if (!impl->listener)
         throw std::runtime_error("cannot create a listener on port " + std::to_string(port));
 

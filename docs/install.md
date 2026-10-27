@@ -64,10 +64,25 @@ The first time Nocturne runs it asks for two macOS permissions:
 - **Audio / Microphone** — the engine analyses audio so the visuals react to the music. You can decline; the show
   still runs, just without audio-reactive modulation.
 
+## Stopping the engine
+
+Opening Nocturne starts its engine in the background; quitting Nocturne (Cmd-Q) stops it. The engine listens on
+`127.0.0.1` only, so nothing on your network can reach it.
+
+If Nocturne ever quits or crashes without stopping the engine, the next launch simply reuses the one still running —
+you do not get a second. To stop a leftover engine by hand, run:
+
+```sh
+pkill nocturne-supervisor
+```
+
+The supervisor stops the engine when it goes, so that one command stops both.
+
 ## Uninstall
 
-Quit Nocturne and drag `Nocturne.app` to the Trash. The preview app does not install a login item or any background
-service of its own; it runs the engine only while the app is open.
+Quit Nocturne (and `pkill nocturne-supervisor` if anything is still running), then drag `Nocturne.app` to the Trash.
+The preview app does not install a login item or any background service of its own; it runs the engine only while the
+app is open.
 
 ## Why signed builds are not here yet
 
