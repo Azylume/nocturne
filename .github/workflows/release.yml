@@ -26,7 +26,8 @@ jobs:
       - name: Install ninja, ccache and ffmpeg
         run: brew install ninja ccache ffmpeg
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
+        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639 # v1.2
         with:
           key: ${{ runner.os }}-universal-release
           max-size: 2G
@@ -43,9 +44,10 @@ jobs:
           else
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Configure (universal, arm64 + x86_64)
+      - name: Configure (universal, arm64 + x86_64, Release)
+        # CMakeLists defaults to RelWithDebInfo; a release DMG is an explicit Release build.
         run: >
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
       - name: Build the UI and engine bundles
@@ -56,7 +58,8 @@ jobs:
         run: tools/make-dmg.sh --version "${{ steps.version.outputs.version }}"
       - name: Draft release with the DMG and checksum
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: true
           name: Nocturne ${{ steps.version.outputs.version }} (unsigned preview)
