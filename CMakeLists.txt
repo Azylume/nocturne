@@ -114,6 +114,8 @@ foreach(file ${isf_files})
 endforeach()
 configure_file(src/effects/isf_sources.cpp.in isf_sources.cpp @ONLY)
 
+add_subdirectory(src/platform)
+
 add_library(nocturne_protocol STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/build_info.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/isf_sources.cpp
@@ -153,6 +155,7 @@ add_library(nocturne_protocol STATIC
   src/supervisor/state_saver.cpp
 )
 target_include_directories(nocturne_protocol PUBLIC src)
+target_link_libraries(nocturne_protocol PUBLIC nocturne_platform)
 target_include_directories(nocturne_protocol SYSTEM PUBLIC third_party/nlohmann)
 if(WIN32)
   target_sources(nocturne_protocol PRIVATE src/document/composition_file_win32.cpp)
@@ -273,7 +276,7 @@ enable_testing()
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
-  tests/media_files_test.cpp tests/video_decoder_test.cpp)
+  tests/media_files_test.cpp tests/video_decoder_test.cpp ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media")
