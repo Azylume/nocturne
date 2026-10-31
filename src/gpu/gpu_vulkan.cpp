@@ -693,6 +693,26 @@ VkPhysicalDevice pickPhysical(VkInstance instance)
     return best;
 }
 
+// Whether the device can sample its own clock together with the host clock hostTicks() reads.
+bool calibratesHostClock(VkInstance instance, VkPhysicalDevice physical, const char* extension)
+{
+    const bool khr = std::strcmp(extension, VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME) == 0;
+    const char* name =
+        khr ? "vkGetPhysicalDeviceCalibrateableTimeDomainsKHR" : "vkGetPhysicalDeviceCalibrateableTimeDomainsEXT";
+    auto domains =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR>(vkGetInstanceProcAddr(instance, name));
+    if (!domains)
+        return false;
+    uint32_t count = 0;
+    domains(physical, &count, nullptr);
+    std::vector<VkTimeDomainKHR> available(count);
+    domains(physical, &count, available.data());
+    const auto has = [&](VkTimeDomainKHR domain) {
+        return std::find(available.begin(), available.end(), domain) != available.end();
+    };
+    return has(VK_TIME_DOMAIN_DEVICE_KHR) && has(kHostDomain);
+}
+
 bool makeLogical(DeviceObject& d, uint32_t queues)
 {
     uint32_t count = 0;
@@ -709,6 +729,8 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
                               : hasExtension(available, VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)
                                   ? VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME
                                   : nullptr;
+    if (calibration && !calibratesHostClock(d.instance, d.physical, calibration))
+        calibration = nullptr;
     if (calibration)
         extensions.push_back(calibration);
 
