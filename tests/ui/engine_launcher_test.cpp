@@ -1,6 +1,11 @@
 #include "ui/client/engine_launcher.hpp"
 
+#include "net/socket_compat.hpp"
+
 #include <doctest.h>
+
+#include <chrono>
+#include <thread>
 
 using azl::ui::EngineLauncher;
 
@@ -10,11 +15,11 @@ namespace {
 // and a test can make that pid die to drive the watchdog. A fake clock advances the restart window by hand.
 struct FakeEngine {
     bool up = false;          // Something already answers on the port (a reuse case).
-    pid_t next = 1000;        // The pid the next spawn hands out.
-    pid_t running = 0;        // The pid currently alive, 0 when none.
+    int next = 1000;        // The pid the next spawn hands out.
+    int running = 0;        // The pid currently alive, 0 when none.
     int spawns = 0;
     int stops = 0;
-    pid_t lastStopped = 0;
+    int lastStopped = 0;
     bool spawnFails = false;
     double clock = 0.0;
 
@@ -23,15 +28,15 @@ struct FakeEngine {
         EngineLauncher::Hooks h;
         h.reachable = [this] { return up; };
         h.now = [this] { return clock; };
-        h.spawn = [this]() -> pid_t {
+        h.spawn = [this]() -> int {
             ++spawns;
             if (spawnFails)
                 return 0;
             running = next++;
             return running;
         };
-        h.alive = [this](pid_t pid) { return pid == running; };
-        h.stop = [this](pid_t pid) {
+        h.alive = [this](int pid) { return pid == running; };
+        h.stop = [this](int pid) {
             ++stops;
             lastStopped = pid;
             if (pid == running)
@@ -69,7 +74,7 @@ TEST_CASE("the launcher spawns an engine when none answers and stops the one it 
     CHECK(launcher.startedByUs());
     CHECK(launcher.failure().empty());
 
-    const pid_t started = eng.running;
+    const int started = eng.running;
     launcher.shutdown();
     CHECK(eng.stops == 1);
     CHECK(eng.lastStopped == started);
@@ -160,4 +165,38 @@ TEST_CASE("a failed spawn gives up with a failure and nothing to stop")
 
     launcher.shutdown();
     CHECK(eng.stops == 0);
+}
+
+TEST_CASE("the default hooks see an engine that answers on the local port, and none once it stops listening")
+{
+    azl::startSockets();
+    const azl::Socket listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(listener != azl::kNoSocket);
+    in_addr loopback{};
+    loopback.s_addr = htonl(INADDR_LOOPBACK);
+    sockaddr_in address = azl::ipv4Endpoint(loopback, 0);
+    REQUIRE(::bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0);
+    REQUIRE(::listen(listener, 1) == 0);
+    socklen_t size = sizeof address;
+    ::getsockname(listener, reinterpret_cast<sockaddr*>(&address), &size);
+    const EngineLauncher::Hooks hooks = azl::ui::defaultEngineHooks(ntohs(address.sin_port), NOCTURNE_FAKE_ENGINE);
+    CHECK(hooks.reachable());
+    azl::closeSocket(listener);
+    CHECK_FALSE(hooks.reachable());
+}
+
+TEST_CASE("the default hooks start the engine with a heartbeat and ask it to quit, which it does at once")
+{
+    const EngineLauncher::Hooks hooks = azl::ui::defaultEngineHooks(7499, NOCTURNE_FAKE_ENGINE);
+    const int pid = hooks.spawn();
+    REQUIRE(pid > 0);
+    CHECK(hooks.alive(pid));
+    // Time for it to start watching for stop requests.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const auto asked = std::chrono::steady_clock::now();
+    hooks.stop(pid);
+    // Killed only after 3 s without quitting.
+    CHECK(std::chrono::steady_clock::now() - asked < std::chrono::seconds(2));
+
+    CHECK(azl::ui::defaultEngineHooks(7499, "no-such-engine").spawn() == 0);
 }
