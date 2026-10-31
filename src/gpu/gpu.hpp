@@ -151,6 +151,13 @@ private:
     ShaderModuleHandle handle_;
 };
 
+// The extension of a pipeline cache file, kept as STATE/pipelines/<gpu>-<build id><extension>.
+#if defined(__APPLE__)
+inline constexpr const char* kPipelineCacheExtension = ".metallib";
+#else
+inline constexpr const char* kPipelineCacheExtension = ".vkcache";
+#endif
+
 // A file of compiled pipelines, so a pipeline built once builds without compiling the next time (Metal binary
 // archive, VkPipelineCache). Compile thread only.
 class PipelineCache {
