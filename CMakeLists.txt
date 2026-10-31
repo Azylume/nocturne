@@ -362,6 +362,9 @@ target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
 add_executable(nocturne_fake_engine tests/fake_engine.cpp)
 target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
 
+add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
+target_link_libraries(nocturne_app_config PUBLIC nocturne_media nocturne_net)
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -398,6 +401,17 @@ if(NOT APPLE)
   target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
     nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues)
+  if(WIN32)
+    # Until the engine builds here, nocturne runs safe mode, --mic-check and --displays
+    # (src/app/engine_missing_win.cpp).
+    add_executable(nocturne src/app/main_win.cpp src/app/main_thread_win.cpp src/app/safe_mode.cpp
+      src/app/safe_mode_win.cpp src/app/engine_missing_win.cpp)
+    target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_audio nocturne_engine_logic windowscodecs ole32
+      psapi shell32)
+    target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp)
+    target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_ENGINE="$<TARGET_FILE:nocturne>")
+    add_dependencies(nocturne_tests nocturne)
+  endif()
   return()
 endif()
 
@@ -495,10 +509,8 @@ target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
 add_library(nocturne_sync STATIC src/sync/node_sync.mm)
 target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
 
-add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
-target_link_libraries(nocturne_app_config PUBLIC nocturne_engine nocturne_net)
-
-add_executable(nocturne src/app/main.mm src/app/safe_mode.mm)
+add_executable(nocturne src/app/main.mm src/app/engine_main.cpp src/app/main_thread_apple.mm src/app/safe_mode.cpp
+  src/app/safe_mode_apple.mm)
 target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_djlink nocturne_upload)
 
 set(NOCTURNE_APP "${CMAKE_BINARY_DIR}/Nocturne.app")
