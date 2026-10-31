@@ -114,7 +114,11 @@ for admin rights (User Account Control): the installer writes to Program Files a
   venue desk, the FFmpeg DLLs and the Visual C++ runtime; the engine (`nocturne.exe`) and `nocturne-ctl.exe` join them
   once they build on Windows. Start menu: **Nocturne** opens the UI.
 - Two inbound Windows Firewall rules, "Nocturne engine" and "Nocturne desk", so other machines (the Director, a phone
-  on the desk page at port 7480) reach the engine without a firewall prompt, on Public networks too.
+  on the desk page at port 7480) reach the engine without a firewall prompt. They apply on **Private** networks only:
+  Windows marks a new network Public, so set the show network to Private, in **Settings > Network & internet > Wi-Fi**
+  (or **Ethernet**) **> the network > Network profile type > Private network**, or as admin in PowerShell:
+  `Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private` (`Get-NetConnectionProfile` lists the
+  names).
 - Optional, unticked by default: **Start the engine under its supervisor at every logon**, for a show machine. It
   adds the scheduled task `Nocturne`; the supervisor then runs in a console window after each logon. To change it
   later, as admin:

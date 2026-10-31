@@ -44,9 +44,9 @@ Name: "{group}\Uninstall Nocturne"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Nocturne engine"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Nocturne engine"" dir=in action=allow program=""{app}\nocturne.exe"" enable=yes profile=any"; Flags: runhidden; StatusMsg: "Allowing the engine through the firewall..."
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Nocturne engine"" dir=in action=allow program=""{app}\nocturne.exe"" enable=yes profile=private"; Flags: runhidden; StatusMsg: "Allowing the engine through the firewall..."
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Nocturne desk"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Nocturne desk"" dir=in action=allow program=""{app}\nocturne-desk.exe"" enable=yes profile=any"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Nocturne desk"" dir=in action=allow program=""{app}\nocturne-desk.exe"" enable=yes profile=private"; Flags: runhidden
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\autostart.ps1"" install"; Tasks: autostart; Flags: runhidden; StatusMsg: "Setting up autostart..."
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\autostart.ps1"" uninstall"; Tasks: not autostart; Flags: runhidden
 Filename: "{app}\Nocturne UI.exe"; Description: "Open Nocturne"; Flags: nowait postinstall skipifsilent
