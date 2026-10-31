@@ -12,6 +12,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,8 @@ constexpr int kWindowedHeight = 540;
 constexpr int kGap = 8;
 constexpr const char* kVirtualPrefix = "window-";
 constexpr uint32_t kImages = 3;
+// A new window's first presents reach the screen a refresh or two later each while the compositor takes it over.
+constexpr double kWarmUpSeconds = 0.1;
 
 double steadySeconds(std::chrono::steady_clock::time_point at)
 {
@@ -70,13 +73,17 @@ win::Area tile(int index, int count)
 
 // A window's swapchain, presented in the order the present thread draws, one image per refresh of its monitor. The
 // present thread draws into nextTarget, the caller commits, and the image goes to the screen right after the refresh's
-// callback returns, so the present always follows its submission. Shown times come from VK_KHR_present_wait on a
-// thread of the surface's own; without it, from the refresh the present was queued for.
+// callback returns, so the present always follows its submission. Each refresh's callback runs half a refresh after the
+// vblank, so its present reaches the compositor well before the next refresh and never races the current one. Shown
+// times are refreshes: the one before VK_KHR_present_wait on a thread of the surface's own returned; without it, the
+// refresh the present was queued for.
 class VulkanSurface : public Surface {
 public:
     VulkanSurface(std::unique_ptr<win::OutputWindow> window, const gpu::Device& device, double refreshHz)
         : window_(std::move(window)), device_(device), queue_(device.makeQueue()), refreshHz_(refreshHz),
-          vk_(gpu::vulkan::logicalDevice(device))
+          vk_(gpu::vulkan::logicalDevice(device)),
+          period_(std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              std::chrono::duration<double>(1.0 / refreshHz)))
     {
         surface_ = gpu::vulkan::makeSurface(device, GetModuleHandleW(nullptr), window_->handle());
         if (!surface_)
@@ -110,11 +117,18 @@ public:
     void runRefreshes(const std::atomic<bool>& running, const Refresh& onRefresh) override
     {
         win::VblankWaiter vblank(window_->monitor(), refreshHz_);
-        period_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(1.0 / refreshHz_));
+        int warmUp = warm_ ? 0 : int(std::ceil(kWarmUpSeconds * refreshHz_));
+        warm_ = true;
         while (running) {
             vsync_ = vblank.wait();
-            onRefresh(vsync_);
+            lastVblank_ = vsync_.time_since_epoch().count();
+            sleepUntil(vsync_ + period_ / 2);
+            if (warmUp > 0) {
+                --warmUp;
+                presentBlack();
+            } else {
+                onRefresh(vsync_);
+            }
             presentPending();
         }
     }
@@ -123,7 +137,7 @@ public:
     {
         if (stale_ && !rebuild())
             return nullptr;
-        if (!(*slots_)[slot_])
+        if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
         const VkResult result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
@@ -154,6 +168,29 @@ private:
         uint64_t id = 0;
         Shown shown;
     };
+
+    // More than one present is not on screen yet. FIFO shows queued presents one per refresh, so a queue that once grew
+    // would hold every later picture back for good, and the presents' GPU work would wait for images still queued.
+    // Skipping this refresh lets the queue drain; the screen still shows a picture from it.
+    bool backlogged() const
+    {
+        return waitForPresent_ && presents_ > shownId_ + 1;
+    }
+
+    // Present thread, while the window warms up: black, and nobody waits to see it shown.
+    void presentBlack()
+    {
+        gpu::Scope scope;
+        const gpu::Texture* target = nextTarget();
+        if (!target)
+            return;
+        gpu::CommandBuffer cmd = queue_.commandBuffer();
+        const gpu::RenderTarget black{.texture = target, .load = gpu::Load::Clear, .clear = {0.0, 0.0, 0.0, 1.0}};
+        gpu::RenderPass pass = cmd.begin(black);
+        pass.end();
+        present(cmd, [](double) {});
+        cmd.commit();
+    }
 
     VkSemaphore makeSemaphore() const
     {
@@ -197,10 +234,11 @@ private:
     }
 
     // Reports each present when it reached the screen. Its own thread, as urgent as the present thread: a wait blocks
-    // until the present is shown, and the time it reports is when it woke.
+    // until the present is shown, and the time it reports is the refresh before it woke, never before the last one.
     void waitForPresents()
     {
         setThreadRole(ThreadRole::Frames);
+        std::chrono::steady_clock::time_point shown{};
         std::unique_lock lock(waitMutex_);
         for (;;) {
             waitWake_.wait(lock, [this] { return stopWaiting_ || !waiting_.empty(); });
@@ -212,9 +250,21 @@ private:
             VkResult result = VK_TIMEOUT;
             while (result == VK_TIMEOUT && !stopWaiting_)
                 result = waitForPresent_(vk_, swapchain_, next.id, 50'000'000);
-            next.shown(result == VK_SUCCESS ? steadySeconds(std::chrono::steady_clock::now()) : 0.0);
+            if (result == VK_SUCCESS)
+                shown = std::max(shown, refreshBefore(std::chrono::steady_clock::now()));
+            next.shown(result == VK_SUCCESS ? steadySeconds(shown) : 0.0);
+            shownId_ = next.id;
             lock.lock();
         }
+    }
+
+    // The refresh that showed a present whose wait returned at `woke`. The wait returns a little after that refresh,
+    // sometimes just before the present thread hears of it.
+    std::chrono::steady_clock::time_point refreshBefore(std::chrono::steady_clock::time_point woke) const
+    {
+        const std::chrono::steady_clock::time_point vblank{std::chrono::steady_clock::duration(lastVblank_.load())};
+        const double refreshes = std::floor(double((woke - vblank).count()) / double(period_.count()) + 0.25);
+        return vblank + std::chrono::duration_cast<std::chrono::steady_clock::duration>(period_ * refreshes);
     }
 
     void build(VkSwapchainKHR old = VK_NULL_HANDLE)
@@ -283,6 +333,7 @@ private:
         waitWake_.notify_all();
         if (waiter_.joinable())
             waiter_.join();
+        shownId_ = presents_;
     }
 
     // The last present has reached the screen, so the presentation engine holds none of the swapchain's semaphores.
@@ -334,6 +385,7 @@ private:
     gpu::Queue queue_;
     double refreshHz_;
     VkDevice vk_;
+    const std::chrono::steady_clock::duration period_;
     PFN_vkWaitForPresentKHR waitForPresent_ = nullptr;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;
     VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
@@ -351,13 +403,17 @@ private:
     Pending pending_;
     uint64_t presents_ = 0;
     bool stale_ = false;
+    bool warm_ = false;
     std::chrono::steady_clock::time_point vsync_{};
-    std::chrono::steady_clock::duration period_{};
+    // The last vblank, for the waiter thread.
+    std::atomic<std::chrono::steady_clock::rep> lastVblank_{0};
 
     std::mutex waitMutex_;
     std::condition_variable waitWake_;
     std::deque<Waiting> waiting_;
     std::atomic<bool> stopWaiting_{false};
+    // The last present the waiter thread is done with.
+    std::atomic<uint64_t> shownId_{0};
     std::thread waiter_;
 };
 

@@ -40,7 +40,7 @@ public:
             next_ = now;
             return now;
         }
-        std::this_thread::sleep_until(next_ - kSpinMargin);
+        sleepUntil(next_ - kSpinMargin);
         while (Clock::now() < next_)
             std::this_thread::yield();
         return next_;

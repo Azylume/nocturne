@@ -9,6 +9,7 @@
 #include <sys/resource.h>
 
 #include <cstdint>
+#include <thread>
 
 namespace azl {
 
@@ -44,6 +45,11 @@ void setThreadRole(ThreadRole role)
         setiopolicy_np(IOPOL_TYPE_DISK, IOPOL_SCOPE_THREAD, IOPOL_THROTTLE);
     if (role == ThreadRole::Frames && realtimeFrames())
         makeTimeConstrained();
+}
+
+void sleepUntil(std::chrono::steady_clock::time_point deadline)
+{
+    std::this_thread::sleep_until(deadline);
 }
 
 } // namespace azl
