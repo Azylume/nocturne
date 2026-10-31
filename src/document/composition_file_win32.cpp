@@ -1,11 +1,32 @@
 #include "document/composition_file.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 
 #include <windows.h>
 
 namespace azl {
+
+namespace {
+
+// A reader that opened the file without sharing its deletion, as std::ifstream does, makes the replace fail while it
+// holds the file open. Readers hold it for a moment, so this tries again for up to a second.
+bool replaceFile(const std::filesystem::path& from, const std::filesystem::path& to)
+{
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    for (;;) {
+        if (MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            return true;
+        const DWORD error = GetLastError();
+        if ((error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION) ||
+            std::chrono::steady_clock::now() >= until)
+            return false;
+        Sleep(1);
+    }
+}
+
+} // namespace
 
 void writeFileAtomically(const std::filesystem::path& path, const std::string& contents, bool sync)
 {
@@ -34,7 +55,7 @@ void writeFileAtomically(const std::filesystem::path& path, const std::string& c
         DeleteFileW(temporary.c_str());
         throw std::runtime_error("cannot write " + temporary.string());
     }
-    if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    if (!replaceFile(temporary, path)) {
         DeleteFileW(temporary.c_str());
         throw std::runtime_error("cannot rename " + temporary.string() + " to " + path.string());
     }
