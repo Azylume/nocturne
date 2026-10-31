@@ -936,7 +936,7 @@ void flush(CommandObject* c)
     if (!p)
         return;
     std::array<VkWriteDescriptorSet, kBindings> writes;
-    std::array<VkDescriptorImageInfo, kSlots> images;
+    std::array<VkDescriptorImageInfo, kTextureSlots> images;
     uint32_t n = 0;
     for (const Binding& b : p->bindings) {
         VkWriteDescriptorSet& w = writes[n];
