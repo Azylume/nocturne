@@ -33,7 +33,7 @@ endif()
 
 if(MSVC)
   # clang-cl: /W4 is clang's -Wall -Wextra (its /Wall would be -Weverything).
-  add_compile_options(/W4 -Wno-unused-parameter /utf-8)
+  add_compile_options(/W4 -Wno-unused-parameter -Wno-missing-designated-field-initializers /utf-8)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
 else()
   add_compile_options(-Wall -Wextra -Wno-unused-parameter $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
