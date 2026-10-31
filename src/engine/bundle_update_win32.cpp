@@ -24,8 +24,10 @@ std::optional<std::string> signerRefusal(const fs::path&, const fs::path&)
 
 UpdateSource installedUpdate(const fs::path&)
 {
-    return {.install = [](const fs::path&) -> std::optional<std::string> { return kNoSignedBuilds; },
-            .refused = kNoSignedBuilds};
+    UpdateSource source;
+    source.install = [](const fs::path&) -> std::optional<std::string> { return kNoSignedBuilds; };
+    source.refused = kNoSignedBuilds;
+    return source;
 }
 
 } // namespace azl

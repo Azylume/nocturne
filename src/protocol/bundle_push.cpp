@@ -33,6 +33,25 @@ fs::path makeTempFolder(const std::string& prefix)
     throw std::runtime_error("cannot make a temporary folder");
 }
 
+// Packs `app` into `archive` as Nocturne.app; false when tar fails. Windows' tar cannot rename entries (-s), so there
+// it packs a copy named Nocturne.app made in `scratch`.
+bool pack(const fs::path& app, const fs::path& archive, const fs::path& scratch)
+{
+#ifdef _WIN32
+    const fs::path copy = scratch / "Nocturne.app";
+    std::error_code ec;
+    fs::copy(app, copy, fs::copy_options::recursive, ec);
+    const bool packed =
+        !ec && runProgram({tarProgram().string(), "-czf", archive.string(), "-C", scratch.string(), "Nocturne.app"}) == 0;
+    fs::remove_all(copy, ec);
+    return packed;
+#else
+    const std::string name = app.filename().string();
+    return runProgram({tarProgram().string(), "-czf", archive.string(), "-C", app.parent_path().string(), "-s",
+                       ",^" + name + ",Nocturne.app,", name}) == 0;
+#endif
+}
+
 } // namespace
 
 fs::path tarProgram()
@@ -78,16 +97,14 @@ BundlePush::BundlePush(const std::filesystem::path& app) : build_(bundleBuildId(
         throw std::runtime_error(app.string() + " is not a Nocturne bundle with a build id");
     const fs::path folder = makeTempFolder("nocturne-update-");
     const fs::path archive = folder / "bundle.tgz";
-    const std::string name = app.filename().string();
-    if (runProgram({tarProgram().string(), "-czf", archive.string(), "-C", app.parent_path().string(), "-s",
-                    ",^" + name + ",Nocturne.app,", name}) == 0)
+    if (pack(app, archive, folder))
         in_.open(archive, std::ios::binary | std::ios::ate);
     // The open stream keeps the archive readable. Windows keeps an open file instead: it goes with this push.
     std::error_code ec;
     fs::remove_all(folder, ec);
     if (fs::exists(folder, ec))
         leftover_ = folder;
-    if (!in_)
+    if (!in_.is_open() || !in_)
         throw std::runtime_error("cannot pack " + app.string());
     size_ = uint64_t(in_.tellg());
     in_.seekg(0);

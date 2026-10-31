@@ -14,7 +14,7 @@ namespace azl {
 inline constexpr uint64_t kBundleChunk = uint64_t(1) << 20;
 inline constexpr uint64_t kMaxBundleSize = uint64_t(1) << 30;
 
-// The system's tar, bsdtar on macOS and Windows (it renames entries with -s).
+// The system's tar: bsdtar, on Windows the one without -s.
 std::filesystem::path tarProgram();
 // Runs a program with its arguments, its output discarded, and waits for it; its exit status, -1 when it did not run.
 int runProgram(const std::vector<std::string>& argv);
