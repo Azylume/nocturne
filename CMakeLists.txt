@@ -279,7 +279,9 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/media_files_test.cpp tests/video_decoder_test.cpp ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
-  NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media")
+  NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media"
+  NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>")
+add_dependencies(nocturne_tests nocturne_platform_child)
 target_link_libraries(nocturne_tests PRIVATE nocturne_audio)
 if(APPLE)
   target_sources(nocturne_tests PRIVATE src/audio/power_spectrum_pocketfft.cpp)
@@ -465,9 +467,8 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
-  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>"
-  NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>")
-add_dependencies(nocturne_tests app nocturne-hap-encode nocturne_platform_child)
+  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
+add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
