@@ -1,13 +1,12 @@
 #include "engine/bundle_update.hpp"
 
 #include "document/composition_file.hpp"
+#include "platform/process.hpp"
 #include "protocol/bundle_push.hpp"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
-#include <fcntl.h>
 #include <mach-o/dyld.h>
-#include <spawn.h>
 
 #include <array>
 #include <climits>
@@ -18,8 +17,6 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
-
-extern char** environ;
 
 namespace azl {
 
@@ -125,33 +122,19 @@ InstallBundle bundleInstaller(fs::path script, std::map<std::string, std::string
                -> std::optional<std::string> {
         if (!fs::exists(script))
             return "no installer at " + script.string();
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        for (int fd : {0, 1, 2})
-            posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd ? O_WRONLY : O_RDONLY, 0);
-        posix_spawnattr_t attributes;
-        posix_spawnattr_init(&attributes);
-        posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT);
-        std::vector<std::string> env;
-        for (char** e = environ; *e; ++e)
-            if (!environment.contains(std::string(std::string_view(*e).substr(0, std::string_view(*e).find('=')))))
-                env.push_back(*e);
-        for (const auto& [name, value] : environment)
-            env.push_back(name + "=" + value);
-        std::vector<char*> envp;
-        for (std::string& e : env)
-            envp.push_back(e.data());
-        envp.push_back(nullptr);
-        const std::string bash = "/bin/bash", path = script.string(), bundle = app.string();
-        char* argv[] = {const_cast<char*>(bash.c_str()), const_cast<char*>(path.c_str()),
-                        const_cast<char*>(bundle.c_str()), nullptr};
-        pid_t pid = 0;
-        const int failed = posix_spawn(&pid, bash.c_str(), &actions, &attributes, argv, envp.data());
-        posix_spawn_file_actions_destroy(&actions);
-        posix_spawnattr_destroy(&attributes);
-        if (failed)
-            return "cannot start the installer: " + std::string(std::strerror(failed));
-        std::printf("update: installer started (pid %d) on %s\n", int(pid), bundle.c_str());
+        std::string error;
+        const std::optional<Process> process =
+            spawnProcess({.program = "/bin/bash",
+                          .args = {script.string(), app.string()},
+                          .input = Stdio::null(),
+                          .output = Stdio::null(),
+                          .error = Stdio::null(),
+                          .environment = {environment.begin(), environment.end()},
+                          .detached = true},
+                         &error);
+        if (!process)
+            return "cannot start the installer: " + error;
+        std::printf("update: installer started (pid %d) on %s\n", process->pid(), app.string().c_str());
         std::fflush(stdout);
         return std::nullopt;
     };

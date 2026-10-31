@@ -1,8 +1,7 @@
 #include "protocol/bundle_push.hpp"
 
-#include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#include "platform/process.hpp"
+
 #include <unistd.h>
 
 #include <algorithm>
@@ -11,30 +10,16 @@
 #include <string_view>
 #include <stdexcept>
 
-extern char** environ;
-
 namespace azl {
 
 int runProgram(const std::vector<std::string>& argv)
 {
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    for (int fd : {0, 1, 2})
-        posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd ? O_WRONLY : O_RDONLY, 0);
-    std::vector<char*> args;
-    for (const std::string& a : argv)
-        args.push_back(const_cast<char*>(a.c_str()));
-    args.push_back(nullptr);
-    pid_t pid = 0;
-    const int error = posix_spawn(&pid, args[0], &actions, nullptr, args.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    if (error != 0)
-        return -1;
-    int status = 0;
-    while (waitpid(pid, &status, 0) < 0)
-        if (errno != EINTR)
-            return -1;
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    std::optional<Process> program = spawnProcess({.program = argv[0],
+                                                   .args = {argv.begin() + 1, argv.end()},
+                                                   .input = Stdio::null(),
+                                                   .output = Stdio::null(),
+                                                   .error = Stdio::null()});
+    return program ? program->wait() : -1;
 }
 
 std::string bundleBuildId(const std::filesystem::path& app)

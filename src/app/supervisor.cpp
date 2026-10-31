@@ -1,5 +1,6 @@
 #include "document/composition_file.hpp"
 #include "platform/app_paths.hpp"
+#include "platform/process.hpp"
 #include "supervisor/crash_guard.hpp"
 #include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
@@ -10,7 +11,6 @@
 #include <libproc.h>
 #include <mach-o/dyld.h>
 #include <poll.h>
-#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -36,14 +36,10 @@
 #include <thread>
 #include <vector>
 
-extern char** environ;
-
 namespace {
 
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
-
-constexpr int kHeartbeatFd = 3;
 
 constexpr const char* kUsage = R"(usage: nocturne-supervisor [options] [-- engine options]
 Runs the engine, restarts it when it crashes or hangs, and switches to safe mode after too many crashes. Runs the
@@ -320,57 +316,29 @@ private:
     std::optional<pid_t> spawn(const fs::path& binary, const std::vector<std::string>& args, int heartbeat, int& output,
                                const char* pidFile)
     {
-        int out[2];
-        if (::pipe(out) != 0)
+        const std::optional<azl::PipeEnds> out = azl::makePipe();
+        if (!out)
             return std::nullopt;
-        setCloexec(out[0]);
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
-        posix_spawn_file_actions_adddup2(&actions, out[1], 1);
-        posix_spawn_file_actions_adddup2(&actions, out[1], 2);
+        azl::SpawnOptions options{.program = binary,
+                                  .args = args,
+                                  .input = azl::Stdio::null(),
+                                  .output = azl::Stdio::to(out->write),
+                                  .error = azl::Stdio::to(out->write),
+                                  .environment = {{"NOCTURNE_RESPONSIBLE", std::nullopt},
+                                                  {"NOCTURNE_HEARTBEAT_FD", std::nullopt},
+                                                  {azl::restart::kSupervisedVariable, "1"}}};
         if (heartbeat >= 0)
-            posix_spawn_file_actions_adddup2(&actions, heartbeat, kHeartbeatFd);
-        posix_spawnattr_t attributes;
-        posix_spawnattr_init(&attributes);
-        posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF);
-        sigset_t handled;
-        sigemptyset(&handled);
-        for (int sig : {SIGPIPE, SIGTERM, SIGINT, SIGHUP})
-            sigaddset(&handled, sig);
-        posix_spawnattr_setsigdefault(&attributes, &handled);
-
-        std::vector<std::string> env;
-        const std::string supervised = std::string(azl::restart::kSupervisedVariable) + "=";
-        for (char** e = environ; *e; ++e)
-            if (std::strncmp(*e, "NOCTURNE_RESPONSIBLE=", 21) != 0 &&
-                std::strncmp(*e, "NOCTURNE_HEARTBEAT_FD=", 22) != 0 &&
-                std::strncmp(*e, supervised.c_str(), supervised.size()) != 0)
-                env.push_back(*e);
-        env.push_back(supervised + "1");
-        if (heartbeat >= 0)
-            env.push_back("NOCTURNE_HEARTBEAT_FD=" + std::to_string(kHeartbeatFd));
-        std::vector<char*> argv;
-        argv.push_back(const_cast<char*>(binary.c_str()));
-        for (const std::string& a : args)
-            argv.push_back(const_cast<char*>(a.c_str()));
-        argv.push_back(nullptr);
-        std::vector<char*> envp;
-        for (std::string& e : env)
-            envp.push_back(e.data());
-        envp.push_back(nullptr);
-
-        pid_t pid = 0;
-        const int error = posix_spawn(&pid, binary.c_str(), &actions, &attributes, argv.data(), envp.data());
-        posix_spawn_file_actions_destroy(&actions);
-        posix_spawnattr_destroy(&attributes);
-        ::close(out[1]);
-        if (error != 0) {
-            ::close(out[0]);
-            say("cannot start " + binary.string() + ": " + std::strerror(error));
+            options.heartbeat = heartbeat;
+        std::string error;
+        const std::optional<azl::Process> process = azl::spawnProcess(options, &error);
+        azl::closeHandle(out->write);
+        if (!process) {
+            azl::closeHandle(out->read);
+            say("cannot start " + binary.string() + ": " + error);
             return std::nullopt;
         }
-        output = out[0];
+        const pid_t pid = process->pid();
+        output = out->read;
         std::ofstream(statePath(pidFile)) << pid << "\n";
         return pid;
     }

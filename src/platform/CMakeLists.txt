@@ -16,6 +16,7 @@ if(APPLE)
     app_paths_apple.cpp
     clock_apple.cpp
     crypto_apple.cpp
+    process_apple.cpp
     thread_priority_apple.cpp
     work_queue_apple.cpp
   )
@@ -24,6 +25,7 @@ elseif(WIN32)
     app_paths_win.cpp
     clock_win.cpp
     crypto_win.cpp
+    process_win.cpp
     thread_priority_win.cpp
     work_queue_std.cpp
   )
@@ -32,11 +34,16 @@ elseif(WIN32)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 
-# Built into nocturne_tests as well.
+# The child that tests/platform_test.cpp starts.
+add_executable(nocturne_platform_child ${repo_root}/tests/platform_child.cpp)
+target_link_libraries(nocturne_platform_child PRIVATE nocturne_platform)
+
+# Built into nocturne_tests as well; they need NOCTURNE_PLATFORM_CHILD.
 set(platform_tests
   ${repo_root}/tests/platform_clock_test.cpp
   ${repo_root}/tests/platform_crypto_test.cpp
   ${repo_root}/tests/platform_paths_test.cpp
+  ${repo_root}/tests/platform_process_test.cpp
   ${repo_root}/tests/platform_queue_test.cpp
   ${repo_root}/tests/platform_thread_test.cpp
 )
@@ -50,5 +57,8 @@ else()
   add_executable(nocturne_platform_tests ${CMAKE_CURRENT_BINARY_DIR}/platform_tests_main.cpp ${platform_tests})
   target_include_directories(nocturne_platform_tests PRIVATE ${repo_root}/tests ${repo_root}/third_party/doctest)
   target_link_libraries(nocturne_platform_tests PRIVATE nocturne_platform)
+  target_compile_definitions(nocturne_platform_tests PRIVATE
+    NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>")
+  add_dependencies(nocturne_platform_tests nocturne_platform_child)
   add_test(NAME nocturne_platform_tests COMMAND nocturne_platform_tests)
 endif()

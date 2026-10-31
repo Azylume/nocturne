@@ -3,11 +3,8 @@
 #include "document/composition_file.hpp"
 #include "media/hap_encoder.hpp"
 #include "media/media_library.hpp"
+#include "platform/process.hpp"
 
-#include <csignal>
-#include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -24,8 +21,6 @@
 #include <sstream>
 #include <thread>
 
-extern char** environ;
-
 namespace fs = std::filesystem;
 
 namespace azl {
@@ -39,45 +34,37 @@ constexpr const char* kContentType = "video/mp4";
 std::string runTool(const std::vector<std::string>& args, bool quiet = false,
                     const std::function<void(const char*, size_t)>& sink = {})
 {
-    int out[2];
-    if (pipe(out) != 0)
-        throw std::runtime_error("pipe: " + std::string(std::strerror(errno)));
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, out[0]);
-    posix_spawn_file_actions_addclose(&actions, out[1]);
-    if (quiet)
-        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-    std::vector<char*> argv;
-    for (const std::string& arg : args)
-        argv.push_back(const_cast<char*>(arg.c_str()));
-    argv.push_back(nullptr);
-    pid_t pid = 0;
-    const int spawned = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    close(out[1]);
     const std::string name = args[0] == "nice" ? args[3] : args[0];
-    if (spawned != 0) {
-        close(out[0]);
-        throw std::runtime_error("cannot run " + name + ": " + std::strerror(spawned));
+    const std::optional<PipeEnds> out = makePipe();
+    if (!out)
+        throw std::runtime_error("cannot make a pipe for " + name);
+    std::string error;
+    std::optional<Process> tool = spawnProcess(
+        {.program = args[0],
+         .args = {args.begin() + 1, args.end()},
+         .searchPath = true,
+         .output = Stdio::to(out->write),
+         .error = quiet ? Stdio::null() : Stdio{}},
+        &error);
+    closeHandle(out->write);
+    if (!tool) {
+        closeHandle(out->read);
+        throw std::runtime_error("cannot run " + name + ": " + error);
     }
     std::string output;
     char buffer[4096];
     try {
-        for (ssize_t n; (n = read(out[0], buffer, sizeof buffer)) > 0;)
+        for (long n; (n = readHandle(out->read, buffer, sizeof buffer)) > 0;)
             sink ? sink(buffer, size_t(n)) : void(output.append(buffer, size_t(n)));
     } catch (...) {
-        close(out[0]);
-        kill(pid, SIGTERM);
-        waitpid(pid, nullptr, 0);
+        closeHandle(out->read);
+        tool->terminate();
+        tool->wait();
         throw;
     }
-    close(out[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        throw std::runtime_error(name + " failed (exit " + std::to_string(WEXITSTATUS(status)) + ")");
+    closeHandle(out->read);
+    if (const int code = tool->wait(); code != 0)
+        throw std::runtime_error(name + " failed (exit " + std::to_string(code) + ")");
     return output;
 }
 
