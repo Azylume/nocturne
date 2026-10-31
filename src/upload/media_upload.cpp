@@ -85,7 +85,11 @@ std::string utcText(const char* format)
 {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &now);
+#else
     gmtime_r(&now, &tm);
+#endif
     char text[32];
     std::strftime(text, sizeof text, format, &tm);
     return text;
@@ -104,7 +108,7 @@ Probe probe(const fs::path& file)
     Probe p;
     for (const std::string& line :
          lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0", file}))) {
+                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0", file.string()}))) {
         const auto f = fields(line);
         if (f.size() == 1) {
             p.duration = std::atof(f[0].c_str());
@@ -130,7 +134,7 @@ bool hasOneSecondGop(const fs::path& file, double duration)
 {
     std::vector<double> keyframes;
     for (const std::string& line : lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                                                  "packet=pts_time,flags", "-of", "csv=p=0", file}))) {
+                                                  "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
         const auto f = fields(line);
         if (f.size() >= 2 && !f[1].empty() && f[1][0] == 'K' && f[0] != "N/A")
             keyframes.push_back(std::atof(f[0].c_str()));
@@ -145,20 +149,30 @@ bool hasOneSecondGop(const fs::path& file, double duration)
     return true;
 }
 
+// ffmpeg, quiet, through nice on POSIX so a conversion yields to a show on the same machine; Windows has no nice.
+std::vector<std::string> ffmpeg()
+{
+#ifdef _WIN32
+    return {"ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+#else
+    return {"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+#endif
+}
+
 // The ffmpeg arguments match tools/transcode-media.sh.
 std::vector<std::string> ffmpegCommand(const std::vector<std::string>& args, const fs::path& target)
 {
-    std::vector<std::string> command{"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                                     "-y"};
+    std::vector<std::string> command = ffmpeg();
+    command.push_back("-y");
     command.insert(command.end(), args.begin(), args.end());
-    command.insert(command.end(), {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target});
+    command.insert(command.end(), {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target.string()});
     return command;
 }
 
 std::vector<std::string> encodeArgs(const fs::path& source, double fps, const ConvertOptions& options)
 {
     const std::string gop = std::to_string(std::max(1L, std::lround(fps)));
-    return {"-i", source, "-an", "-vf",
+    return {"-i", source.string(), "-an", "-vf",
             "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p", "-c:v",
             "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g", gop,
             "-keyint_min", gop, "-sc_threshold", "0"};
@@ -166,7 +180,7 @@ std::vector<std::string> encodeArgs(const fs::path& source, double fps, const Co
 
 std::vector<std::string> stillArgs(const fs::path& source, const ConvertOptions& options)
 {
-    return {"-loop", "1", "-t", "4", "-framerate", "30", "-i", source, "-an", "-filter_complex",
+    return {"-loop", "1", "-t", "4", "-framerate", "30", "-i", source.string(), "-an", "-filter_complex",
             "color=black:s=1920x1080:r=30:d=4[bg];[0:v]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bg]["
             "fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p",
             "-c:v", "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g",
@@ -175,7 +189,7 @@ std::vector<std::string> stillArgs(const fs::path& source, const ConvertOptions&
 
 std::vector<std::string> remuxArgs(const fs::path& source)
 {
-    return {"-i", source, "-map", "0:v:0", "-an", "-c:v", "copy"};
+    return {"-i", source.string(), "-map", "0:v:0", "-an", "-c:v", "copy"};
 }
 
 bool isStill(const std::string& codec)
@@ -195,7 +209,7 @@ void convertToHap(const fs::path& source, const Probe& p, const fs::path& target
     const bool still = isStill(p.codec);
     const int fpsNum = still || p.fpsNum <= 0 ? 30 : p.fpsNum;
     const int fpsDen = still || p.fpsNum <= 0 ? 1 : std::max(1, p.fpsDen);
-    std::vector<std::string> command{"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    std::vector<std::string> command = ffmpeg();
     if (still)
         command.insert(command.end(), {"-loop", "1", "-t", "4", "-framerate", "30"});
     command.insert(command.end(), {"-i", source.string(), "-an", "-vf",
