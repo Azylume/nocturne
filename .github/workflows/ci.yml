@@ -68,7 +68,9 @@ jobs:
         run: ccache -s
       - name: Pack what the tests run
         # A tar keeps the bundles' signatures and the executable bits; an artifact alone would not.
-        run: tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+        run: >
+          tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+          src/platform/nocturne_platform_child nocturne_fake_engine nocturne-hap-encode
       - uses: actions/upload-artifact@v4
         with:
           name: tests-${{ github.run_id }}
