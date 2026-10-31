@@ -1,5 +1,15 @@
-# Test cases the Windows CI job skips on top of realtime-tests.txt: they store a real entry in the Credential Manager,
-# which a session without a user profile's credential store (a CI runner, an SSH session) refuses. They run on a
-# Windows machine's desktop session. tools/ci-tests.sh reads this list on Windows; a new entry needs a reviewer's OK.
+# Test cases the Windows CI job skips on top of realtime-tests.txt, by what the runner lacks. tools/ci-tests.sh reads
+# this list on Windows; a new entry needs a reviewer's OK.
+# These store a real entry in the Credential Manager, which a session without a user profile's credential store (a CI
+# runner, an SSH session) refuses. They run on a Windows machine's desktop session.
 *a credential stored in the Credential Manager reads back for its account only*
 *the API key comes from the Credential Manager or the environment, never from a file on Windows*
+# These record HEVC, which needs a hardware video encoder (NVENC or a Media Foundation hardware encoder; the LGPL FFmpeg
+# build has no software HEVC encoder), and the windows-2025 runner has no GPU. They run on a Windows machine with one.
+off Apple, frames record to HEVC and decode back to the pictures handed in
+off Apple, precise recording hands the encoders 10 bits where they take them
+off Apple without NVENC, HEVC records through Media Foundation's encoder
+off Apple, past its maximum length a recording goes on in the next numbered file without losing a frame
+off Apple, the recording's audio track is AAC at 48 kHz in sync with the frames whatever the input rate
+off Apple, a recording never makes its caller wait: a slow writer drops recorded frames
+off Apple, a recording cut off by a killed engine still plays up to its last fragment and is recovered
