@@ -19,10 +19,12 @@ done
 flags=(-std=c++20 -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined -fno-sanitize=vptr
        -I"$root/src" -isystem "$root/third_party/nlohmann" -mmacosx-version-min=14.0)
 
-# The protocol library's sources, as CMakeLists.txt lists them, plus the media and Pro DJ Link units the harnesses need.
+# The protocol library's sources, as CMakeLists.txt lists them, plus the media, Pro DJ Link and WebSocket units the
+# harnesses need.
 protocol=$(awk '/^add_library\(nocturne_protocol STATIC/ {on=1; next} on && /^\)/ {exit} on {print $1}' "$root/CMakeLists.txt" |
     sed -e "s|\${CMAKE_CURRENT_BINARY_DIR}|$build|" -e "s|^src/|$root/src/|")
-sources=($protocol "$root/src/media/hap.cpp" "$root/src/media/snappy.cpp" "$root/src/djlink/djlink_packets.cpp")
+sources=($protocol "$root/src/media/hap.cpp" "$root/src/media/snappy.cpp" "$root/src/djlink/djlink_packets.cpp"
+         "$root/src/net/websocket_frames.cpp")
 
 rm -rf "$out/obj"
 mkdir -p "$out/obj"
