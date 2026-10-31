@@ -148,6 +148,7 @@ add_library(nocturne_protocol STATIC
   src/effects/isf.cpp
   src/effects/preset_service.cpp
   src/import/xml.cpp
+  src/protocol/bundle_push.cpp
   src/protocol/document_mirror.cpp
   src/protocol/document_server.cpp
   src/protocol/messages.cpp
@@ -228,6 +229,8 @@ endif()
 add_library(nocturne_media STATIC
   src/media/hap.cpp
   src/media/hap_encoder.cpp
+  src/media/keep_local.cpp
+  src/media/library_service.cpp
   src/media/media_library.cpp
   src/media/snappy.cpp
   src/media/text_renderer.cpp
@@ -242,8 +245,6 @@ if(APPLE)
     src/media/composition_service.cpp
     src/media/hap_movie.mm
     src/media/hap_texture.mm
-    src/media/keep_local.cpp
-    src/media/library_service.cpp
     src/media/stills.mm
     src/media/text_renderer_coretext.cpp
     src/media/video_source_avf.mm
@@ -340,6 +341,13 @@ target_link_libraries(nocturne_desk PUBLIC nocturne_net)
 add_executable(nocturne-desk src/app/desk.cpp)
 target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
 
+add_library(nocturne_upload STATIC src/upload/media_sync.cpp src/upload/media_upload.cpp src/upload/s3.cpp
+  src/upload/upload_states.cpp)
+target_link_libraries(nocturne_upload PUBLIC nocturne_media nocturne_http)
+
+add_library(nocturne_fetch STATIC src/upload/media_fetch.cpp)
+target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
+
 add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
 target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
 
@@ -377,6 +385,9 @@ add_test(NAME nocturne_tests COMMAND nocturne_tests)
 
 add_executable(nocturne-hap-encode src/app/hap_encode.cpp)
 target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
+
+# The JUCE UI. On Apple it also links targets defined below this line (local previews, the harness).
+add_subdirectory(src/ui)
 
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
@@ -469,18 +480,11 @@ target_link_libraries(nocturne_import PUBLIC nocturne_media)
 add_executable(nocturne-import src/app/import.cpp)
 target_link_libraries(nocturne-import PRIVATE nocturne_import)
 
-add_library(nocturne_upload STATIC src/upload/media_sync.cpp src/upload/media_upload.cpp src/upload/s3.cpp
-  src/upload/upload_states.cpp)
-target_link_libraries(nocturne_upload PUBLIC nocturne_media nocturne_http)
-
 add_executable(nocturne-upload src/app/upload.cpp)
 target_link_libraries(nocturne-upload PRIVATE nocturne_upload)
 
 add_executable(nocturne-decode-bench src/app/decode_bench.mm)
 target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media)
-
-add_library(nocturne_fetch STATIC src/upload/media_fetch.cpp)
-target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
 
 add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
   src/harness/fake_displays.cpp)
@@ -560,5 +564,3 @@ option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, bui
 if(NOCTURNE_FUZZ)
   add_custom_target(fuzz COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/build.sh" "${CMAKE_BINARY_DIR}" USES_TERMINAL)
 endif()
-
-add_subdirectory(src/ui)

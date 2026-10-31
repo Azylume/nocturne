@@ -2,8 +2,6 @@
 
 #include "protocol/return_stream.hpp"
 
-#include <AudioToolbox/AudioToolbox.h>
-
 #include <algorithm>
 #include <cstdio>
 #include <vector>
@@ -11,8 +9,6 @@
 namespace azl::ui {
 
 namespace {
-
-constexpr int kBuffers = 3;
 
 size_t samplesOf(double seconds)
 {
@@ -55,7 +51,7 @@ void ReturnAudioPlayer::receive(const Message& message)
             buffered_.erase(buffered_.begin(), buffered_.end() - ptrdiff_t(samplesOf(kStartSeconds)));
         if (!playing_ && buffered_.size() >= samplesOf(kStartSeconds))
             playing_ = true;
-        start = device_ && playing_ && !queue_;
+        start = device_ && playing_ && !output_;
     }
     if (start)
         open();
@@ -63,68 +59,43 @@ void ReturnAudioPlayer::receive(const Message& message)
 
 void ReturnAudioPlayer::open()
 {
-    const AudioStreamBasicDescription format{.mSampleRate = kOpusRate,
-                                             .mFormatID = kAudioFormatLinearPCM,
-                                             .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-                                             .mBytesPerPacket = 4,
-                                             .mFramesPerPacket = 1,
-                                             .mBytesPerFrame = 4,
-                                             .mChannelsPerFrame = 1,
-                                             .mBitsPerChannel = 32};
-    AudioQueueRef queue = nullptr;
-    if (const OSStatus status = AudioQueueNewOutput(&format, fill, this, nullptr, nullptr, 0, &queue); status != noErr) {
-        std::fprintf(stderr, "listen: cannot open the audio output (%d)\n", int(status));
+    std::unique_ptr<Output> output = openOutput([this](float* out, size_t count) { pull(out, count); });
+    if (!output)
         return;
-    }
-    for (int i = 0; i < kBuffers; ++i) {
-        AudioQueueBufferRef buffer = nullptr;
-        if (AudioQueueAllocateBuffer(queue, UInt32(kOpusFrameSamples * 4), &buffer) == noErr)
-            fill(this, queue, buffer);
-    }
+    Output& opened = *output;
     {
         std::lock_guard lock(mutex_);
-        if (queue_ || !playing_) {
-            AudioQueueDispose(queue, true);
+        if (output_ || !playing_)
             return;
-        }
-        queue_ = queue;
+        output_ = std::move(output);
     }
-    AudioQueueStart(queue, nullptr);
+    opened.start();
 }
 
-void ReturnAudioPlayer::fill(void* user, OpaqueAudioQueue* queue, AudioQueueBuffer* buffer)
+void ReturnAudioPlayer::pull(float* out, size_t count)
 {
-    auto& self = *static_cast<ReturnAudioPlayer*>(user);
-    auto* out = static_cast<float*>(buffer->mAudioData);
-    const size_t n = kOpusFrameSamples;
-    {
-        std::lock_guard lock(self.mutex_);
-        const float volume = float(self.volume_.load(std::memory_order_relaxed));
-        const size_t take = self.playing_ ? std::min(n, self.buffered_.size()) : 0;
-        for (size_t i = 0; i < take; ++i)
-            out[i] = self.buffered_[i] * volume;
-        std::fill(out + take, out + n, 0.0f);
-        self.buffered_.erase(self.buffered_.begin(), self.buffered_.begin() + ptrdiff_t(take));
-        if (self.buffered_.empty())
-            self.playing_ = false;
-    }
-    buffer->mAudioDataByteSize = UInt32(n * 4);
-    AudioQueueEnqueueBuffer(queue, buffer, 0, nullptr);
+    std::lock_guard lock(mutex_);
+    const float volume = float(volume_.load(std::memory_order_relaxed));
+    const size_t take = playing_ ? std::min(count, buffered_.size()) : 0;
+    for (size_t i = 0; i < take; ++i)
+        out[i] = buffered_[i] * volume;
+    std::fill(out + take, out + count, 0.0f);
+    buffered_.erase(buffered_.begin(), buffered_.begin() + ptrdiff_t(take));
+    if (buffered_.empty())
+        playing_ = false;
 }
 
 void ReturnAudioPlayer::stop()
 {
-    AudioQueueRef queue = nullptr;
+    std::unique_ptr<Output> output;
     {
         std::lock_guard lock(mutex_);
-        std::swap(queue, queue_);
+        std::swap(output, output_);
         buffered_.clear();
         playing_ = false;
         next_.reset();
         decoder_.reset();
     }
-    if (queue)
-        AudioQueueDispose(queue, true);
 }
 
 void ReturnAudioPlayer::setVolume(double volume)
