@@ -351,7 +351,10 @@ target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
 add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
 target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
 
-# The UI's engine launcher, apart from the UI so it builds and is tested where the UI does not build yet.
+add_executable(nocturne-ctl src/app/ctl.cpp)
+target_link_libraries(nocturne-ctl PRIVATE nocturne_net nocturne_discovery nocturne_venues nocturne_fetch nocturne_audio)
+
+# The UI's engine launcher: it starts, finds and stops the engine beside the UI.
 add_library(nocturne_engine_launcher STATIC src/ui/client/engine_launcher.cpp)
 target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
 
@@ -392,10 +395,9 @@ add_subdirectory(src/ui)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/ui/engine_launcher_test.cpp
-    tests/venues_key_test.cpp)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_engine_launcher nocturne_venues)
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues)
   return()
 endif()
 
@@ -498,9 +500,6 @@ target_link_libraries(nocturne_app_config PUBLIC nocturne_engine nocturne_net)
 
 add_executable(nocturne src/app/main.mm src/app/safe_mode.mm)
 target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_djlink nocturne_upload)
-
-add_executable(nocturne-ctl src/app/ctl.cpp)
-target_link_libraries(nocturne-ctl PRIVATE nocturne_net nocturne_discovery nocturne_venues nocturne_fetch nocturne_audio)
 
 set(NOCTURNE_APP "${CMAKE_BINARY_DIR}/Nocturne.app")
 set_target_properties(nocturne nocturne-supervisor nocturne-ctl nocturne-desk PROPERTIES

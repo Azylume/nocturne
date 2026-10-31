@@ -1,7 +1,8 @@
 # The JUCE UI (ADR 0002): its own process; "Nocturne UI.app" on macOS, "Nocturne UI.exe" beside nocturne.exe on
 # Windows. JUCE does not build under ARC, so this directory drops the parent's -fobjc-arc.
 if(MSVC)
-  set_property(DIRECTORY PROPERTY COMPILE_OPTIONS /W4 -Wno-unused-parameter /utf-8)
+  set_property(DIRECTORY PROPERTY COMPILE_OPTIONS /W4 -Wno-unused-parameter -Wno-missing-designated-field-initializers
+    /utf-8)
 else()
   set_property(DIRECTORY PROPERTY COMPILE_OPTIONS -Wall -Wno-unused-parameter)
 endif()
