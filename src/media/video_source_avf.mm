@@ -1,6 +1,6 @@
 #include "media/video_source.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "media/hap_texture.hpp"
 
 #import <AVFoundation/AVFoundation.h>

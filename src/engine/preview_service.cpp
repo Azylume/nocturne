@@ -1,6 +1,6 @@
 #include "engine/preview_service.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "media/stills.hpp"
 #include "protocol/preview_surface.hpp"

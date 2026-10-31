@@ -1,6 +1,6 @@
 #include "media/clip_decoders.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "media/media_library.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"

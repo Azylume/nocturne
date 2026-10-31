@@ -1,6 +1,6 @@
 #include "output/display_output.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 
 #include <algorithm>
