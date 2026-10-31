@@ -4,6 +4,7 @@
 #include "engine/macro_sets_file.hpp"
 #include "media/media_library.hpp"
 #include "net/websocket.hpp"
+#include "platform/app_paths.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -11,6 +12,7 @@
 #include <fstream>
 #include <random>
 #include <stdexcept>
+#include <utility>
 
 #include <nlohmann/json.hpp>
 
@@ -129,6 +131,25 @@ const char* const kEngineUsage = R"(usage: nocturne [options]
   --mic-check     print the microphone permission (asking for it if it was never decided) and the input devices,
                   then quit; exit status 0 when access is granted
 )";
+
+std::string engineUsage()
+{
+#ifdef __APPLE__
+    return kEngineUsage;
+#else
+    const std::pair<std::string, std::filesystem::path> folders[] = {
+        {"~/Library/Application\n                  Support/Nocturne/State", appDataFolder() / "State"},
+        {"~/Library/Application Support/Nocturne/MediaLibrary", MediaLibrary::defaultRoot()},
+        {"~/Library/Application Support/Nocturne/Presets.json", PresetService::defaultFile()},
+        {"~/Library/Application Support/Nocturne/MacroSets.json", defaultMacroSetsFile()},
+        {"~/Movies/Nocturne", videosFolder() / "Nocturne"},
+    };
+    std::string text = kEngineUsage;
+    for (const auto& [apple, folder] : folders)
+        text.replace(text.find(apple), apple.size(), folder.string());
+    return text;
+#endif
+}
 
 namespace {
 
@@ -306,7 +327,7 @@ EngineConfig parseCommandLine(const std::vector<std::string>& args)
     if (parsed.outcome == ParsedArgs::Outcome::Run)
         return parsed.config;
     const bool help = parsed.outcome == ParsedArgs::Outcome::Help;
-    std::fputs(kEngineUsage, help ? stdout : stderr);
+    std::fputs(engineUsage().c_str(), help ? stdout : stderr);
     std::exit(help ? 0 : 2);
 }
 

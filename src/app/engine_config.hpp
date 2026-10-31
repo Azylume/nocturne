@@ -68,7 +68,10 @@ struct EngineConfig {
     std::optional<double> recordReservePercent;
 };
 
+// The usage as written, with the Apple folders.
 extern const char* const kEngineUsage;
+// The usage --help prints: kEngineUsage with this platform's folders.
+std::string engineUsage();
 
 // The command line's configuration, or a request for the usage: --help, or a flag it does not know or cannot read.
 struct ParsedArgs {
