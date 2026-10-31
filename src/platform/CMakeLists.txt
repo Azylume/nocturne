@@ -31,7 +31,7 @@ elseif(WIN32)
     thread_priority_win.cpp
     work_queue_std.cpp
   )
-  target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
   target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
