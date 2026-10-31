@@ -516,6 +516,7 @@ if(NOT APPLE)
     target_compile_options(nocturne_win_displays PRIVATE -Wno-missing-field-initializers)
     add_executable(nocturne src/app/main_win.cpp src/app/engine_main.cpp src/app/main_thread_win.cpp
       src/app/safe_mode.cpp src/app/safe_mode_win.cpp src/app/displays_win.cpp)
+    nocturne_windowless(nocturne)
     target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync
       nocturne_djlink nocturne_upload nocturne_win_displays windowscodecs ole32 psapi shell32)
     # Engines and harnesses live on the main thread's stack: 8 MB on macOS, so the same here instead of 1 MB.
