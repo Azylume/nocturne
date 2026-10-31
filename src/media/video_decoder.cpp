@@ -863,14 +863,14 @@ struct VideoDecoder::Impl {
 // `cacheBytes` bounds the two units reverse play holds, so GOPs longer than half of it are split.
 // Decoders open and close on long-lived threads: what the platform's frameworks hand out to be freed later must be
 // freed here, or it lives as long as the thread, the whole show.
-VideoDecoder::VideoDecoder(MediaDevice* device, const std::string& path, Options options)
+VideoDecoder::VideoDecoder(const MediaDevice* device, const std::string& path, Options options)
     : impl_(std::make_shared<Impl>())
 {
     FrameworkScope scope;
     open(device, path, std::move(options));
 }
 
-void VideoDecoder::open(MediaDevice* device, const std::string& path, Options options)
+void VideoDecoder::open(const MediaDevice* device, const std::string& path, Options options)
 {
     Impl& d = *impl_;
     d.source = openVideoSource(device, path);

@@ -2,9 +2,8 @@
 
 #include "media/composition_media.hpp"
 
-#include <sys/stat.h>
-
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -69,10 +68,25 @@ bool mediaPresent(nlohmann::json& composition, const fs::path& root, MediaLibrar
     return present;
 }
 
+// Whole Unix seconds, as stat's st_mtime.
+double unixSeconds(fs::file_time_type time)
+{
+#ifdef _LIBCPP_VERSION
+    const auto system = std::chrono::file_clock::to_sys(time);
+#else
+    const auto system = std::chrono::clock_cast<std::chrono::system_clock>(time);
+#endif
+    return double(std::chrono::floor<std::chrono::seconds>(system).time_since_epoch().count());
+}
+
 std::optional<Message> showEntry(const fs::path& file, MediaLibrary& library)
 {
-    struct stat info {};
-    if (::stat(file.c_str(), &info) != 0 || !S_ISREG(info.st_mode))
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec))
+        return std::nullopt;
+    const uint64_t size = fs::file_size(file, ec);
+    const fs::file_time_type modified = fs::last_write_time(file, ec);
+    if (ec)
         return std::nullopt;
     std::optional<nlohmann::json> j;
     try {
@@ -84,8 +98,8 @@ std::optional<Message> showEntry(const fs::path& file, MediaLibrary& library)
         return std::nullopt;
     return Message{{"path", file.string()},
                    {"name", file.stem().string()},
-                   {"modified", double(info.st_mtimespec.tv_sec)},
-                   {"size", uint64_t(info.st_size)},
+                   {"modified", unixSeconds(modified)},
+                   {"size", size},
                    {"mediaPresent", mediaPresent((*j)["composition"], mediaRootOf(file, {}), library)}};
 }
 

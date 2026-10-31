@@ -164,7 +164,7 @@ private:
     std::unique_ptr<RenderThread> live_;
     std::atomic<bool> liveClock_{false};
     std::atomic<bool> ranLive_{false};
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     std::filesystem::path libraryRoot_;
     MediaLibrary library_;
     UserIsfLibrary userIsf_;
@@ -199,7 +199,7 @@ private:
     ReturnAudio returnAudio_;
     SettingsService settingsService_;
     ScreenPainter painter_;
-    NS::SharedPtr<MTL::CommandQueue> queue_;
+    gpu::Queue queue_;
     std::mutex machineMutex_;
     Thermal thermal_;
     std::function<void(bool)> restart_;

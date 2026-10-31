@@ -44,7 +44,7 @@ public:
     ~MacDisplays() override;
 
     std::vector<DisplayInfo> attached() const override;
-    std::unique_ptr<Surface> open(const std::string& id, MTL::Device* device) override;
+    std::unique_ptr<Surface> open(const std::string& id, const gpu::Device& device) override;
     // Through CoreGraphics, permanently, as System Settings would.
     bool unmirror(const std::vector<std::string>& ids) override;
 

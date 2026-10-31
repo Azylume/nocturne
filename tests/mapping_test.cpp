@@ -27,9 +27,9 @@ void registerTestEffects()
     // Red is x, green is y, blue a soft wave: smooth, so warped goldens stay stable across GPUs.
     azl::registerEffect({.type = "mapGradient",
                          .kind = azl::StageKind::Pointwise,
-                         .metal = "\n    float2 uv = px / h.size;\n"
-                                  "    return float4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
-    azl::registerEffect({.type = "mapWhite", .kind = azl::StageKind::Pointwise, .metal = "\n    return float4(1.0);\n"});
+                         .glsl = "\n    vec2 uv = px / h.size;\n"
+                                 "    return vec4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
+    azl::registerEffect({.type = "mapWhite", .kind = azl::StageKind::Pointwise, .glsl = "\n    return vec4(1.0);\n"});
 }
 
 azl::Layer effectLayer(uint64_t id, const char* effect)
@@ -312,7 +312,8 @@ TEST_CASE("screen and slice colour: the slice's adds to the screen's, clamped")
     CHECK(near(pixel(harness.readScreen(1), 300, 200), 255, std::min(255, g * 3 / 2)));
     apply(client, azl::SetSliceColor{1, {.contrast = -1.0}});
     harness.step();
-    const uint8_t* grey = pixel(harness.readScreen(1), 300, 200);
+    const azl::Image screen = harness.readScreen(1);
+    const uint8_t* grey = pixel(screen, 300, 200);
     CHECK((std::abs(grey[0] - 128) <= 2 && std::abs(grey[1] - 128) <= 2 && std::abs(grey[2] - 128) <= 2));
 
     CHECK(command(client, azl::SetSliceColor{1, {.brightness = 2.0}})["type"] == "error");
@@ -431,6 +432,7 @@ TEST_CASE("mapping survives a document round trip")
     CHECK(back.guides == composition.guides);
 }
 
+#ifdef __APPLE__
 // A measurement, not a check: nocturne_tests -tc="GPU cost*" --no-skip
 TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
 {
@@ -443,10 +445,11 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
         desc->setStorageMode(MTL::StorageModePrivate);
         return NS::TransferPtr(device->newTexture(desc.get()));
     };
-    azl::Frame frame{.texture = texture()};
+    azl::Frame frame{.texture = azl::gpu::Texture::retain(texture().get())};
     auto target = texture();
     const auto compileStart = std::chrono::steady_clock::now();
-    azl::ScreenPainter painter(device.get(), MTL::PixelFormatBGRA8Unorm, {1920, 1080});
+    const azl::gpu::Texture into = azl::gpu::Texture::retain(target.get());
+    azl::ScreenPainter painter(azl::gpu::Device::retain(device.get()), azl::gpu::Format::BGRA8, {1920, 1080});
     MESSAGE("painter pipelines compiled in "
             << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compileStart).count()
             << " ms");
@@ -495,8 +498,9 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
         double best = 1e9;
         for (int b = 0; b < kBatches + 2; ++b) {
             auto* cmd = queue->commandBuffer();
+            azl::gpu::CommandBuffer painting = azl::gpu::CommandBuffer::wrap(cmd);
             for (int i = 0; i < kPerBatch; ++i)
-                painter.encode(cmd, &frame, view, target.get());
+                painter.encode(painting, &frame, view, into);
             cmd->commit();
             cmd->waitUntilCompleted();
             if (b >= 2)
@@ -506,6 +510,7 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
     }
     pool->release();
 }
+#endif
 
 TEST_CASE("regridding a warp keeps its surface")
 {

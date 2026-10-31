@@ -47,7 +47,7 @@ public:
 
     // A null library resolves nothing. Each clip's frame cache holds up to `cacheBytes`; parked preloads together hold
     // up to `preloadBytes`. `frameCost` slows every decoder down (harness).
-    ClipDecoders(MTL::Device* device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
+    ClipDecoders(const gpu::Device& device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
                  std::chrono::microseconds frameCost = {});
     ~ClipDecoders();
 
@@ -109,7 +109,7 @@ private:
     std::shared_ptr<VideoDecoder> waitOpen(const ClipKey& clip);
     bool allOpen() const;
 
-    MTL::Device* device_;
+    gpu::Device device_;
     MediaLibrary* library_;
     size_t cacheBytes_;
     size_t preloadBytes_;

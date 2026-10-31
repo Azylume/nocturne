@@ -1,6 +1,8 @@
 #include "output/return_video_service.hpp"
 
+#ifdef __APPLE__
 #include <CoreVideo/CoreVideo.h>
+#endif
 
 #include <algorithm>
 
@@ -37,8 +39,11 @@ uint64_t microsSince(Clock::time_point start)
 ReturnVideoService::ReturnVideoService(DocumentServer& document, Engine& engine)
     : document_(document),
       engine_(engine),
-      queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
-      painter_(engine.device(), kFrameFormat, {engine.config().width, engine.config().height}),
+      queue_(engine.gpuDevice().makeQueue()),
+      painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
+#ifndef __APPLE__
+      ycbcr_(engine.gpuDevice(), ycbcrFormat(YCbCrLayout::NV12), averageCalibration(ycbcrFormat(YCbCrLayout::NV12))),
+#endif
       thread_([this] {
           AZL_THREAD_NAME("return video");
           run();
@@ -136,7 +141,9 @@ void ReturnVideoService::run()
     while (!stopping_) {
         if (watchers_.empty()) {
             outputs_.clear();
+#ifdef __APPLE__
             textures_.clear();
+#endif
             wake_.wait(lock);
             due = Clock::now();
             continue;
@@ -186,7 +193,9 @@ bool ReturnVideoService::follow(const Composition& composition, double fps)
     if (same)
         return false;
     plan_ = plan;
+#ifdef __APPLE__
     textures_.clear();
+#endif
     std::vector<Output> next;
     for (const auto& [display, screen] : outputs) {
         Output output{.display = display, .screen = screen};
@@ -194,6 +203,10 @@ bool ReturnVideoService::follow(const Composition& composition, double fps)
             output.encoder = std::make_unique<H264Encoder>(plan.width, plan.height, plan.fps, plan.kbps);
         } catch (const std::exception&) {
         }
+#ifndef __APPLE__
+        if (output.encoder && !makeTargets(output))
+            output.encoder.reset();
+#endif
         next.push_back(std::move(output));
     }
     outputs_ = std::move(next);
@@ -205,6 +218,7 @@ bool ReturnVideoService::follow(const Composition& composition, double fps)
     return true;
 }
 
+#ifdef __APPLE__
 MTL::Texture* ReturnVideoService::textureOf(CVPixelBufferRef buffer)
 {
     IOSurfaceRef surface = CVPixelBufferGetIOSurface(buffer);
@@ -212,8 +226,8 @@ MTL::Texture* ReturnVideoService::textureOf(CVPixelBufferRef buffer)
         return nullptr;
     if (auto it = textures_.find(surface); it != textures_.end())
         return it->second.get();
-    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, CVPixelBufferGetWidth(buffer),
-                                                             CVPixelBufferGetHeight(buffer), false);
+    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(
+        gpu::metalFormat(kFrameFormat), CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), false);
     desc->setUsage(MTL::TextureUsageRenderTarget);
     desc->setStorageMode(MTL::StorageModeShared);
     auto texture = NS::TransferPtr(engine_.device()->newTexture(desc, surface, 0));
@@ -226,46 +240,97 @@ MTL::Texture* ReturnVideoService::textureOf(CVPixelBufferRef buffer)
     return (textures_[surface] = texture).get();
 }
 
+// Straight into the encoder's own buffer.
+std::optional<ReturnVideoService::Painted> ReturnVideoService::paint(gpu::CommandBuffer& cmd, Output& output,
+                                                                     const Frame* frame,
+                                                                     const Composition& composition,
+                                                                     const Screen& screen)
+{
+    CVPixelBufferRef buffer = output.encoder->newBuffer();
+    MTL::Texture* texture = buffer ? textureOf(buffer) : nullptr;
+    if (!texture) {
+        if (buffer)
+            CVPixelBufferRelease(buffer);
+        return std::nullopt;
+    }
+    const gpu::Texture target = gpu::Texture::retain(texture);
+    painter_.encode(cmd, frame, screenView(composition, screen, false, std::nullopt), target);
+    cmd.synchronize(target);
+    return Painted{&output, buffer};
+}
+
+std::optional<return_video::Packet> ReturnVideoService::encode(const Painted& painted, double seconds, bool key)
+{
+    std::optional<return_video::Packet> packet = painted.output->encoder->encode(painted.buffer, seconds, key);
+    CVPixelBufferRelease(painted.buffer);
+    return packet;
+}
+#else
+bool ReturnVideoService::makeTargets(Output& output)
+{
+    const gpu::Device& device = engine_.gpuDevice();
+    output.painted = device.makeTexture({.format = kFrameFormat,
+                                         .width = plan_.width,
+                                         .height = plan_.height,
+                                         .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    output.planes = ycbcr_.makePlanes(device, plan_.width, plan_.height);
+    output.readbacks.clear();
+    for (const gpu::Texture& plane : output.planes)
+        output.readbacks.emplace_back(device, plane);
+    return output.painted && !output.planes.empty();
+}
+
+// Painted, converted to NV12 and read back; copied into the encoder's picture once the GPU finished.
+std::optional<ReturnVideoService::Painted> ReturnVideoService::paint(gpu::CommandBuffer& cmd, Output& output,
+                                                                     const Frame* frame,
+                                                                     const Composition& composition,
+                                                                     const Screen& screen)
+{
+    painter_.encode(cmd, frame, screenView(composition, screen, false, std::nullopt), output.painted);
+    ycbcr_.encode(cmd, output.painted, output.planes);
+    for (const gpu::Readback& readback : output.readbacks)
+        readback.encode(cmd);
+    return Painted{&output};
+}
+
+std::optional<return_video::Packet> ReturnVideoService::encode(const Painted& painted, double seconds, bool key)
+{
+    Output& output = *painted.output;
+    const std::shared_ptr<YCbCrPicture> picture = output.encoder->newBuffer();
+    if (!picture)
+        return std::nullopt;
+    copyPlanes(ycbcr_.format(), output.readbacks, *picture);
+    return output.encoder->encode(*picture, seconds, key);
+}
+#endif
+
 std::set<ClientId> ReturnVideoService::serve(const FrameRef& frame, const Composition& composition, bool key,
                                              const std::vector<ClientId>& watchers)
 {
-    struct Painted {
-        Output* output;
-        CVPixelBufferRef buffer;
-    };
     std::vector<Painted> painted;
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    MTL::CommandBuffer* cmd = queue_->commandBuffer();
-    for (Output& output : outputs_) {
-        const Screen* screen = screenOf(composition, output.screen);
-        CVPixelBufferRef buffer = screen && output.encoder ? output.encoder->newBuffer() : nullptr;
-        MTL::Texture* texture = buffer ? textureOf(buffer) : nullptr;
-        if (!texture) {
-            if (buffer)
-                CVPixelBufferRelease(buffer);
-            continue;
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue_.commandBuffer();
+        for (Output& output : outputs_) {
+            const Screen* screen = screenOf(composition, output.screen);
+            if (!screen || !output.encoder)
+                continue;
+            if (std::optional<Painted> p = paint(cmd, output, frame.get(), composition, *screen))
+                painted.push_back(*p);
         }
-        painter_.encode(cmd, frame.get(), screenView(composition, *screen, false, std::nullopt), texture);
-        if (texture->storageMode() == MTL::StorageModeManaged) {
-            MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
-            blit->synchronizeResource(texture);
-            blit->endEncoding();
+        if (!painted.empty()) {
+            cmd.commit();
+            cmd.waitUntilCompleted();
+            const gpu::Completion done = cmd.completion();
+            stats_.gpuMicros += uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
         }
-        painted.push_back({&output, buffer});
     }
-    if (!painted.empty()) {
-        cmd->commit();
-        cmd->waitUntilCompleted();
-        stats_.gpuMicros += uint64_t(std::max(0.0, cmd->GPUEndTime() - cmd->GPUStartTime()) * 1e6);
-    }
-    pool->release();
 
     std::set<ClientId> gone;
     const double seconds = std::chrono::duration<double>(Clock::now() - started_).count();
     for (const Painted& p : painted) {
         const Clock::time_point start = Clock::now();
-        const std::optional<return_video::Packet> packet = p.output->encoder->encode(p.buffer, seconds, key);
-        CVPixelBufferRelease(p.buffer);
+        const std::optional<return_video::Packet> packet = encode(p, seconds, key);
         stats_.encodeMicros += microsSince(start);
         if (!packet)
             continue;

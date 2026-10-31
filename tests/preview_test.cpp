@@ -181,8 +181,8 @@ TEST_CASE("without counter sampling the preview timer falls back to the command 
         ~NoCounters() { azl::GpuProfile::forceNoCounterSampling(false); }
     } noCounters;
     auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    CHECK_FALSE(azl::GpuProfile(device.get()).enabled());
-    CHECK(std::string(azl::GpuProfile(device.get(), 1, true).mode()) == "command buffer");
+    CHECK_FALSE(azl::GpuProfile(azl::gpu::Device::retain(device.get())).enabled());
+    CHECK(std::string(azl::GpuProfile(azl::gpu::Device::retain(device.get()), 1, true).mode()) == "command buffer");
 
     azl::EngineHarness harness({.width = 960, .height = 540});
     Client client(harness.document());
@@ -495,7 +495,7 @@ void registerRedOnly()
 {
     if (!azl::findEffect("testRedOnly"))
         azl::registerEffect({"testRedOnly", azl::StageKind::Pointwise, {}, false,
-                             "\n    return float4(c.r, 0.0, 0.0, c.a);\n", {}});
+                             "\n    return vec4(c.r, 0.0, 0.0, c.a);\n", {}});
 }
 
 struct Channels {

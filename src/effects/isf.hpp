@@ -70,10 +70,10 @@ const std::vector<std::variant<IsfShader, std::string>>& parsedIsfSources();
 // The effects and generators among them, as isfEffect makes them; a source that does not parse is left out.
 std::vector<EffectDef> isfEffects();
 
-// An ISF transition as a transition mode: its inputs as parameters and, once the engine has translated it, its Metal:
+// An ISF transition as a transition mode: its inputs as parameters and, once the engine has translated it, its GLSL:
 // `globals` at file scope and `function` the body of
-//   float4 isfTransitionN(float4 from, float4 to, uint2 p, constant Header& h, float progress, constant float* tp)
-// for the mode's number N, mixing the two premultiplied pictures at pixel p with the parameter values tp.
+//   vec4 isfTransitionN(vec4 from, vec4 to, uvec2 p, float progress)
+// for the mode's number N, mixing the two premultiplied pictures at pixel p with the parameter values m.params.
 struct IsfTransition {
     TransitionMode mode;
     std::string name;
@@ -88,14 +88,14 @@ using IsfTransitions = std::vector<IsfTransition>;
 std::shared_ptr<const IsfTransitions> isfTransitions();
 // Replaces the set. Any thread.
 void setIsfTransitions(IsfTransitions transitions);
-// The built-in transitions as parsed, with no Metal.
+// The built-in transitions as parsed, with no GLSL.
 IsfTransitions builtinIsfTransitions();
 // The transition mode a parsed transition stands for: a built-in one's, or a user one's (userTransitionMode).
 IsfTransition isfTransition(const IsfShader& shader);
 // Null when the mode is not an ISF transition of the set.
 const IsfTransition* findIsfTransition(const IsfTransitions& transitions, TransitionMode mode);
 // A client's copy of the engine's user shaders: registers the effects, generators and transitions of `sources` (user
-// sources, with no Metal) in place of those of the previous call; one the process already has with its Metal, as an
+// sources, with no GLSL) in place of those of the previous call; one the process already has with its GLSL, as an
 // engine in the same process registered it, is left alone. Any thread.
 void mirrorUserIsf(const std::vector<IsfSource>& sources);
 

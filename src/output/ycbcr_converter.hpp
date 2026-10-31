@@ -1,12 +1,12 @@
 #pragma once
 
-#include "platform/profile.hpp"
+#include "output/ycbcr_pass.hpp"
 
 #include <CoreVideo/CoreVideo.h>
 #include <Metal/Metal.hpp>
 
-#include <array>
 #include <map>
+#include <memory>
 #include <vector>
 
 namespace azl {
@@ -33,21 +33,12 @@ public:
     // Render thread: encodes the conversion of `source` (the size of `target`) on `cmd`. False, with nothing encoded,
     // when `prepare` fails.
     bool encode(MTL::CommandBuffer* cmd, MTL::Texture* source, CVPixelBufferRef target);
-    // The Tracy timeline of the queue it encodes for, which must outlive it.
-    void setGpuTimeline(const profile::GpuTimeline* timeline) { gpu_ = timeline; }
 
 private:
     MTL::Device* device_;
-    const profile::GpuTimeline* gpu_ = nullptr;
     OSType format_;
-    NS::SharedPtr<MTL::ComputePipelineState> pipeline_;
-    // The shader's: chroma weights, and the format's precision.
-    struct alignas(16) Params {
-        std::array<float, 4> weights;
-        float steps;
-        float step;
-    } params_{};
-    std::map<IOSurfaceRef, std::vector<NS::SharedPtr<MTL::Texture>>> planes_;
+    std::unique_ptr<YCbCrPass> pass_;
+    std::map<IOSurfaceRef, std::vector<gpu::Texture>> planes_;
 };
 
 } // namespace azl

@@ -101,7 +101,7 @@ endforeach()
 add_library(nocturne_shader_cross STATIC src/engine/shader_cross.cpp src/engine/isf_compiler.cpp)
 target_include_directories(nocturne_shader_cross PUBLIC src)
 target_link_libraries(nocturne_shader_cross PUBLIC nocturne_protocol PRIVATE glslang::glslang
-  glslang::glslang-default-resource-limits spirv-cross-msl)
+  glslang::glslang-default-resource-limits spirv-cross-msl spirv-cross-glsl)
 
 file(GLOB isf_files CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/isf/*/*.fs)
 list(SORT isf_files)
@@ -142,6 +142,7 @@ add_library(nocturne_protocol STATIC
   src/document/text.cpp
   src/document/palette.cpp
   src/effects/chain_planner.cpp
+  src/effects/shader_layout.cpp
   src/effects/classic_presets.cpp
   src/effects/colour.cpp
   src/effects/effect_registry.cpp
@@ -224,32 +225,47 @@ if(WIN32)
   target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
 endif()
 
+# The GPU interface everything draws through (ADR 0016): the Metal backend on Apple, Vulkan elsewhere.
+add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/glsl.cpp)
+target_include_directories(nocturne_gpu PUBLIC src)
+target_link_libraries(nocturne_gpu PUBLIC nocturne_shader_cross)
+if(APPLE)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_metal.cpp src/gpu/metal_impl.cpp)
+  target_include_directories(nocturne_gpu PUBLIC third_party/metal-cpp)
+  target_link_libraries(nocturne_gpu PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Foundation" objc)
+else()
+  find_package(Vulkan 1.3 REQUIRED)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_vulkan.cpp src/gpu/vulkan_memory.cpp src/gpu/vulkan_spirv.cpp)
+  target_link_libraries(nocturne_gpu PUBLIC Vulkan::Vulkan)
+  # Vulkan structures are initialised from their sType alone, the rest zero.
+  target_compile_options(nocturne_gpu PRIVATE -Wno-missing-field-initializers)
+endif()
+
 # Media: HAP, the decoders' frame caches, the Media Library and text. Reading and writing movies, stills and text
 # rasterising use AVFoundation and CoreText on Apple, FFmpeg and DirectWrite elsewhere (ADR 0016).
 add_library(nocturne_media STATIC
   src/media/hap.cpp
   src/media/hap_encoder.cpp
+  src/media/clip_decoders.cpp
+  src/media/composition_media.cpp
+  src/media/composition_service.cpp
   src/media/keep_local.cpp
   src/media/library_service.cpp
   src/media/media_library.cpp
+  src/media/picture_upload.cpp
   src/media/snappy.cpp
   src/media/text_renderer.cpp
   src/media/video_decoder.cpp
 )
 target_include_directories(nocturne_media PUBLIC src)
-target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile)
+target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile nocturne_gpu)
 if(APPLE)
   target_sources(nocturne_media PRIVATE
-    src/media/clip_decoders.cpp
-    src/media/composition_media.cpp
-    src/media/composition_service.cpp
     src/media/hap_movie.mm
-    src/media/hap_texture.mm
     src/media/stills.mm
     src/media/text_renderer_coretext.cpp
     src/media/video_source_avf.mm
   )
-  target_include_directories(nocturne_media PUBLIC third_party/metal-cpp)
   target_link_libraries(nocturne_media PUBLIC
     "-framework AVFoundation"
     "-framework CoreMedia"
@@ -369,12 +385,16 @@ if(NOT APPLE)
   endforeach()
 endif()
 
+add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
+target_link_libraries(nocturne_app_config PUBLIC nocturne_media nocturne_net)
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
-  tests/media_files_test.cpp tests/video_decoder_test.cpp
+  tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
+  tests/picture_upload_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
   tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
   tests/bundle_update_test.cpp tests/h264_decoder_test.cpp
@@ -396,42 +416,27 @@ add_test(NAME nocturne_tests COMMAND nocturne_tests)
 add_executable(nocturne-hap-encode src/app/hap_encode.cpp)
 target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 
-# The JUCE UI. On Apple it also links targets defined below this line (local previews, the harness).
-add_subdirectory(src/ui)
-
-# Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
-# platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
-if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp tests/record_ffmpeg_test.cpp
-    tests/return_video_encode_test.cpp)
-  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues nocturne_record nocturne_return_video)
-  return()
-endif()
-
-target_sources(nocturne_return_video PRIVATE src/output/h264_stream.mm)
-target_link_libraries(nocturne_return_video PUBLIC "-framework VideoToolbox" "-framework CoreMedia"
-  "-framework CoreVideo" "-framework Foundation")
-
+# The engine: the render thread, its services and the outputs, drawing through the GPU interface. Apple adds its
+# Metal, AVFoundation and AppKit pieces below the line.
 add_library(nocturne_engine STATIC
-  src/engine/effect_stepper.cpp
+  src/engine/auto_range.cpp
   src/engine/chain_compiler.cpp
   src/engine/clip_effects_preview.cpp
   src/engine/clock_service.cpp
   src/engine/cue_service.cpp
   src/engine/desk_service.cpp
+  src/engine/effect_stepper.cpp
   src/engine/engine.cpp
   src/engine/envelope.cpp
-  src/engine/auto_range.cpp
   src/engine/frame_guard.cpp
   src/engine/frame_ring.cpp
   src/engine/frame_trace.cpp
-  src/engine/bundle_update_apple.cpp
   src/engine/fsr_upscaler.cpp
+  src/engine/gpu_profile.cpp
+  src/engine/isf_library.cpp
+  src/engine/isf_service.cpp
   src/engine/machine_service.cpp
   src/engine/machine_settings.cpp
-  src/engine/metal_impl.cpp
-  src/engine/metal_util.cpp
   src/engine/modulation_plan.cpp
   src/engine/modulation_service.cpp
   src/engine/playhead.cpp
@@ -442,20 +447,85 @@ add_library(nocturne_engine STATIC
   src/engine/side_targets.cpp
   src/engine/static_bake.cpp
   src/engine/switch_log.cpp
-  src/engine/gpu_profile.cpp
-  src/engine/isf_library.cpp
-  src/engine/isf_service.cpp
   src/engine/trigger_service.cpp
   src/engine/wall_cue_service.cpp
-  src/output/display_output.cpp
   src/output/display_keeper.cpp
+  src/output/display_output.cpp
   src/output/known_displays.cpp
   src/output/output_service.cpp
   src/output/outputs.cpp
   src/output/record_service.cpp
-  src/output/screen_displays.cpp
-  src/output/recorder.mm
+  src/output/recorder.cpp
   src/output/return_video_service.cpp
+  src/output/screen_displays.cpp
+  src/output/ycbcr_pass.cpp
+)
+target_include_directories(nocturne_engine PUBLIC src)
+target_link_libraries(nocturne_engine PUBLIC nocturne_gpu nocturne_engine_logic nocturne_media nocturne_record
+  nocturne_return_video nocturne_audio nocturne_shader_cross)
+if(NOT APPLE)
+  target_sources(nocturne_engine PRIVATE src/output/recorder_ffmpeg.cpp)
+endif()
+
+add_library(nocturne_import STATIC src/import/resolume_import.cpp)
+target_link_libraries(nocturne_import PUBLIC nocturne_media)
+
+add_library(nocturne_djlink STATIC src/djlink/clock_follower.cpp src/djlink/djlink_packets.cpp src/djlink/djlink_receiver.cpp
+  src/djlink/djlink_service.cpp src/djlink/djlink_state.cpp)
+target_link_libraries(nocturne_djlink PUBLIC nocturne_engine)
+
+add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
+  src/harness/fake_displays.cpp)
+target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
+
+add_library(nocturne_sync STATIC src/sync/node_sync.cpp)
+target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
+
+# The JUCE UI. On Apple it also links targets defined below this line (local previews, the harness).
+add_subdirectory(src/ui)
+
+# Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
+# platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
+if(NOT APPLE)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp tests/record_ffmpeg_test.cpp
+    tests/return_video_encode_test.cpp)
+  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues nocturne_record nocturne_return_video)
+  # The engine's cases through the harness that build here so far; Apple's list below has them all.
+  target_sources(nocturne_tests PRIVATE tests/golden.cpp tests/harness_test.cpp tests/layers_test.cpp
+    tests/screens_test.cpp tests/transition_test.cpp tests/output_import_test.cpp tests/clip_effects_test.cpp
+    tests/classic_test.cpp tests/text_test.cpp tests/generator_test.cpp tests/upscale_test.cpp tests/isf_user_test.cpp
+    tests/hap_golden_test.cpp tests/effects_test.cpp tests/isf_engine_test.cpp tests/mapping_test.cpp)
+  target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(nocturne_tests PRIVATE nocturne_harness nocturne_import)
+  if(WIN32)
+    add_library(nocturne_win_displays STATIC src/platform/win_displays.cpp)
+    target_link_libraries(nocturne_win_displays PUBLIC nocturne_gpu nocturne_platform)
+    # Vulkan structures are initialised from their sType alone, the rest zero.
+    target_compile_options(nocturne_win_displays PRIVATE -Wno-missing-field-initializers)
+    add_executable(nocturne src/app/main_win.cpp src/app/engine_main.cpp src/app/main_thread_win.cpp
+      src/app/safe_mode.cpp src/app/safe_mode_win.cpp src/app/displays_win.cpp)
+    target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync
+      nocturne_djlink nocturne_upload nocturne_win_displays windowscodecs ole32 psapi shell32)
+    # Engines and harnesses live on the main thread's stack: 8 MB on macOS, so the same here instead of 1 MB.
+    target_link_options(nocturne PRIVATE "LINKER:/STACK:8388608")
+    target_link_options(nocturne_tests PRIVATE "LINKER:/STACK:8388608")
+    target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp tests/win_outputs_test.cpp tests/golden_png_win.cpp)
+    target_link_libraries(nocturne_tests PRIVATE nocturne_win_displays)
+    target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_ENGINE="$<TARGET_FILE:nocturne>")
+    add_dependencies(nocturne_tests nocturne)
+  endif()
+  return()
+endif()
+
+target_sources(nocturne_return_video PRIVATE src/output/h264_stream.mm)
+target_link_libraries(nocturne_return_video PUBLIC "-framework VideoToolbox" "-framework CoreMedia"
+  "-framework CoreVideo" "-framework Foundation")
+
+target_sources(nocturne_engine PRIVATE
+  src/engine/bundle_update_apple.cpp
+  src/engine/metal_util.cpp
+  src/output/recorder.mm
   src/output/ycbcr_converter.mm
   src/platform/mac_displays.mm
   src/platform/thermal.mm
@@ -463,14 +533,8 @@ add_library(nocturne_engine STATIC
 if(NOCTURNE_TRACY)
   target_sources(nocturne_engine PRIVATE src/platform/profile_metal.mm)
 endif()
-target_include_directories(nocturne_engine PUBLIC src third_party/metal-cpp)
+target_include_directories(nocturne_engine PUBLIC third_party/metal-cpp)
 target_link_libraries(nocturne_engine PUBLIC
-  nocturne_engine_logic
-  nocturne_media
-  nocturne_record
-  nocturne_return_video
-  nocturne_audio
-  nocturne_shader_cross
   "-framework Metal"
   "-framework QuartzCore"
   "-framework IOSurface"
@@ -481,13 +545,6 @@ target_link_libraries(nocturne_engine PUBLIC
   "-framework Security"
 )
 
-add_library(nocturne_djlink STATIC src/djlink/clock_follower.cpp src/djlink/djlink_packets.cpp src/djlink/djlink_receiver.cpp
-  src/djlink/djlink_service.cpp src/djlink/djlink_state.cpp)
-target_link_libraries(nocturne_djlink PUBLIC nocturne_engine)
-
-add_library(nocturne_import STATIC src/import/resolume_import.cpp)
-target_link_libraries(nocturne_import PUBLIC nocturne_media)
-
 add_executable(nocturne-import src/app/import.cpp)
 target_link_libraries(nocturne-import PRIVATE nocturne_import)
 
@@ -495,19 +552,10 @@ add_executable(nocturne-upload src/app/upload.cpp)
 target_link_libraries(nocturne-upload PRIVATE nocturne_upload)
 
 add_executable(nocturne-decode-bench src/app/decode_bench.mm)
-target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media)
+target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media nocturne_shader_cross nocturne_protocol)
 
-add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
-  src/harness/fake_displays.cpp)
-target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
-
-add_library(nocturne_sync STATIC src/sync/node_sync.mm)
-target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
-
-add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
-target_link_libraries(nocturne_app_config PUBLIC nocturne_engine nocturne_net)
-
-add_executable(nocturne src/app/main.mm src/app/safe_mode.mm)
+add_executable(nocturne src/app/main.mm src/app/engine_main.cpp src/app/main_thread_apple.mm src/app/safe_mode.cpp
+  src/app/safe_mode_apple.mm)
 target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_djlink nocturne_upload)
 
 set(NOCTURNE_APP "${CMAKE_BINARY_DIR}/Nocturne.app")

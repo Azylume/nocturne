@@ -1,7 +1,7 @@
 #include "media/video_source.hpp"
 
+#include "media/picture_upload.hpp"
 #include "platform/thread_priority.hpp"
-#include "media/hap_texture.hpp"
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
@@ -325,14 +325,7 @@ private:
 };
 
 struct HapTextures {
-    std::array<MTL::Texture*, 2> textures{};
-
-    ~HapTextures()
-    {
-        for (MTL::Texture* texture : textures)
-            if (texture)
-                CFRelease((CFTypeRef)texture);
-    }
+    std::array<gpu::Texture, 2> textures{};
 };
 
 struct FrameResources {
@@ -367,7 +360,8 @@ CVMetalTextureRef planeTexture(CVMetalTextureCacheRef cache, CVPixelBufferRef pi
 class AvfSource final : public VideoSource {
 public:
     // Without a device (probing) the source makes no frames.
-    AvfSource(MTL::Device* device, const std::string& path) : track_(openTrack(path)), device_(device)
+    AvfSource(const MediaDevice* device, const std::string& path)
+        : track_(openTrack(path)), device_(device ? *device : gpu::Device{})
     {
         source_.fps = track_.fps;
         source_.frameCount = track_.frameCount;
@@ -380,8 +374,8 @@ public:
         if (!device)
             return;
         source_.keyframes = keyframesOf(track_);
-        if (CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, (__bridge id<MTLDevice>)device, nullptr,
-                                      &cache_) != kCVReturnSuccess)
+        if (CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, (__bridge id<MTLDevice>)device->native(),
+                                      nullptr, &cache_) != kCVReturnSuccess)
             throw std::runtime_error("cannot create a Metal texture cache");
     }
 
@@ -411,8 +405,8 @@ public:
             return nullptr;
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->luma = (__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->luma);
-        frame->chroma = (__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->chroma);
+        frame->luma = gpu::Texture::retain((__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->luma));
+        frame->chroma = gpu::Texture::retain((__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->chroma));
         frame->yuvToRgb = yuvToRgb_;
         frame->turns = track_.turns;
         frame->resources = std::move(resources);
@@ -423,7 +417,7 @@ public:
     {
         auto resources = std::make_shared<HapTextures>();
         for (size_t i = 0; i < images.size(); ++i)
-            if (!(resources->textures[i] = newHapTexture(device_, images[i], track_.width, track_.height)))
+            if (!(resources->textures[i] = uploadHapImage(device_, images[i], track_.width, track_.height)))
                 return nullptr;
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
@@ -438,7 +432,7 @@ public:
 private:
     Track track_;
     SourceTrack source_;
-    MTL::Device* device_ = nullptr;
+    gpu::Device device_;
     CVMetalTextureCacheRef cache_ = nullptr;
     std::array<float, 12> yuvToRgb_{};
 };
@@ -450,7 +444,7 @@ int64_t liveAssetReaders()
     return gLiveReaders.load();
 }
 
-std::unique_ptr<VideoSource> openVideoSource(MediaDevice* device, const std::string& path)
+std::unique_ptr<VideoSource> openVideoSource(const MediaDevice* device, const std::string& path)
 {
     return std::make_unique<AvfSource>(device, path);
 }

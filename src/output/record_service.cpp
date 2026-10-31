@@ -3,11 +3,10 @@
 #include "document/composition_file.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
-#include <strings.h>
-#include <unistd.h>
 
 namespace azl {
 
@@ -88,7 +87,11 @@ std::vector<std::filesystem::path> subfolders(const std::filesystem::path& path)
         found.push_back(entry.path());
     }
     std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
-        return strcasecmp(a.filename().c_str(), b.filename().c_str()) < 0;
+        const std::string x = a.filename().string();
+        const std::string y = b.filename().string();
+        return std::lexicographical_compare(x.begin(), x.end(), y.begin(), y.end(), [](unsigned char c, unsigned char d) {
+            return std::tolower(c) < std::tolower(d);
+        });
     });
     return found;
 }
@@ -104,7 +107,7 @@ Message listFolders(const std::filesystem::path& path, const std::filesystem::pa
     Message reply = volumeSpace(folder);
     reply["path"] = folder.string();
     reply["parent"] = folder == folder.root_path() ? "" : folder.parent_path().string();
-    reply["writable"] = ::access(folder.c_str(), W_OK) == 0;
+    reply["writable"] = recording::writable(folder);
     reply["folders"] = Message::array();
     for (const std::filesystem::path& sub : subfolders(folder))
         reply["folders"].push_back({{"name", sub.filename().string()}, {"path", sub.string()}});
@@ -217,7 +220,7 @@ Recorder::Settings RecordService::load(const std::filesystem::path& file, Record
         if (const std::optional<Message> kept = readJsonFile(file))
             return applied(*kept, defaults);
     } catch (const std::exception& e) {
-        std::printf("record: cannot read %s (%s); the defaults apply\n", file.c_str(), e.what());
+        std::printf("record: cannot read %s (%s); the defaults apply\n", file.string().c_str(), e.what());
     }
     return defaults;
 }
@@ -317,7 +320,7 @@ void RecordService::ended(const Recorder::Ended& e)
     else if (e.reason != "stopped")
         message["notice"] = "Recording stopped: " + e.reason;
     std::printf("record: %s, %llu frames, %llu dropped, %s %s\n", e.reason.c_str(), (unsigned long long)e.frames,
-                (unsigned long long)e.dropped, e.kept ? "kept" : "nothing kept at", e.file.c_str());
+                (unsigned long long)e.dropped, e.kept ? "kept" : "nothing kept at", e.file.string().c_str());
     document_.broadcast(message);
 }
 

@@ -44,26 +44,24 @@ constexpr const char* kInstalledFont = "Helvetica Bold";
 
 class Device {
 public:
-    Device() : device_(MTL::CreateSystemDefaultDevice()) {}
-    ~Device() { device_->release(); }
-    azl::MediaDevice* get() const { return device_; }
+    const azl::MediaDevice* get() const { return &device_; }
 
 private:
-    MTL::Device* device_;
+    azl::MediaDevice device_ = azl::MediaDevice::systemDefault();
 };
 
 std::vector<uint8_t> coverage(const azl::VideoFrame& frame)
 {
-    const auto width = size_t(frame.luma->width()), height = size_t(frame.luma->height());
+    const auto width = size_t(frame.luma.width()), height = size_t(frame.luma.height());
     std::vector<uint8_t> rg(width * height * 2);
-    frame.luma->getBytes(rg.data(), width * 2, MTL::Region(0, 0, width, height), 0);
+    frame.luma.native()->getBytes(rg.data(), width * 2, MTL::Region(0, 0, width, height), 0);
     return rg;
 }
 #else
 constexpr const char* kInstalledFont = "Arial Bold";
 
 struct Device {
-    azl::MediaDevice* get() const { return nullptr; }
+    const azl::MediaDevice* get() const { return nullptr; }
 };
 
 std::vector<uint8_t> coverage(const azl::VideoFrame& frame)

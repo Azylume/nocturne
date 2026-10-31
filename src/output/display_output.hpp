@@ -73,7 +73,7 @@ private:
     const std::string display_;
     VsyncPhase& vsync_;
     ScreenPainter painter_;
-    NS::SharedPtr<MTL::CommandQueue> queue_;
+    gpu::Queue queue_;
     profile::GpuTimeline gpu_;
     // Shared with presented handlers, which can fire after the output is gone.
     std::shared_ptr<OutputStats> stats_ = std::make_shared<OutputStats>();

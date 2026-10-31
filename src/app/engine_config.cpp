@@ -1,8 +1,7 @@
 #include "app/engine_config.hpp"
 
 #include "effects/preset_service.hpp"
-#include "engine/engine.hpp"
-#include "engine/modulation_service.hpp"
+#include "engine/macro_sets_file.hpp"
 #include "media/media_library.hpp"
 #include "net/websocket.hpp"
 
@@ -28,7 +27,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(EngineConfig, display, main, win
 
 EngineConfig::EngineConfig()
     : port(kDefaultPort), library(MediaLibrary::defaultRoot().string()), seed(std::random_device{}()), presets(PresetService::defaultFile().string()),
-      macroSets(ModulationService::defaultFile().string())
+      macroSets(defaultMacroSetsFile().string())
 {
 }
 
@@ -299,6 +298,16 @@ ParsedArgs parseEngineArgs(const std::vector<std::string>& args)
         return {ParsedArgs::Outcome::Error, parsed.config};
     }
     return parsed;
+}
+
+EngineConfig parseCommandLine(const std::vector<std::string>& args)
+{
+    const ParsedArgs parsed = parseEngineArgs(args);
+    if (parsed.outcome == ParsedArgs::Outcome::Run)
+        return parsed.config;
+    const bool help = parsed.outcome == ParsedArgs::Outcome::Help;
+    std::fputs(kEngineUsage, help ? stdout : stderr);
+    std::exit(help ? 0 : 2);
 }
 
 std::filesystem::path engineConfigFile(const std::filesystem::path& stateDir)

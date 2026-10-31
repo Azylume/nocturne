@@ -41,7 +41,7 @@ struct LocalPreviews::Impl {
                                : std::make_unique<MediaLibrary>(options.library.empty() ? MediaLibrary::defaultRoot()
                                                                                         : options.library)),
           library(options.shared ? *options.shared : *owned),
-          engine(device.get(),
+          engine(gpu::Device::retain(device.get()),
                  {.width = options.width,
                   .height = options.height,
                   .clipCacheBytes = kClipCacheBytes,
