@@ -1,9 +1,10 @@
 #include "audio/audio_analysis.hpp"
 #include "engine/chain_compiler.hpp"
 #include "engine/frame_ring.hpp"
-#include "engine/metal_util.hpp"
 #include "engine/shader_cross.hpp"
 #include "golden.hpp"
+#include "gpu/glsl.hpp"
+#include "platform/process.hpp"
 #include "test_client.hpp"
 
 #include <doctest.h>
@@ -14,10 +15,23 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <stdexcept>
 #include <vector>
-#include <unistd.h>
 
 namespace {
+
+namespace gpu = azl::gpu;
+
+// Builds the pass's pipeline as the chain compiler does, into `format`; throws when it does not build.
+void buildPass(const gpu::Device& device, const azl::PlannedPass& pass, gpu::Format format)
+{
+    std::string error;
+    const gpu::ShaderModule module =
+        device.makeShaderModule(gpu::compileGlsl(azl::fullscreenEntries(pass.glsl, {"passMain"})), &error);
+    if (!module || !device.makeRenderPipeline(
+                       {module, gpu::entryPoint("fullscreen"), gpu::entryPoint("passMain"), format}, {}, nullptr, &error))
+        throw std::runtime_error(error);
+}
 
 using azl::AddEffect;
 using azl::SetEffectParam;
@@ -193,12 +207,13 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravir
     CHECK(azl::archivesWork("Apple M2 Pro"));
     CHECK(azl::archivesWork("Intel(R) UHD Graphics 630"));
     CHECK_FALSE(azl::archivesWork("Apple Paravirtual device"));
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    const bool archives = azl::archivesWork(device->name()->utf8String());
-    const std::filesystem::path cache =
-        std::filesystem::temp_directory_path() / ("nocturne-pipelines-" + std::to_string(::getpid()) + ".metallib");
+    const bool archives = azl::archivesWork(gpu::Device::systemDefault().name());
+    const std::filesystem::path cache = std::filesystem::temp_directory_path() /
+                                        ("nocturne-pipelines-" + std::to_string(azl::currentProcessId()) +
+                                         gpu::kPipelineCacheExtension);
     std::filesystem::remove(cache);
-    const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cache.c_str()};
+    const std::string cachePath = cache.string();
+    const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cachePath.c_str()};
     {
         azl::EngineHarness harness(config, 60.0, {}, twoLayers());
         harness.step();
@@ -302,11 +317,9 @@ TEST_CASE("the planner fuses pointwise and remap stages and cuts before a neighb
     headroom.needsFloat16 = true;
     CHECK(azl::planChain(azl::SourceKind::Yuv, {&headroom, &fake})[1].float16);
 
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const gpu::Device device = gpu::Device::systemDefault();
     for (const azl::PlannedPass& pass : cut)
-        CHECK_NOTHROW(azl::makePipeline(device.get(), azl::passMsl(pass).c_str(), azl::mslFunction("fullscreen").c_str(),
-                                        azl::mslFunction("passMain").c_str(),
-                                        azl::gpu::metalFormat(azl::kFrameFormat)));
+        CHECK_NOTHROW(buildPass(device, pass, azl::kFrameFormat));
 }
 
 TEST_CASE("a neighbourhood effect reads a materialised 8-bit intermediate")
@@ -420,13 +433,10 @@ TEST_CASE("every v1 effect declares its stage kind and the planner fuses accordi
     CHECK(stageIndexes(trails[1]) == std::vector<size_t>{0, 1, 2});
     CHECK(trails[1].intoComposition);
 
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const gpu::Device device = gpu::Device::systemDefault();
     for (const auto& chain : {trails, azl::planChain(SourceKind::Texture, effects({"classicTrails", "trails"}))})
         for (const azl::PlannedPass& pass : chain)
-            CHECK_NOTHROW(azl::makePipeline(device.get(), azl::passMsl(pass).c_str(),
-                                            azl::mslFunction("fullscreen").c_str(), azl::mslFunction("passMain").c_str(),
-                                            pass.float16 ? MTL::PixelFormatRGBA16Float
-                                                         : azl::gpu::metalFormat(azl::kFrameFormat)));
+            CHECK_NOTHROW(buildPass(device, pass, pass.float16 ? gpu::Format::RGBA16F : azl::kFrameFormat));
 }
 
 TEST_CASE("frame stats show the passes and full-resolution intermediates of the fused chains")

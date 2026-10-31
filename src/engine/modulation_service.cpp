@@ -186,7 +186,7 @@ nlohmann::json loadFile(const std::filesystem::path& file)
         return nlohmann::json::object();
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.contains("sets") || !j["sets"].is_object()) {
-        std::fprintf(stderr, "macro sets: ignoring unreadable %s\n", file.c_str());
+        std::fprintf(stderr, "macro sets: ignoring unreadable %s\n", file.string().c_str());
         return nlohmann::json::object();
     }
     return j["sets"];

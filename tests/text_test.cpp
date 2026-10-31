@@ -220,7 +220,8 @@ TEST_CASE("a text clip plays through transitions, effects and Autopilot like a v
     bool sawVideo = false;
     for (int i = 0; i < 16; ++i) {
         harness.step(30);
-        const uint8_t* q = pixel(harness.readScreen(), 240, 405);
+        const azl::Image screen = harness.readScreen();
+        const uint8_t* q = pixel(screen, 240, 405);
         sawVideo = sawVideo || (q[0] > 150 && q[1] < 100);
         sawText = sawText || red(harness.readScreen(), 255) > 20000;
     }

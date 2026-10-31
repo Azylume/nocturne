@@ -575,16 +575,9 @@ TEST_CASE("built-in presets: each of Nocturne's own effects has 3 to 5 looks wit
     azl::EngineHarness harness({.width = 320, .height = 180}, 60.0, root.path);
     azl::WebSocketServer server(harness.document(), 0);
     const auto ctl = [&](const std::string& args) {
-        const std::string command =
-            "'" + ctlPath().string() + "' --port " + std::to_string(server.port()) + " " + args + " 2>&1";
-        std::string out;
-        FILE* pipe = popen(command.c_str(), "r");
-        REQUIRE(pipe);
-        char buffer[512];
-        while (fgets(buffer, sizeof buffer, pipe))
-            out += buffer;
-        CHECK(pclose(pipe) == 0);
-        return out;
+        const CtlOutput run = runNocturneCtl(server.port(), args);
+        CHECK(run.code == 0);
+        return run.output;
     };
     for (const std::string& type : own) {
         CAPTURE(type);
@@ -724,7 +717,8 @@ TEST_CASE("Classic Trails, Strobe and Shift Glitch keep their measured history, 
         Client client(harness.document());
         addEffect(client, "classicStrobe", {{"frequency", 1.0}, {"colorGreen", 0.5}, {"colorBlue", 0.0}});
         harness.step();
-        const uint8_t* p = pixel(harness.readScreen(), 600, 300);
+        const azl::Image screen = harness.readScreen();
+        const uint8_t* p = pixel(screen, 600, 300);
         CHECK(std::vector<int>{p[0], p[1], p[2]} == std::vector<int>{255, 128, 0});
     }
 

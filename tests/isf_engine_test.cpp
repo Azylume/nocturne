@@ -6,9 +6,11 @@
 #include "engine/chain_compiler.hpp"
 #include "engine/isf_compiler.hpp"
 
-#include <Metal/Metal.hpp>
 #include <doctest.h>
+#ifdef __APPLE__
+#include <Metal/Metal.hpp>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -238,6 +240,7 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * notDeclared; })"});
     CHECK(pixel(harness.readScreen(), 1, 1)[0] > 250);
 }
 
+#ifdef __APPLE__
 // Information: every last pass carries the ISF transitions, so switching a transition never compiles; this is what
 // they add to compiling one.
 TEST_CASE("compile time the ISF transitions add to a last pass")
@@ -272,6 +275,7 @@ TEST_CASE("compile time the ISF transitions add to a last pass")
     MESSAGE(line);
     std::printf("%s\n", line);
 }
+#endif
 
 // The compiler inlines a last pass's chain wherever the fade code evaluates a picture, so a transition case that
 // evaluated its own would make every last pass slower to compile.

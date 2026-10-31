@@ -312,7 +312,8 @@ TEST_CASE("screen and slice colour: the slice's adds to the screen's, clamped")
     CHECK(near(pixel(harness.readScreen(1), 300, 200), 255, std::min(255, g * 3 / 2)));
     apply(client, azl::SetSliceColor{1, {.contrast = -1.0}});
     harness.step();
-    const uint8_t* grey = pixel(harness.readScreen(1), 300, 200);
+    const azl::Image screen = harness.readScreen(1);
+    const uint8_t* grey = pixel(screen, 300, 200);
     CHECK((std::abs(grey[0] - 128) <= 2 && std::abs(grey[1] - 128) <= 2 && std::abs(grey[2] - 128) <= 2));
 
     CHECK(command(client, azl::SetSliceColor{1, {.brightness = 2.0}})["type"] == "error");
@@ -431,6 +432,7 @@ TEST_CASE("mapping survives a document round trip")
     CHECK(back.guides == composition.guides);
 }
 
+#ifdef __APPLE__
 // A measurement, not a check: nocturne_tests -tc="GPU cost*" --no-skip
 TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
 {
@@ -508,6 +510,7 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
     }
     pool->release();
 }
+#endif
 
 TEST_CASE("regridding a warp keeps its surface")
 {

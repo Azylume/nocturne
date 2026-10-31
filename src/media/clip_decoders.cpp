@@ -471,7 +471,7 @@ void ClipDecoders::retryMissing()
         const std::optional<MediaEntry> entry = library_->find(hash);
         if (!entry || entry->status != MediaStatus::Ok)
             continue;
-        std::fprintf(stderr, "clip %s: the file is back at %s\n", hash.c_str(), entry->path.c_str());
+        std::fprintf(stderr, "clip %s: the file is back at %s\n", hash.c_str(), entry->path.string().c_str());
         std::lock_guard lock(mutex_);
         std::erase_if(missing_, [&](const ClipKey& clip) { return clip.second == hash; });
         std::erase_if(decoders_, [&](const auto& d) { return d.first.second == hash && !d.second; });

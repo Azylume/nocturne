@@ -1,5 +1,7 @@
 #include "harness/engine_harness.hpp"
 
+#include "platform/crypto.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -13,12 +15,19 @@ namespace {
 
 constexpr gpu::Format kReadbackFormat = gpu::Format::RGBA8;
 
+// A new folder of its own, as mkdtemp makes.
 std::filesystem::path temporaryLibrary()
 {
-    std::string pattern = (std::filesystem::temp_directory_path() / "nocturne-library-XXXXXX").string();
-    if (!mkdtemp(pattern.data()))
-        throw std::runtime_error("cannot create a temporary media library");
-    return pattern;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        uint64_t random = 0;
+        randomBytes(&random, sizeof random);
+        const std::filesystem::path folder =
+            std::filesystem::temp_directory_path() / ("nocturne-library-" + std::to_string(random));
+        std::error_code error;
+        if (std::filesystem::create_directory(folder, error))
+            return folder;
+    }
+    throw std::runtime_error("cannot create a temporary media library");
 }
 
 EngineConfig deterministic(EngineConfig config)
