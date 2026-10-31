@@ -513,4 +513,56 @@ TEST_CASE("the Vulkan validation layer checks every GPU call the tests make")
     MESSAGE(device.name() << ", present wait " << gpu::vulkan::presentWait(device));
     CHECK(gpu::vulkan::validationEnabled());
 }
+
+TEST_CASE("a buffer bound once keeps its whole range for a storage block after a uniform block read it")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    // More than the 64 KB a uniform block may reach on many GPUs.
+    const char* const source = R"(#version 450
+layout(location = 0) out vec4 color;
+#ifdef ENTRY_tint
+layout(set = 0, binding = 0, std140) uniform Tint { vec4 tint; };
+void main() { color = tint; }
+#endif
+#ifdef ENTRY_count
+layout(set = 0, binding = 0, std430) readonly buffer Words { uint words[]; };
+void main() { color = words.length() == 20000 ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0); }
+#endif
+)";
+    std::string error;
+    const gpu::ShaderModule module = device.makeShaderModule(fullscreen(source, {"tint", "count"}), &error);
+    REQUIRE_MESSAGE(module, error);
+    const auto pipeline = [&](const char* name) {
+        return device.makeRenderPipeline(
+            {module, gpu::entryPoint("fullscreen"), gpu::entryPoint(name), gpu::Format::BGRA8});
+    };
+    const gpu::RenderPipeline tint = pipeline("tint"), count = pipeline("count");
+    REQUIRE((tint && count));
+    const gpu::Buffer buffer = device.makeBuffer(20000 * sizeof(uint32_t));
+    const std::array<float, 4> green{0.0f, 1.0f, 0.0f, 1.0f};
+    std::memcpy(buffer.contents(), green.data(), sizeof(green));
+    const gpu::Texture target =
+        device.makeTexture({.width = 8, .height = 8, .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue.commandBuffer();
+        gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&target, gpu::Load::Clear});
+        pass.setBuffer(0, buffer, 0);
+        pass.setPipeline(tint);
+        pass.setScissor({0, 0, 4, 8});
+        pass.draw(3);
+        pass.setPipeline(count);
+        pass.setScissor({4, 0, 4, 8});
+        pass.draw(3);
+        pass.end();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+    }
+    const std::vector<uint8_t> pixels = readBack(device, queue, target);
+    // BGRA: green on both halves, red on the right had the storage block seen only the uniform's reach.
+    CHECK(pixels[1] == 255);
+    CHECK(pixels[7 * 4 + 1] == 255);
+    CHECK(pixels[7 * 4 + 2] == 0);
+}
 #endif

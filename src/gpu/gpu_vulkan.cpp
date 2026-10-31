@@ -94,6 +94,13 @@ VkDeviceSize alignUp(VkDeviceSize value, VkDeviceSize alignment)
     return (value + alignment - 1) / alignment * alignment;
 }
 
+// How far a block of `type` may reach from its offset. A bound buffer keeps its whole range, so one binding can serve
+// a uniform block in one pipeline and a storage block in the next.
+VkDeviceSize maxRange(const VkPhysicalDeviceLimits& limits, VkDescriptorType type)
+{
+    return type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ? limits.maxUniformBufferRange : limits.maxStorageBufferRange;
+}
+
 bool hasExtension(const std::vector<VkExtensionProperties>& list, const char* name)
 {
     return std::any_of(list.begin(), list.end(),
@@ -955,6 +962,7 @@ void flush(CommandObject* c)
     if (!p)
         return;
     std::array<VkWriteDescriptorSet, kBindings> writes;
+    std::array<VkDescriptorBufferInfo, kTextures> buffers;
     std::array<VkDescriptorImageInfo, kTextureSlots> images;
     uint32_t n = 0;
     for (const Binding& b : p->bindings) {
@@ -964,12 +972,12 @@ void flush(CommandObject* c)
         w.descriptorCount = 1;
         w.descriptorType = b.type;
         if (b.binding < kTextures) {
-            VkDescriptorBufferInfo& info = c->buffers[b.binding];
-            if (!info.buffer)
+            const VkDescriptorBufferInfo& bound = c->buffers[b.binding];
+            if (!bound.buffer)
                 continue;
-            if (b.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                info.range = std::min<VkDeviceSize>(info.range, c->device->properties.limits.maxUniformBufferRange);
-            w.pBufferInfo = &info;
+            const VkDeviceSize range = std::min(bound.range, maxRange(c->device->properties.limits, b.type));
+            buffers[b.binding] = {bound.buffer, bound.offset, range};
+            w.pBufferInfo = &buffers[b.binding];
         } else {
             const uint32_t slot = b.binding - kTextures;
             TextureObject* t = c->textures[slot];
