@@ -242,7 +242,7 @@ if(APPLE)
     src/media/composition_media.cpp
     src/media/composition_service.cpp
     src/media/hap_movie.mm
-    src/media/hap_texture.mm
+    src/media/picture_upload.cpp
     src/media/keep_local.cpp
     src/media/library_service.cpp
     src/media/stills.mm
@@ -475,7 +475,8 @@ add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
-target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp tests/gpu_test.cpp)
+target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp tests/gpu_test.cpp
+  tests/picture_upload_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
 option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, built with Homebrew LLVM" OFF)

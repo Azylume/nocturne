@@ -1,7 +1,7 @@
 #include "media/video_source.hpp"
 
 #include "engine/thread_priority.hpp"
-#include "media/hap_texture.hpp"
+#include "media/picture_upload.hpp"
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
@@ -325,14 +325,7 @@ private:
 };
 
 struct HapTextures {
-    std::array<MTL::Texture*, 2> textures{};
-
-    ~HapTextures()
-    {
-        for (MTL::Texture* texture : textures)
-            if (texture)
-                CFRelease((CFTypeRef)texture);
-    }
+    std::array<gpu::Texture, 2> textures{};
 };
 
 struct FrameResources {
@@ -367,7 +360,8 @@ CVMetalTextureRef planeTexture(CVMetalTextureCacheRef cache, CVPixelBufferRef pi
 class AvfSource final : public VideoSource {
 public:
     // Without a device (probing) the source makes no frames.
-    AvfSource(MTL::Device* device, const std::string& path) : track_(openTrack(path)), device_(device)
+    AvfSource(MTL::Device* device, const std::string& path)
+        : track_(openTrack(path)), device_(device ? gpu::Device::retain(device) : gpu::Device{})
     {
         source_.fps = track_.fps;
         source_.frameCount = track_.frameCount;
@@ -423,12 +417,12 @@ public:
     {
         auto resources = std::make_shared<HapTextures>();
         for (size_t i = 0; i < images.size(); ++i)
-            if (!(resources->textures[i] = newHapTexture(device_, images[i], track_.width, track_.height)))
+            if (!(resources->textures[i] = uploadHapImage(device_, images[i], track_.width, track_.height)))
                 return nullptr;
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->luma = resources->textures[0];
-        frame->chroma = resources->textures[1] ? resources->textures[1] : resources->textures[0];
+        frame->luma = resources->textures[0].native();
+        frame->chroma = (resources->textures[1] ? resources->textures[1] : resources->textures[0]).native();
         frame->format = format;
         frame->turns = track_.turns;
         frame->resources = std::move(resources);
@@ -438,7 +432,7 @@ public:
 private:
     Track track_;
     SourceTrack source_;
-    MTL::Device* device_ = nullptr;
+    gpu::Device device_;
     CVMetalTextureCacheRef cache_ = nullptr;
     std::array<float, 12> yuvToRgb_{};
 };
