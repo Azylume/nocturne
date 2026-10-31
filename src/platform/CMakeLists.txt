@@ -39,8 +39,8 @@ elseif(WIN32)
     work_queue_std.cpp
   )
   target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32 powrprof ole32 oleaut32 wbemuuid user32 dxgi
-    setupapi)
+  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32 powrprof ole32 shell32 oleaut32 wbemuuid
+    user32 dxgi setupapi)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 
