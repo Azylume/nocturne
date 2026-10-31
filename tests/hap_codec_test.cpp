@@ -1,6 +1,9 @@
 #include "media/hap.hpp"
-#include "media/hap_texture.hpp"
 #include "media/snappy.hpp"
+
+#ifdef __APPLE__
+#include "media/hap_texture.hpp"
+#endif
 
 #include <doctest.h>
 
@@ -119,6 +122,7 @@ TEST_CASE("a malformed HAP frame says what is wrong instead of decoding")
     CHECK(azl::decodeHapFrame(zeros.data(), zeros.size(), width, height, images) != "");
 }
 
+#ifdef __APPLE__
 TEST_CASE("a decoded HAP image uploads into a Metal BC texture block for block")
 {
     MTL::Device* device = MTL::CreateSystemDefaultDevice();
@@ -143,3 +147,4 @@ TEST_CASE("a decoded HAP image uploads into a Metal BC texture block for block")
     CHECK(azl::newHapTexture(device, wrongSize, width, height) == nullptr);
     device->release();
 }
+#endif
