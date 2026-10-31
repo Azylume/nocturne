@@ -152,6 +152,30 @@ TEST_CASE("italic text does not smear its last glyph to the edge of the composit
     checkGolden(image, "text_italic");
 }
 
+#ifdef _WIN32
+// Windows has no Helvetica Neue, so the case above draws upright there: the same check in an italic Windows ships.
+TEST_CASE("italic text in a Windows font does not smear its last glyph to the edge of the composition")
+{
+    auto render = [](const char* font) {
+        azl::EngineHarness harness(kSize, 60.0, {}, {.layers = {{.id = 1, .name = "Layer 1"}}});
+        Client client(harness.document());
+        setSlot(client, 1, 1, textClip({.text = "VORTEX", .font = font, .size = 0.16}));
+        trigger(client, 1, 1);
+        harness.step(2);
+        return harness.readScreen();
+    };
+    const azl::Image image = render("Arial Italic");
+    CHECK(image.rgba != render("Arial").rgba);
+    size_t edge = 0;
+    for (uint32_t y = 0; y < image.height; ++y) {
+        const size_t i = (size_t(y) * image.width + image.width - 1) * 4;
+        edge += image.rgba[i] + image.rgba[i + 1] + image.rgba[i + 2];
+    }
+    CHECK(edge == 0);
+    checkGolden(image, "text_italic_windows");
+}
+#endif
+
 TEST_CASE("text and its parameters update live and undo through the protocol")
 {
     azl::EngineHarness harness(kSize);

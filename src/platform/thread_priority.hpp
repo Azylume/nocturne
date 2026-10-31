@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 
 namespace azl {
 
@@ -18,5 +19,9 @@ inline std::atomic<bool>& realtimeFrames()
 
 // On the calling thread. Never blocks.
 void setThreadRole(ThreadRole role);
+
+// Blocks the calling thread until `deadline`. The frame threads' timed wait: on Windows a high-resolution waitable
+// timer, which wakes within a fraction of a millisecond where a plain timed wait wakes up to a scheduler tick late.
+void sleepUntil(std::chrono::steady_clock::time_point deadline);
 
 } // namespace azl

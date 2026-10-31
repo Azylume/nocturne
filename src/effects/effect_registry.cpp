@@ -1711,7 +1711,9 @@ EffectDef classicStrobe()
     float clock = pb[p + 6] > 0.5 ? h.beat * 0.5 : h.time;
     float ramp = period > 0.0 ? 1.0 - abs(2.0 * fract(clock / period) - 1.0) : 1.0;
     float flash = pb[p + 0] <= 0.0 ? 0.0 : pb[p + 1] > 0.5 ? ramp : step(0.5, ramp);
-    vec4 o = mix(c, vec4(pb[p + 2], pb[p + 3], pb[p + 4], pb[p + 5]), flash);
+    // On its nearest 8-bit step, a half rounding up: a GPU may store a colour of exactly half a step either way.
+    vec3 colour = floor(vec3(pb[p + 2], pb[p + 3], pb[p + 4]) * 255.0 + 0.5) / 255.0;
+    vec4 o = mix(c, vec4(colour, pb[p + 5]), flash);
 )" + addMixer(7, 8),
             {},
             {},
