@@ -47,7 +47,11 @@ void RotatingLog::write(const std::string& text)
 
 void RotatingLog::open()
 {
+#ifdef _WIN32
+    file_ = _wfopen(path_.c_str(), L"a");
+#else
     file_ = std::fopen(path_.c_str(), "a");
+#endif
     std::error_code ec;
     const auto size = std::filesystem::file_size(path_, ec);
     size_ = ec ? 0 : uint64_t(size);
