@@ -1,16 +1,49 @@
 #include "protocol/bundle_push.hpp"
 
+#include "platform/crypto.hpp"
 #include "platform/process.hpp"
 
-#include <unistd.h>
-
 #include <algorithm>
-#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <iterator>
 #include <string_view>
 #include <stdexcept>
 
 namespace azl {
+
+namespace fs = std::filesystem;
+
+namespace {
+
+// A new, empty folder of its own in the temporary folder.
+fs::path makeTempFolder(const std::string& prefix)
+{
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        uint8_t random[6];
+        randomBytes(random, sizeof random);
+        char suffix[16];
+        std::snprintf(suffix, sizeof suffix, "%02x%02x%02x%02x%02x%02x", random[0], random[1], random[2], random[3],
+                      random[4], random[5]);
+        const fs::path folder = fs::temp_directory_path() / (prefix + suffix);
+        std::error_code ec;
+        if (fs::create_directory(folder, ec))
+            return folder;
+    }
+    throw std::runtime_error("cannot make a temporary folder");
+}
+
+} // namespace
+
+fs::path tarProgram()
+{
+#ifdef _WIN32
+    const char* root = std::getenv("SystemRoot");
+    return fs::path(root ? root : "C:\\Windows") / "System32" / "tar.exe";
+#else
+    return "/usr/bin/tar";
+#endif
+}
 
 int runProgram(const std::vector<std::string>& argv)
 {
@@ -43,23 +76,32 @@ BundlePush::BundlePush(const std::filesystem::path& app) : build_(bundleBuildId(
 {
     if (build_.empty())
         throw std::runtime_error(app.string() + " is not a Nocturne bundle with a build id");
-    std::string folder = (std::filesystem::temp_directory_path() / "nocturne-update-XXXXXX").string();
-    if (!mkdtemp(folder.data()))
-        throw std::runtime_error("cannot make a temporary folder");
-    const std::filesystem::path archive = std::filesystem::path(folder) / "bundle.tgz";
+    const fs::path folder = makeTempFolder("nocturne-update-");
+    const fs::path archive = folder / "bundle.tgz";
     const std::string name = app.filename().string();
-    if (runProgram({"/usr/bin/tar", "-czf", archive.string(), "-C", app.parent_path().string(), "-s",
+    if (runProgram({tarProgram().string(), "-czf", archive.string(), "-C", app.parent_path().string(), "-s",
                     ",^" + name + ",Nocturne.app,", name}) == 0)
         in_.open(archive, std::ios::binary | std::ios::ate);
-    // The open stream keeps the archive readable.
+    // The open stream keeps the archive readable. Windows keeps an open file instead: it goes with this push.
     std::error_code ec;
-    std::filesystem::remove_all(folder, ec);
+    fs::remove_all(folder, ec);
+    if (fs::exists(folder, ec))
+        leftover_ = folder;
     if (!in_)
         throw std::runtime_error("cannot pack " + app.string());
     size_ = uint64_t(in_.tellg());
     in_.seekg(0);
     if (size_ > kMaxBundleSize)
         throw std::runtime_error(app.string() + " packs to more than 1 GB");
+}
+
+BundlePush::~BundlePush()
+{
+    if (leftover_.empty())
+        return;
+    in_.close();
+    std::error_code ec;
+    fs::remove_all(leftover_, ec);
 }
 
 Message BundlePush::start() const

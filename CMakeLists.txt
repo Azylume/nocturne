@@ -161,23 +161,25 @@ add_library(nocturne_protocol STATIC
 target_include_directories(nocturne_protocol PUBLIC src)
 target_link_libraries(nocturne_protocol PUBLIC nocturne_platform)
 target_include_directories(nocturne_protocol SYSTEM PUBLIC third_party/nlohmann)
+target_sources(nocturne_protocol PRIVATE src/protocol/bundle_push.cpp)
 if(WIN32)
   target_sources(nocturne_protocol PRIVATE src/document/composition_file_win32.cpp)
   target_link_libraries(nocturne_protocol PUBLIC ws2_32 iphlpapi advapi32)
 else()
-  target_sources(nocturne_protocol PRIVATE
-    src/document/composition_file_posix.cpp
-    src/protocol/bundle_push.cpp
-  )
+  target_sources(nocturne_protocol PRIVATE src/document/composition_file_posix.cpp)
 endif()
 
 # Engine logic with no GPU, media or OS dependency: it builds on every platform.
 add_library(nocturne_engine_logic STATIC
   src/engine/autopilot_stepper.cpp
+  src/engine/bundle_update.cpp
   src/engine/machine_actions.cpp
   src/engine/transport.cpp
 )
 target_link_libraries(nocturne_engine_logic PUBLIC nocturne_protocol nocturne_profile)
+if(WIN32)
+  target_sources(nocturne_engine_logic PRIVATE src/engine/bundle_update_win32.cpp)
+endif()
 
 # pocketfft is the spectrum's transform off Apple; on Apple the tests compare it with vDSP. Same commit as vcpkg's port.
 if(APPLE)
@@ -346,6 +348,7 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/media_files_test.cpp tests/video_decoder_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
   tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
+  tests/bundle_update_test.cpp
   ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
@@ -390,7 +393,7 @@ add_library(nocturne_engine STATIC
   src/engine/frame_guard.cpp
   src/engine/frame_ring.cpp
   src/engine/frame_trace.cpp
-  src/engine/bundle_update.cpp
+  src/engine/bundle_update_apple.cpp
   src/engine/fsr_upscaler.cpp
   src/engine/machine_service.cpp
   src/engine/machine_settings.cpp
