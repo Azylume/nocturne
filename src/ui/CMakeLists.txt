@@ -107,7 +107,8 @@ endif()
 # The UI suite. Its cases without an engine build everywhere; the ones that drive the in-process engine
 # (EngineHarness) need its GPU path, so they build where it does.
 add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_SOURCE_DIR}/tests/ui/params_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/map_geometry_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/engine_launcher_test.cpp)
+  ${CMAKE_SOURCE_DIR}/tests/ui/map_geometry_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/engine_launcher_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/return_audio_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots" NOCTURNE_FAKE_ENGINE="$<TARGET_FILE:nocturne_fake_engine>")
