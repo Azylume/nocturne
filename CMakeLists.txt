@@ -339,8 +339,18 @@ elseif(WIN32)
   target_link_libraries(nocturne_http PUBLIC winhttp)
 endif()
 
+# On Windows the programs autostart and the UI start are Windows-subsystem apps: they never open a console window.
+# They keep main(); their output reaches a pipe the parent passes, else nothing, and their log files are unchanged.
+function(nocturne_windowless target)
+  if(WIN32)
+    set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE ON)
+    target_link_options(${target} PRIVATE /ENTRY:mainCRTStartup)
+  endif()
+endfunction()
+
 add_executable(nocturne-supervisor src/app/supervisor.cpp)
 target_link_libraries(nocturne-supervisor PRIVATE nocturne_protocol)
+nocturne_windowless(nocturne-supervisor)
 
 file(READ src/desk/page.html desk_page)
 configure_file(src/desk/page.cpp.in desk_page.cpp @ONLY)
@@ -348,6 +358,7 @@ add_library(nocturne_desk STATIC src/desk/desk_server.cpp ${CMAKE_CURRENT_BINARY
 target_link_libraries(nocturne_desk PUBLIC nocturne_net)
 add_executable(nocturne-desk src/app/desk.cpp)
 target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
+nocturne_windowless(nocturne-desk)
 
 add_library(nocturne_upload STATIC src/upload/media_sync.cpp src/upload/media_upload.cpp src/upload/s3.cpp
   src/upload/upload_states.cpp)
