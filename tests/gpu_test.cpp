@@ -503,6 +503,36 @@ TEST_CASE("command buffers committed from several threads complete once each, an
     CHECK(readback.data()[readback.size() - 1] == 255);
 }
 
+TEST_CASE("command buffers that wait for a fence another queue signals later complete, on any number of GPU queues")
+{
+    // More queues than a device has, so some of them share one: every waiter is committed before the signal.
+    constexpr int kQueues = 64;
+    const gpu::Device device = gpu::Device::systemDefault();
+    std::vector<gpu::Queue> queues;
+    for (int i = 0; i < kQueues; ++i)
+        queues.push_back(device.makeQueue());
+    const gpu::Fence fence = device.makeFence();
+    std::atomic<int> completed{0};
+    gpu::Scope scope;
+    for (int i = 0; i + 1 < kQueues; ++i) {
+        gpu::CommandBuffer waiter = queues[i].commandBuffer();
+        waiter.wait(fence, 1);
+        waiter.onCompleted([&completed](const gpu::Completion& done) {
+            if (done.ok)
+                ++completed;
+        });
+        waiter.commit();
+    }
+    gpu::CommandBuffer signaller = queues.back().commandBuffer();
+    signaller.signal(fence, 1);
+    signaller.commit();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (completed < kQueues - 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(completed == kQueues - 1);
+    CHECK(fence.value() == 1);
+}
+
 #if !defined(__APPLE__)
 #include "gpu/gpu_vulkan.hpp"
 

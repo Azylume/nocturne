@@ -112,6 +112,13 @@ struct FenceObject : std::enable_shared_from_this<FenceObject> {
     ~FenceObject();
     std::shared_ptr<DeviceObject> device;
     VkSemaphore semaphore = VK_NULL_HANDLE;
+    // Under DeviceObject::orderMutex: the highest value a submitted command buffer signals.
+    uint64_t submitted = 0;
+};
+
+struct FenceValue {
+    FenceObject* fence = nullptr;
+    uint64_t value = 0;
 };
 
 struct QueryObject : std::enable_shared_from_this<QueryObject> {
@@ -149,10 +156,13 @@ struct CommandObject {
     // The scope's and, once committed, the GPU's: back to the pool when both are gone.
     std::atomic<int> refs{0};
     bool committed = false;
-    uint64_t value = 0;
+    // The queue timeline value its completion signals; 0 until it is submitted, which may be after commit.
+    std::atomic<uint64_t> value{0};
     std::vector<std::shared_ptr<const void>> retained;
     std::vector<VkSemaphoreSubmitInfo> waits;
     std::vector<VkSemaphoreSubmitInfo> signals;
+    std::vector<FenceValue> fenceWaits;
+    std::vector<FenceValue> fenceSignals;
     std::vector<std::function<void(const Completion&)>> handlers;
 
     std::vector<UniformChunk> chunks;
