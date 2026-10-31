@@ -264,11 +264,11 @@ TEST_CASE("a read stuck past its deadline is given up on, and the clip plays on 
     // AVAssetReader can block in copyNextSampleBuffer for good, as on the Mac mini with the reference show on Random Jump.
     TempDir media;
     const fs::path file = copyMedia("count_240.mp4", media.path / "count.mp4");
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     auto stats = std::make_shared<azl::DecodeStats>();
     const int64_t readers = azl::liveAssetReaders();
     {
-        azl::VideoDecoder decoder(device.get(), file.string(), {.stats = stats});
+        azl::VideoDecoder decoder(&device, file.string(), {.stats = stats});
         decoder.injectStall(20, std::chrono::seconds(3));
         const auto started = std::chrono::steady_clock::now();
         for (int index = 0; index < 60; ++index)
@@ -285,11 +285,11 @@ TEST_CASE("closing a decoder whose read is stuck returns at once, and the read e
 {
     TempDir media;
     const fs::path file = copyMedia("count_240.mp4", media.path / "count.mp4");
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     auto stats = std::make_shared<azl::DecodeStats>();
     const int64_t readers = azl::liveAssetReaders();
     auto decoder = std::make_unique<azl::VideoDecoder>(
-        device.get(), file.string(), azl::VideoDecoder::Options{.stats = stats, .readDeadline = std::chrono::seconds(30)});
+        &device, file.string(), azl::VideoDecoder::Options{.stats = stats, .readDeadline = std::chrono::seconds(30)});
     decoder->injectStall(5, std::chrono::milliseconds(1500));
     decoder->frame(0, true);
     const auto started = std::chrono::steady_clock::now();
@@ -312,12 +312,12 @@ TEST_CASE("a decode thread left running at close counts nothing more into the sh
 {
     TempDir media;
     const fs::path file = copyMedia("count_240.mp4", media.path / "count.mp4");
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     auto stats = std::make_shared<azl::DecodeStats>();
     const int64_t readers = azl::liveAssetReaders();
     // Each frame read keeps the decode thread busy well past kCloseTimeout, so closing detaches it mid-frame.
     auto decoder = std::make_unique<azl::VideoDecoder>(
-        device.get(), file.string(), azl::VideoDecoder::Options{.stats = stats, .frameCost = std::chrono::milliseconds(1500)});
+        &device, file.string(), azl::VideoDecoder::Options{.stats = stats, .frameCost = std::chrono::milliseconds(1500)});
     decoder->frame(0, true);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     REQUIRE(stats->seeks == 1);
@@ -388,9 +388,9 @@ TEST_CASE("a parked clip decodes its first second at a quarter of real time, and
     // A burst of decoding when a column starts delays the GPU's frames past their refresh on the Mac mini.
     TempDir media;
     const fs::path file = copyMedia("count_240.mp4", media.path / "count.mp4");
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     auto stats = std::make_shared<azl::DecodeStats>();
-    azl::VideoDecoder decoder(device.get(), file.string(), {.stats = stats});
+    azl::VideoDecoder decoder(&device, file.string(), {.stats = stats});
     decoder.park(0, true);
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     // 30 fps at a quarter of real time: the first frame at once, then about 3 in 400 ms.
@@ -411,9 +411,9 @@ TEST_CASE("a BPM-synced clip's first-frame target does not lift the pace; a targ
     // were bursts of 400-450 decoded frames/s that slowed the GPU on the Mac mini.
     TempDir media;
     const fs::path file = copyMedia("count_240.mp4", media.path / "count.mp4");
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     auto stats = std::make_shared<azl::DecodeStats>();
-    azl::VideoDecoder decoder(device.get(), file.string(), {.stats = stats});
+    azl::VideoDecoder decoder(&device, file.string(), {.stats = stats});
     decoder.park(0, true);
     decoder.waitIdle();
     const uint64_t parked = stats->frames;

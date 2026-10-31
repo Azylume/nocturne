@@ -5,8 +5,7 @@
 #include "engine/chain_compiler.hpp"
 #include "engine/modulation_plan.hpp"
 #include "engine/side_targets.hpp"
-
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -28,12 +27,12 @@ public:
         std::atomic<uint64_t> gpuMicros{0};
     };
 
-    explicit ClipEffectsPreview(MTL::Device* device);
+    explicit ClipEffectsPreview(const gpu::Device& device);
 
     // Draws `clip`'s chain over `bgra` (width x height, opaque BGRA) in place and returns true; false, leaving the
     // picture as it is, while its chain is not compiled yet, which this asks for. `slot` names the clip: another one
     // starts Trails over.
-    bool draw(MTL::CommandQueue* queue, const std::shared_ptr<const Composition>& composition, const ClipRef& clip,
+    bool draw(const gpu::Queue& queue, const std::shared_ptr<const Composition>& composition, const ClipRef& clip,
               const std::string& slot, std::vector<uint8_t>& bgra, uint32_t width, uint32_t height, double seconds,
               double beat, const AudioAnalysis* audio);
 
@@ -48,20 +47,19 @@ public:
     const Stats& stats() const { return stats_; }
 
 private:
-    MTL::Texture* texture(NS::SharedPtr<MTL::Texture>& texture, MTL::PixelFormat format, bool cpu);
-    MTL::RenderCommandEncoder* begin(MTL::CommandBuffer* cmd, MTL::Texture* target, MTL::LoadAction load,
-                                     MTL::ClearColor clear = {});
-    void encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass, const EffectList& effects,
-                    MTL::Texture* input, float seconds);
+    const gpu::Texture& texture(gpu::Texture& texture, gpu::Format format, gpu::Memory memory);
+    void encodePass(gpu::RenderPass& into, const CompiledPass& pass, const EffectList& effects,
+                    const gpu::Texture& input, float seconds);
 
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     ChainCompiler compiler_;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     std::unique_ptr<SideTargets> sides_;
-    NS::SharedPtr<MTL::Texture> source_;
-    NS::SharedPtr<MTL::Texture> target_;
-    NS::SharedPtr<MTL::Texture> intermediates_[2][2];
+    gpu::Texture source_;
+    gpu::Texture target_;
+    gpu::Readback readback_;
+    gpu::Texture intermediates_[2][2];
     std::shared_ptr<const Composition> planned_;
     std::unique_ptr<ModulationPlan> plan_;
     std::vector<float> params_;

@@ -1,5 +1,7 @@
 #include "media/text_renderer.hpp"
 
+#include "media/picture_upload.hpp"
+
 #include <windows.h>
 
 #include <d2d1.h>
@@ -347,7 +349,7 @@ struct ComScope {
 
 } // namespace
 
-VideoFrameRef TextRenderer::rasterise(MediaDevice*, uint32_t height, const TextLayout& layout,
+VideoFrameRef TextRenderer::rasterise(const MediaDevice* device, uint32_t height, const TextLayout& layout,
                                       std::set<std::string>& missingFonts)
 {
     const ComScope com;
@@ -404,13 +406,24 @@ VideoFrameRef TextRenderer::rasterise(MediaDevice*, uint32_t height, const TextL
     picture->planeCount = 1;
     picture->storage = std::move(rg);
     auto frame = std::make_shared<VideoFrame>();
-    frame->picture = std::move(picture);
+    if (device) {
+        auto texture = std::make_shared<gpu::Texture>(uploadPicture(*device, *picture, true)[0]);
+        if (!*texture)
+            return nullptr;
+        frame->luma = *texture;
+        frame->resources = std::move(texture);
+    } else {
+        frame->picture = std::move(picture);
+    }
     frame->text = VideoFrame::Text{{float(-padLeft - std::round(alignShift(layout.align, blockWidth))),
                                     float(-pad - std::round(blockHeight / 2.0)), float(width), float(rows)},
                                    float(layout.size)};
     return frame;
 }
 
-TextRenderer::TextRenderer(MediaDevice*, uint32_t height) : height_(height), thread_([this] { run(); }) {}
+TextRenderer::TextRenderer(const MediaDevice* device, uint32_t height)
+    : device_(device ? *device : MediaDevice{}), height_(height), thread_([this] { run(); })
+{
+}
 
 } // namespace azl

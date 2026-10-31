@@ -94,7 +94,8 @@ void bench(id<MTLDevice> device, id<MTLRenderPipelineState> pipeline, const std:
     azl::VideoDecoder::Options options;
     options.name = std::filesystem::path(file).filename().string();
     options.cacheBytes = size_t(256) << 20;
-    azl::VideoDecoder decoder((__bridge MTL::Device*)device, file, options);
+    const azl::gpu::Device gpuDevice = azl::gpu::Device::retain((__bridge MTL::Device*)device);
+    azl::VideoDecoder decoder(&gpuDevice, file, options);
     decoder.hurry(true);
     const azl::ClipLength length = decoder.length();
     frames = std::min(frames, length.frames);
@@ -134,8 +135,8 @@ void bench(id<MTLDevice> device, id<MTLRenderPipelineState> pipeline, const std:
             std::copy(picture->yuvToRgb.begin(), picture->yuvToRgb.end(), header.yuv);
             header.turns = picture->headerTurns();
             [encoder setRenderPipelineState:pipeline];
-            [encoder setFragmentTexture:(__bridge id<MTLTexture>)picture->luma atIndex:0];
-            [encoder setFragmentTexture:(__bridge id<MTLTexture>)picture->chroma atIndex:1];
+            [encoder setFragmentTexture:(__bridge id<MTLTexture>)picture->luma.native() atIndex:0];
+            [encoder setFragmentTexture:(__bridge id<MTLTexture>)picture->chroma.native() atIndex:1];
             [encoder setFragmentBytes:&header length:sizeof(header) atIndex:0];
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
             [encoder endEncoding];

@@ -928,12 +928,13 @@ void bindBuffer(CommandObject* c, uint32_t binding, BufferObject* buffer, size_t
     retain(c, buffer->shared_from_this());
 }
 
-void drawIndexed(CommandObject* c, BufferObject* indices, uint32_t count, size_t offset, uint32_t instances)
+void drawIndexed(CommandObject* c, BufferObject* indices, uint32_t count, size_t offset, uint32_t instances,
+                 uint32_t firstInstance)
 {
     if (c->dirty)
         flush(c);
     vkCmdBindIndexBuffer(c->cmd, indices->buffer, offset, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(c->cmd, count, instances, 0, 0, 0);
+    vkCmdDrawIndexed(c->cmd, count, instances, 0, 0, firstInstance);
     retain(c, indices->shared_from_this());
 }
 

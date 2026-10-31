@@ -1,4 +1,5 @@
 #include "media/ffmpeg_util.hpp"
+#include "media/picture_upload.hpp"
 #include "media/video_source.hpp"
 
 extern "C" {
@@ -334,7 +335,8 @@ private:
 
 class FfmpegSource final : public VideoSource {
 public:
-    explicit FfmpegSource(const std::string& path)
+    // Without a device frames keep their pictures in system memory.
+    FfmpegSource(const MediaDevice* device, const std::string& path) : device_(device ? *device : gpu::Device{})
     {
         auto stream = std::make_shared<Stream>();
         stream->path = std::filesystem::path(path);
@@ -392,10 +394,9 @@ public:
     {
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->picture = std::static_pointer_cast<const DecodedPicture>(picture);
         frame->yuvToRgb = yuvToRgb_;
         frame->turns = track_.turns;
-        return frame;
+        return withPicture(std::move(frame), std::static_pointer_cast<const DecodedPicture>(picture));
     }
 
     VideoFrameRef hapFrame(const std::vector<HapImage>& images, PictureFormat format, int index) override
@@ -413,13 +414,29 @@ public:
         picture->storage = std::move(held);
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->picture = std::move(picture);
         frame->format = format;
         frame->turns = track_.turns;
-        return frame;
+        return withPicture(std::move(frame), std::move(picture));
     }
 
 private:
+    // With a device the picture becomes the frame's textures here, on the decode thread, and its memory is freed; a
+    // single plane (HAP without alpha) serves as both. Null when the device cannot make them.
+    VideoFrameRef withPicture(std::shared_ptr<VideoFrame> frame, std::shared_ptr<const DecodedPicture> picture) const
+    {
+        if (!device_) {
+            frame->picture = std::move(picture);
+            return frame;
+        }
+        auto textures = std::make_shared<std::array<gpu::Texture, 2>>(uploadPicture(device_, *picture));
+        if (!(*textures)[0] || (picture->planeCount > 1 && !(*textures)[1]))
+            return nullptr;
+        frame->luma = (*textures)[0];
+        frame->chroma = (*textures)[1] ? (*textures)[1] : (*textures)[0];
+        frame->resources = std::move(textures);
+        return frame;
+    }
+
     // Where the last sample the index lists ends.
     static uintmax_t indexEnd(AVStream* video)
     {
@@ -467,6 +484,7 @@ private:
     std::shared_ptr<const Stream> stream_;
     SourceTrack track_;
     std::array<float, 12> yuvToRgb_{};
+    gpu::Device device_;
 };
 
 } // namespace
@@ -476,9 +494,9 @@ int64_t liveAssetReaders()
     return gLiveReaders.load();
 }
 
-std::unique_ptr<VideoSource> openVideoSource(MediaDevice*, const std::string& path)
+std::unique_ptr<VideoSource> openVideoSource(const MediaDevice* device, const std::string& path)
 {
-    return std::make_unique<FfmpegSource>(path);
+    return std::make_unique<FfmpegSource>(device, path);
 }
 
 void runRead(std::function<void()> read)

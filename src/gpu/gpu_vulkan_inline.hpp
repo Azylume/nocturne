@@ -215,15 +215,16 @@ inline void RenderPass::setScissor(const Scissor& s)
 {
     vk::setScissor(pass_, s.x, s.y, s.width, s.height);
 }
-inline void RenderPass::draw(uint32_t vertices, uint32_t instances)
+inline void RenderPass::draw(uint32_t vertices, uint32_t instances, uint32_t firstInstance)
 {
     if (pass_->dirty)
         vk::flush(pass_);
-    vkCmdDraw(pass_->cmd, vertices, instances, 0, 0);
+    vkCmdDraw(pass_->cmd, vertices, instances, 0, firstInstance);
 }
-inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances)
+inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances,
+                                    uint32_t firstInstance)
 {
-    vk::drawIndexed(pass_, indices.native(), count, offset, instances);
+    vk::drawIndexed(pass_, indices.native(), count, offset, instances, firstInstance);
 }
 inline void RenderPass::writeTimestamp(const TimestampQueries& queries, uint32_t index)
 {
