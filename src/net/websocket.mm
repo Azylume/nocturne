@@ -7,7 +7,6 @@
 
 #import <Network/Network.h>
 
-#include <ifaddrs.h>
 #include <netdb.h>
 #include <strings.h>
 
@@ -179,24 +178,6 @@ bool presentsToken(const std::optional<Message>& message, const std::string& tok
         return false;
     const auto presented = message->find("token");
     return presented != message->end() && presented->is_string() && sameToken(presented->get<std::string>(), token);
-}
-
-std::vector<std::string> interfaceAddresses()
-{
-    std::vector<std::string> addresses;
-    ifaddrs* list = nullptr;
-    if (getifaddrs(&list) != 0)
-        return addresses;
-    for (const ifaddrs* a = list; a; a = a->ifa_next) {
-        if (!a->ifa_addr || (a->ifa_addr->sa_family != AF_INET && a->ifa_addr->sa_family != AF_INET6))
-            continue;
-        const socklen_t size = a->ifa_addr->sa_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
-        char text[NI_MAXHOST];
-        if (getnameinfo(a->ifa_addr, size, text, sizeof text, nullptr, 0, NI_NUMERICHOST) == 0)
-            addresses.push_back(text);
-    }
-    freeifaddrs(list);
-    return addresses;
 }
 
 std::string webSocketUrl(const std::string& host, uint16_t port)

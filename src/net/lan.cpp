@@ -1,10 +1,13 @@
 #include "net/lan.hpp"
 
-#include <arpa/inet.h>
+#include "net/socket_compat.hpp"
+
+#ifdef _WIN32
+#include <iphlpapi.h>
+#else
 #include <ifaddrs.h>
 #include <net/if.h>
-#include <netinet/in.h>
-#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -100,6 +103,80 @@ bool loopbackAddress(const std::string& address)
     return *b == one;
 }
 
+#ifdef _WIN32
+
+namespace {
+
+// Every adapter with its addresses, or none when the call fails.
+std::vector<uint8_t> adapters()
+{
+    ULONG size = 16 << 10;
+    std::vector<uint8_t> buffer;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        buffer.resize(size);
+        const ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+        const ULONG result = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr,
+                                                  reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()), &size);
+        if (result == NO_ERROR)
+            return buffer;
+        if (result != ERROR_BUFFER_OVERFLOW)
+            break;
+    }
+    return {};
+}
+
+std::string numeric(const SOCKET_ADDRESS& address)
+{
+    char text[NI_MAXHOST] = {};
+    if (getnameinfo(address.lpSockaddr, address.iSockaddrLength, text, sizeof text, nullptr, 0, NI_NUMERICHOST) != 0)
+        return {};
+    return text;
+}
+
+// Calls `use` with each unicast address of every adapter that is up.
+template <typename Use> void eachAddress(Use use)
+{
+    startSockets();
+    std::vector<uint8_t> buffer = adapters();
+    if (buffer.empty())
+        return;
+    for (auto* a = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()); a; a = a->Next) {
+        if (a->OperStatus != IfOperStatusUp)
+            continue;
+        for (auto* u = a->FirstUnicastAddress; u; u = u->Next)
+            use(*a, u->Address);
+    }
+}
+
+} // namespace
+
+std::vector<std::string> lanAddresses()
+{
+    std::vector<std::string> found;
+    eachAddress([&](const IP_ADAPTER_ADDRESSES& adapter, const SOCKET_ADDRESS& at) {
+        if (at.lpSockaddr->sa_family != AF_INET || adapter.IfType == IF_TYPE_SOFTWARE_LOOPBACK ||
+            adapter.IfType == IF_TYPE_TUNNEL)
+            return;
+        const std::string address = numeric(at);
+        if (privateAddress(address) && std::find(found.begin(), found.end(), address) == found.end())
+            found.push_back(address);
+    });
+    return found;
+}
+
+std::vector<std::string> interfaceAddresses()
+{
+    std::vector<std::string> found;
+    eachAddress([&](const IP_ADAPTER_ADDRESSES&, const SOCKET_ADDRESS& at) {
+        if (at.lpSockaddr->sa_family == AF_INET || at.lpSockaddr->sa_family == AF_INET6)
+            if (std::string address = numeric(at); !address.empty())
+                found.push_back(std::move(address));
+    });
+    return found;
+}
+
+#else
+
 std::vector<std::string> lanAddresses()
 {
     std::vector<std::string> found;
@@ -120,8 +197,29 @@ std::vector<std::string> lanAddresses()
     return found;
 }
 
+std::vector<std::string> interfaceAddresses()
+{
+    std::vector<std::string> addresses;
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0)
+        return addresses;
+    for (const ifaddrs* a = list; a; a = a->ifa_next) {
+        if (!a->ifa_addr || (a->ifa_addr->sa_family != AF_INET && a->ifa_addr->sa_family != AF_INET6))
+            continue;
+        const socklen_t size = a->ifa_addr->sa_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+        char text[NI_MAXHOST];
+        if (getnameinfo(a->ifa_addr, size, text, sizeof text, nullptr, 0, NI_NUMERICHOST) == 0)
+            addresses.push_back(text);
+    }
+    freeifaddrs(list);
+    return addresses;
+}
+
+#endif
+
 std::string bonjourName()
 {
+    startSockets();
     char name[256] = {};
     gethostname(name, sizeof name - 1);
     std::string host = name;
