@@ -1,6 +1,7 @@
 #include "venues/venues.hpp"
 
 #include "platform/app_paths.hpp"
+#include "platform/credentials.hpp"
 #include "protocol/messages.hpp"
 
 #include <algorithm>
@@ -67,20 +68,7 @@ std::string systemTailscaleKey()
 {
     if (const char* key = std::getenv("NOCTURNE_TAILSCALE_API_KEY"); key && *key)
         return key;
-    const std::string command = std::string("/usr/bin/security find-generic-password -s ") +
-                                kTailscaleKeychainService + " -a " + kTailscaleKeychainAccount + " -w 2>/dev/null";
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return "";
-    std::string key;
-    char buffer[256];
-    while (size_t n = fread(buffer, 1, sizeof buffer, pipe))
-        key.append(buffer, n);
-    if (pclose(pipe) != 0)
-        return "";
-    while (!key.empty() && (key.back() == '\n' || key.back() == '\r'))
-        key.pop_back();
-    return key;
+    return readCredential(kTailscaleKeychainService, kTailscaleKeychainAccount).value_or("");
 }
 
 TailscaleSettings loadTailscaleSettings(const fs::path& path, const std::function<std::string()>& fallbackKey)

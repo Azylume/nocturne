@@ -3,6 +3,7 @@
 #include "document/composition_file.hpp"
 #include "media/hap_encoder.hpp"
 #include "media/media_library.hpp"
+#include "platform/credentials.hpp"
 #include "platform/process.hpp"
 
 #include <unistd.h>
@@ -31,8 +32,7 @@ constexpr const char* kContentType = "video/mp4";
 
 // Runs a command and returns its standard output; throws when it cannot start or exits non-zero.
 // Runs the tool and returns its output; with a `sink`, its output goes there as it comes instead.
-std::string runTool(const std::vector<std::string>& args, bool quiet = false,
-                    const std::function<void(const char*, size_t)>& sink = {})
+std::string runTool(const std::vector<std::string>& args, const std::function<void(const char*, size_t)>& sink = {})
 {
     const std::string name = args[0] == "nice" ? args[3] : args[0];
     const std::optional<PipeEnds> out = makePipe();
@@ -40,11 +40,7 @@ std::string runTool(const std::vector<std::string>& args, bool quiet = false,
         throw std::runtime_error("cannot make a pipe for " + name);
     std::string error;
     std::optional<Process> tool = spawnProcess(
-        {.program = args[0],
-         .args = {args.begin() + 1, args.end()},
-         .searchPath = true,
-         .output = Stdio::to(out->write),
-         .error = quiet ? Stdio::null() : Stdio{}},
+        {.program = args[0], .args = {args.begin() + 1, args.end()}, .searchPath = true, .output = Stdio::to(out->write)},
         &error);
     closeHandle(out->write);
     if (!tool) {
@@ -208,7 +204,7 @@ void convertToHap(const fs::path& source, const Probe& p, const fs::path& target
                                    "scale=" + std::to_string(width) + ":" + std::to_string(height), "-f", "rawvideo",
                                    "-pix_fmt", "rgba", "-"});
     HapEncoder encoder(target, codec, width, height, fpsNum, fpsDen, options.hapChunks);
-    runTool(command, false, [&](const char* data, size_t size) {
+    runTool(command, [&](const char* data, size_t size) {
         encoder.feed(reinterpret_cast<const uint8_t*>(data), size);
     });
     encoder.finish();
@@ -312,15 +308,6 @@ std::string setting(const nlohmann::json& file, const char* key, const std::stri
     return value && *value ? value : file.value(key, "");
 }
 
-std::string keychainSecret(const std::string& service, const std::string& account)
-{
-    std::string secret =
-        runTool({"/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w"}, true);
-    while (!secret.empty() && (secret.back() == '\n' || secret.back() == '\r'))
-        secret.pop_back();
-    return secret;
-}
-
 std::string credentialsRefused(const S3Config& config, const S3Error& error)
 {
     return "R2 refused the credentials for bucket " + config.bucket + " at " + config.endpoint + " (" +
@@ -375,10 +362,7 @@ S3Config loadR2Config(const fs::path& path, const std::string& keychainService, 
         config.secretAccessKey = file.value("secret_access_key", "");
         return config;
     }
-    try {
-        config.secretAccessKey = keychainSecret(keychainService, config.accessKeyId);
-    } catch (const std::runtime_error&) {
-    }
+    config.secretAccessKey = readCredential(keychainService, config.accessKeyId).value_or("");
     if (config.secretAccessKey.empty())
         throw std::runtime_error("no R2 secret access key: add it to the login keychain with `security "
                                  "add-generic-password -s " + keychainService + " -a " + config.accessKeyId +
