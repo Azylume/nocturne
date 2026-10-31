@@ -325,7 +325,7 @@ TEST_CASE("slices of layers and groups with Trails show what the composition sho
     azl::EngineHarness harness(
         kWide, 60.0, {},
         {.layers = {{.id = 1, .name = "Trails", .effects = {{1, "transform", {}}, {2, "trails", {{"feedback", 0.5}}}}},
-                    {.id = 10, .name = "Kept", .group = true, .effects = {{3, "classicTrails", {{"feedback", 0.5}}}},
+                    {.id = 10, .name = "Kept", .effects = {{3, "classicTrails", {{"feedback", 0.5}}}}, .group = true,
                      .layers = {{.id = 11, .name = "Card", .opacity = 0.5}}}},
          .screens = {{.id = 1, .slices = {full}}, {.id = 2, .slices = {{.id = 2, .input = 10}}}}});
     Client client(harness.document());

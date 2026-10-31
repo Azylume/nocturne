@@ -394,15 +394,6 @@ std::vector<const azl::EffectDef*> effects(std::initializer_list<const char*> ty
     return defs;
 }
 
-std::vector<uint32_t> sideDivisors(const std::vector<azl::PlannedPass>& passes)
-{
-    std::vector<uint32_t> out;
-    for (const azl::PlannedPass& pass : passes)
-        if (pass.side)
-            out.push_back(pass.divisor);
-    return out;
-}
-
 uint64_t effectId(const Message& change)
 {
     return change["effect"]["id"];
