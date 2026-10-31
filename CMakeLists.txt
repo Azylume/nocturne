@@ -279,6 +279,14 @@ endif()
 add_library(nocturne_return_video STATIC src/output/return_video.cpp)
 target_link_libraries(nocturne_return_video PUBLIC nocturne_protocol)
 
+# Return video's decoder off Apple; Apple's VideoToolbox encoder and decoder are added below.
+if(NOT APPLE)
+  target_sources(nocturne_return_video PRIVATE src/output/h264_decoder_ffmpeg.cpp)
+  target_include_directories(nocturne_return_video PRIVATE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(nocturne_return_video PUBLIC ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(nocturne_return_video PUBLIC ${FFMPEG_LIBRARIES})
+endif()
+
 # The protocol's WebSocket: Network.framework on Apple, plain sockets elsewhere.
 add_library(nocturne_net STATIC src/net/websocket_frames.cpp src/net/websocket_rules.cpp)
 target_link_libraries(nocturne_net PUBLIC nocturne_protocol nocturne_return_video)
@@ -351,7 +359,7 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/media_files_test.cpp tests/video_decoder_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
   tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
-  tests/bundle_update_test.cpp
+  tests/bundle_update_test.cpp tests/h264_decoder_test.cpp
   ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
