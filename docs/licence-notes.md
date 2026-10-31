@@ -93,3 +93,10 @@ projects is vendored, so ADR 0012's dependency tables do not change.
 | ffmpeg (Homebrew build, GPL-2.0-or-later with libx264) | GPL-2.0-or-later | yes, as a separate program | `tools/transcode-media.sh` and `nocturne-upload` run it to decode sources to raw RGBA for our own HAP encoder, and `tests/media/make_hap_goldens.sh` runs its HAP decoder for the reference pictures; nothing links it. Homebrew's ffmpeg has no HAP encoder (it needs libsnappy), so the encoder is ours |
 
 No GPL code is linked or vendored for HAP.
+
+## Media off Apple (Windows port, checked 2026-10-31)
+
+| Project | Licence | Compatible | Used how |
+|---|---|---|---|
+| FFmpeg 9.0.2 (vcpkg, features avcodec avformat avdevice swresample swscale nvcodec opus; no `gpl`, no `nonfree`) | LGPL-2.1-or-later | yes | linked as DLLs off Apple only (ADR 0016): decoding and the QuickTime container for HAP in `src/media/*_ffmpeg.cpp`; the macOS build does not use it |
+| stb_image_write.h v1.16 (github.com/nothings/stb, commit 003501f) | MIT or public domain (dual) | yes | vendored in `third_party/stb/stb_image_write.h` with its licence text; JPEG stills off Apple (`src/media/stills_ffmpeg.cpp`) |

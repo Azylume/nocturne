@@ -1,5 +1,10 @@
 #include "media/hap_encoder.hpp"
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -57,6 +62,9 @@ int main(int argc, char** argv)
     if (out.empty() || width <= 0 || height <= 0 || fpsNum <= 0 || fpsDen <= 0 || chunks < 1 ||
         codec == azl::HapCodec::None)
         usage(2);
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+#endif
     try {
         azl::HapEncoder encoder(out, codec, width, height, fpsNum, fpsDen, chunks);
         std::vector<uint8_t> buffer(size_t(1) << 20);
