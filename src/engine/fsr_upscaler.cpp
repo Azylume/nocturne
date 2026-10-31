@@ -25,6 +25,7 @@
 #include "engine/fsr_upscaler.hpp"
 
 #include "engine/shader_cross.hpp"
+#include "gpu/glsl.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -202,13 +203,12 @@ FsrUpscaler::FsrUpscaler(const gpu::Device& device, gpu::Format format)
 {
     std::string error;
     const gpu::ShaderModule module =
-        device.makeShaderModule({.msl = mslSource(fullscreenEntries(kSource, {"easu", "rcas"}))}, &error);
+        device.makeShaderModule(gpu::compileGlsl(fullscreenEntries(kSource, {"easu", "rcas"})), &error);
     if (!module)
         throw std::runtime_error(error);
     auto make = [&](const char* fragment) {
-        gpu::RenderPipeline pipeline =
-            device.makeRenderPipeline({module, mslFunction("fullscreen"), mslFunction(fragment), format}, {}, nullptr,
-                                      &error);
+        gpu::RenderPipeline pipeline = device.makeRenderPipeline(
+            {module, gpu::entryPoint("fullscreen"), gpu::entryPoint(fragment), format}, {}, nullptr, &error);
         if (!pipeline)
             throw std::runtime_error(error);
         return pipeline;
