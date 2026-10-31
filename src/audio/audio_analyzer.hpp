@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/power_spectrum.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -92,8 +94,12 @@ public:
     static constexpr BandEdges kDefaultEdges{150.0, 2000.0};
     // How fast the edges glide to new ones, in octaves per second.
     static constexpr double kEdgeGlide = 8.0;
+    // The spectrum's transform size, as a power of two.
+    static constexpr size_t kFftLog2 = 11;
 
-    explicit AudioAnalyzer(double sampleRate, const AudioSettings& settings = {}, BandEdges edges = kDefaultEdges);
+    // A null `transform` takes the platform's.
+    explicit AudioAnalyzer(double sampleRate, const AudioSettings& settings = {}, BandEdges edges = kDefaultEdges,
+                           std::unique_ptr<PowerSpectrum> transform = nullptr);
     ~AudioAnalyzer();
     AudioAnalyzer(const AudioAnalyzer&) = delete;
     AudioAnalyzer& operator=(const AudioAnalyzer&) = delete;

@@ -174,11 +174,60 @@ add_library(nocturne_engine_logic STATIC
 )
 target_link_libraries(nocturne_engine_logic PUBLIC nocturne_protocol nocturne_profile)
 
+# pocketfft is the spectrum's transform off Apple; on Apple the tests compare it with vDSP. Same commit as vcpkg's port.
+if(APPLE)
+  FetchContent_Declare(pocketfft
+    URL https://github.com/mreineck/pocketfft/archive/0fa0ef591e38c2758e3184c6c23e497b9f732ffa.tar.gz
+    URL_HASH SHA256=1cfd0494ac6fe88e034579cb655b0ef9731b39a0432558e50fe41c4abd6d8684
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_MakeAvailable(pocketfft)
+  set(POCKETFFT_INCLUDE_DIR "${pocketfft_SOURCE_DIR}")
+else()
+  find_path(POCKETFFT_INCLUDE_DIR pocketfft_hdronly.h REQUIRED)
+endif()
+
+add_library(nocturne_audio STATIC
+  src/audio/audio_analysis.cpp
+  src/audio/audio_analyzer.cpp
+  src/audio/audio_device_settings.cpp
+  src/audio/audio_input.cpp
+  src/audio/audio_service.cpp
+  src/audio/return_audio.cpp
+)
+target_include_directories(nocturne_audio PUBLIC src)
+target_link_libraries(nocturne_audio PUBLIC nocturne_protocol)
+if(APPLE)
+  target_sources(nocturne_audio PRIVATE src/audio/audio_input.mm src/audio/opus_codec.cpp src/audio/power_spectrum_vdsp.cpp)
+  target_link_libraries(nocturne_audio PUBLIC
+    "-framework Accelerate"
+    "-framework AudioToolbox"
+    "-framework AVFoundation"
+    "-framework CoreAudio"
+    "-framework Foundation"
+  )
+else()
+  find_package(Opus CONFIG REQUIRED)
+  target_sources(nocturne_audio PRIVATE src/audio/opus_codec_libopus.cpp src/audio/power_spectrum_pocketfft.cpp)
+  target_include_directories(nocturne_audio PRIVATE "${POCKETFFT_INCLUDE_DIR}")
+  target_link_libraries(nocturne_audio PRIVATE Opus::opus)
+endif()
+if(WIN32)
+  target_sources(nocturne_audio PRIVATE src/audio/audio_input_win32.cpp)
+  target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
+endif()
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
-  tests/isf_test.cpp tests/machine_actions_test.cpp)
+  tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
+  tests/audio_input_test.cpp tests/opus_codec_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
+target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden")
+target_link_libraries(nocturne_tests PRIVATE nocturne_audio)
+if(APPLE)
+  target_sources(nocturne_tests PRIVATE src/audio/power_spectrum_pocketfft.cpp)
+  target_include_directories(nocturne_tests PRIVATE "${POCKETFFT_INCLUDE_DIR}")
+endif()
 add_test(NAME nocturne_tests COMMAND nocturne_tests)
 
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
@@ -292,25 +341,6 @@ target_link_libraries(nocturne_engine PUBLIC
   "-framework Security"
 )
 
-add_library(nocturne_audio STATIC
-  src/audio/audio_analysis.cpp
-  src/audio/audio_analyzer.cpp
-  src/audio/audio_device_settings.cpp
-  src/audio/audio_input.mm
-  src/audio/audio_service.cpp
-  src/audio/opus_codec.cpp
-  src/audio/return_audio.cpp
-)
-target_include_directories(nocturne_audio PUBLIC src)
-target_link_libraries(nocturne_audio PUBLIC
-  nocturne_protocol
-  "-framework Accelerate"
-  "-framework AudioToolbox"
-  "-framework AVFoundation"
-  "-framework CoreAudio"
-  "-framework Foundation"
-)
-
 add_library(nocturne_djlink STATIC src/djlink/clock_follower.cpp src/djlink/djlink_packets.cpp src/djlink/djlink_receiver.cpp
   src/djlink/djlink_service.cpp src/djlink/djlink_state.cpp)
 target_link_libraries(nocturne_djlink PUBLIC nocturne_engine)
@@ -394,7 +424,7 @@ add_custom_target(app ALL DEPENDS "${CMAKE_BINARY_DIR}/Nocturne.app.signed")
 target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp tests/protocol_test.cpp
   tests/media_test.cpp tests/effects_test.cpp tests/transport_test.cpp tests/layers_test.cpp
   tests/jump_reverse_test.cpp tests/trigger_test.cpp tests/screens_test.cpp tests/autopilot_test.cpp tests/column_autopilot_test.cpp
-  tests/transition_test.cpp tests/audio_test.cpp tests/audio_service_test.cpp tests/supervisor_test.cpp
+  tests/transition_test.cpp tests/audio_service_test.cpp tests/supervisor_test.cpp
   tests/modulation_test.cpp tests/composition_test.cpp tests/import_test.cpp tests/output_import_test.cpp
   tests/clip_effects_test.cpp tests/classic_test.cpp tests/classic_stripper_test.cpp tests/deck_layers_test.cpp
   tests/mapping_test.cpp tests/cue_test.cpp tests/text_test.cpp tests/preview_test.cpp tests/sync_test.cpp
@@ -406,7 +436,7 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
   tests/hap_test.cpp tests/hap_codec_test.cpp tests/hap_playback_test.cpp
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
-target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
+target_compile_definitions(nocturne_tests PRIVATE
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media" NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
   NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")

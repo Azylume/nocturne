@@ -12,6 +12,10 @@
       "platform": "!osx"
     },
     {
+      "name": "opus",
+      "platform": "!osx"
+    },
+    {
       "name": "pocketfft",
       "platform": "!osx"
     }

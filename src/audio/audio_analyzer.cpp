@@ -1,7 +1,5 @@
 #include "audio/audio_analyzer.hpp"
 
-#include <Accelerate/Accelerate.h>
-
 #include <algorithm>
 #include <cmath>
 
@@ -23,8 +21,7 @@ constexpr double kAgcFloor = 0.002;
 constexpr double kManualReference = 0.25;
 constexpr double kSilenceDb = -70.0;
 
-constexpr size_t kFftLog2 = 11;
-constexpr size_t kFftSize = size_t(1) << kFftLog2;
+constexpr size_t kFftSize = size_t(1) << AudioAnalyzer::kFftLog2;
 constexpr size_t kFftHop = kFftSize / 4;
 constexpr double kSpectrumLow = 30.0;
 constexpr double kSpectrumHigh = 16000.0;
@@ -77,9 +74,8 @@ std::optional<AudioFeature> audioFeatureFromName(std::string_view name)
 }
 
 struct AudioAnalyzer::Fft {
-    explicit Fft(double sampleRate) : setup(vDSP_create_fftsetup(kFftLog2, kFFTRadix2))
+    Fft(double sampleRate, std::unique_ptr<PowerSpectrum> transform) : transform(std::move(transform))
     {
-        vDSP_hann_window(window.data(), kFftSize, vDSP_HANN_NORM);
         const double binHz = sampleRate / double(kFftSize);
         const double high = std::min(kSpectrumHigh, 0.45 * sampleRate);
         size_t from = 1;
@@ -90,21 +86,18 @@ struct AudioAnalyzer::Fft {
             from = to;
         }
     }
-    ~Fft() { vDSP_destroy_fftsetup(setup); }
 
-    FFTSetup setup;
-    std::array<float, kFftSize> window{};
+    std::unique_ptr<PowerSpectrum> transform;
     std::array<float, kFftSize> input{};
-    std::array<float, kFftSize> windowed{};
-    std::array<float, kFftSize / 2> real{};
-    std::array<float, kFftSize / 2> imag{};
+    std::array<float, kFftSize> ordered{};
     std::array<float, kFftSize / 2> power{};
     std::array<std::pair<size_t, size_t>, kSpectrumBands> bins{};
     size_t written = 0;
     size_t sinceTransform = 0;
 };
 
-AudioAnalyzer::AudioAnalyzer(double sampleRate, const AudioSettings& settings, BandEdges edges)
+AudioAnalyzer::AudioAnalyzer(double sampleRate, const AudioSettings& settings, BandEdges edges,
+                             std::unique_ptr<PowerSpectrum> transform)
     : sampleRate_(sampleRate),
       hop_(std::max<size_t>(16, size_t(std::lround(sampleRate / kHopsPerSecond)))),
       hopSeconds_(double(hop_) / sampleRate),
@@ -112,7 +105,7 @@ AudioAnalyzer::AudioAnalyzer(double sampleRate, const AudioSettings& settings, B
       peakRelease_(std::exp(-hopSeconds_ / kPeakReleaseSeconds)),
       edges_(edges),
       edgeTargets_(edges),
-      fft_(std::make_unique<Fft>(sampleRate))
+      fft_(std::make_unique<Fft>(sampleRate, transform ? std::move(transform) : makePowerSpectrum(kFftLog2)))
 {
     for (size_t i = 0; i < kAudioBands; ++i)
         bands_[i].filter.stages = {butterworth(Pass::High, kBands[i].first, sampleRate),
@@ -307,15 +300,11 @@ void AudioAnalyzer::spectrum(float gainDb)
     f.sinceTransform = 0;
     const size_t start = f.written % kFftSize;
     for (size_t i = 0; i < kFftSize; ++i)
-        f.windowed[i] = f.input[(start + i) % kFftSize] * f.window[i];
-    DSPSplitComplex split{f.real.data(), f.imag.data()};
-    vDSP_ctoz(reinterpret_cast<const DSPComplex*>(f.windowed.data()), 2, &split, 1, kFftSize / 2);
-    vDSP_fft_zrip(f.setup, &split, 1, kFftLog2, kFFTDirection_Forward);
-    split.imagp[0] = 0.0f;
-    vDSP_zvmags(&split, 1, f.power.data(), 1, kFftSize / 2);
-    // Each bin's share of the windowed signal's mean square (vDSP's transform is scaled by 2; Hann's mean square is
-    // 3/8).
-    const double scale = 1.0 / (2.0 * double(kFftSize) * double(kFftSize) * 0.375);
+        f.ordered[i] = f.input[(start + i) % kFftSize];
+    f.transform->compute(f.ordered.data(), f.power.data());
+    // Twice a bin's power (bin n - k mirrors it) over n^2 is its share of the windowed signal's mean square. The window's
+    // mean square is 1, so dividing by 3/8 (plain Hann's) reads 4.3 dB above that.
+    const double scale = 2.0 / (double(kFftSize) * double(kFftSize) * 0.375);
     const double gain = settings_.autoGain ? gainDb : settings_.gainDb + 20.0 * std::log10(1.0 / kManualReference);
     for (size_t b = 0; b < kSpectrumBands; ++b) {
         double sum = 0.0;
