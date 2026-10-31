@@ -1,4 +1,4 @@
-// nocturne.exe as a process on Windows: what it runs before the engine renders here, and safe mode end to end.
+// nocturne.exe as a process on Windows: the engine rendering offscreen, and safe mode end to end.
 #include "net/websocket.hpp"
 #include "platform/process.hpp"
 #include "protocol/messages.hpp"
@@ -133,11 +133,24 @@ fs::path freshFolder(const std::string& name)
 
 } // namespace
 
-TEST_CASE("windows engine: nocturne.exe says it cannot render yet, and why")
+TEST_CASE("windows engine: nocturne.exe renders offscreen on Vulkan, reports its rate, and stops when asked")
 {
-    Engine engine({"--offscreen", "--port", "0", "--loopback"});
-    REQUIRE(engine.exited(10.0) == 1);
-    CHECK(engine.output().find("cannot render on Windows yet") != std::string::npos);
+    const fs::path state = freshFolder("render");
+    const uint16_t port = 7494;
+    Engine engine({"--offscreen", "--port", std::to_string(port), "--loopback", "--state", state.string()});
+    {
+        Remote remote(port);
+        CHECK(remote.request(azl::msg::hello(), "snapshot")["type"] == "snapshot");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        const Message status = remote.request({{"type", "machine"}, {"op", "status"}}, "machine");
+        CHECK(status["mode"] == "normal");
+        INFO(status["render"].dump());
+        CHECK(status["render"]["fps"].get<double>() > 50.0);
+    }
+    engine.process().terminate();
+    CHECK(engine.exited(10.0) == 0);
+    CHECK(engine.output().find("stopped") != std::string::npos);
+    fs::remove_all(state);
 }
 
 TEST_CASE("windows engine: safe mode serves the machine status and the reason, and stops when asked")

@@ -273,7 +273,8 @@ TEST_CASE("modulators drive clip and composition effect parameters")
     azl::EngineHarness harness(kSize, kStillFps, {}, c);
     Client client(harness.document());
     harness.step();
-    const uint8_t* tinted = pixel(harness.readScreen(), kYellowX, kYellowY);
+    const azl::Image screen = harness.readScreen();
+    const uint8_t* tinted = pixel(screen, kYellowX, kYellowY);
     CHECK(tinted[1] < 10);
 
     azl::Modulator off;

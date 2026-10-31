@@ -205,7 +205,7 @@ void ChainCompiler::openArchive()
     const bool exists = std::filesystem::exists(cachePath_, ec);
     archive_ = device_.openPipelineCache(exists ? cachePath_.string() : "");
     if (!archive_ && exists) {
-        std::fprintf(stderr, "nocturne: pipeline cache %s not loaded, starting empty\n", cachePath_.c_str());
+        std::fprintf(stderr, "nocturne: pipeline cache %s not loaded, starting empty\n", cachePath_.string().c_str());
         archive_ = device_.openPipelineCache("");
     }
 }
@@ -233,7 +233,7 @@ void ChainCompiler::saveArchive()
     if (device_.savePipelineCache(archive_, written.string(), &error))
         std::filesystem::rename(written, cachePath_, ec);
     else
-        std::fprintf(stderr, "nocturne: pipeline cache %s not written: %s\n", cachePath_.c_str(), error.c_str());
+        std::fprintf(stderr, "nocturne: pipeline cache %s not written: %s\n", cachePath_.string().c_str(), error.c_str());
 }
 
 ChainCompiler::~ChainCompiler()

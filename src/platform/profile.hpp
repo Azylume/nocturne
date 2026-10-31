@@ -82,8 +82,12 @@ namespace azl::profile {
 
 inline constexpr bool kEnabled = false;
 
+// Takes any backend's device: the Tracy build, which has GPU timelines, is Apple's.
 struct GpuTimeline {
-    GpuTimeline(MTL::Device*, std::string_view, std::string_view) {}
+    template <typename Device>
+    GpuTimeline(Device*, std::string_view, std::string_view)
+    {
+    }
 };
 
 } // namespace azl::profile
