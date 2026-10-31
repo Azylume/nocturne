@@ -6,12 +6,10 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
-
-struct OpaqueAudioQueue;
-struct AudioQueueBuffer;
 
 namespace azl::ui {
 
@@ -42,8 +40,19 @@ public:
     // Packets missing between the messages received.
     uint64_t lostPackets() const { return lost_.load(std::memory_order_relaxed); }
 
+    // The device the player plays through: an AudioQueue on Apple, JUCE's default output elsewhere. It calls `pull`
+    // on its own thread for the next mono samples at kOpusRate; destroying it stops those calls.
+    class Output {
+    public:
+        virtual ~Output() = default;
+        virtual void start() = 0;
+    };
+    // Null, with the reason on stderr, when the device does not open.
+    static std::unique_ptr<Output> openOutput(std::function<void(float* out, size_t count)> pull);
+
 private:
-    static void fill(void* user, OpaqueAudioQueue* queue, AudioQueueBuffer* buffer);
+    // Fills `out` from the buffer, silence where it runs dry. The output's thread.
+    void pull(float* out, size_t count);
     void open();
 
     std::atomic<bool> device_{true};
@@ -52,7 +61,7 @@ private:
     std::deque<float> buffered_;
     bool playing_ = false;
     std::optional<uint64_t> next_;
-    OpaqueAudioQueue* queue_ = nullptr;
+    std::unique_ptr<Output> output_;
     std::atomic<double> volume_{1.0};
     std::atomic<uint64_t> decoded_{0};
     std::atomic<uint64_t> lost_{0};
