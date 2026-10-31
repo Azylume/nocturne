@@ -489,7 +489,6 @@ Recorder::Session::Session(Recorder& owner, Settings s, double fps, AudioPlan au
     gpu = &engine.gpuTimeline();
     if (format != kCVPixelFormatType_32BGRA) {
         converter = std::make_unique<YCbCrConverter>(engine.device(), format);
-        converter->setGpuTimeline(gpu);
     }
     if (!whole) {
         painter = std::make_unique<ScreenPainter>(engine.gpuDevice(), kFrameFormat,
