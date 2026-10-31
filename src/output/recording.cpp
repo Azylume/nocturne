@@ -1,5 +1,7 @@
 #include "output/recording.hpp"
 
+#include "platform/app_paths.hpp"
+
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -73,13 +75,7 @@ std::string timestamp()
 
 std::filesystem::path moviesFolder()
 {
-#ifdef _WIN32
-    const char* home = std::getenv("USERPROFILE");
-    return std::filesystem::path(home ? home : "C:\\") / "Videos" / "Nocturne";
-#else
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / "Movies" / "Nocturne";
-#endif
+    return videosFolder() / "Nocturne";
 }
 
 bool writable(const std::filesystem::path& folder)
