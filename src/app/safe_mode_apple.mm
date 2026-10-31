@@ -1,9 +1,7 @@
 #include "app/safe_mode.hpp"
 
-#include "engine/machine_actions.hpp"
-#include "net/websocket.hpp"
-#include "protocol/build_info.hpp"
-#include "supervisor/restart_request.hpp"
+#include "app/main_thread.hpp"
+#include "app/safe_mode_protocol.hpp"
 
 #import <AppKit/AppKit.h>
 
@@ -50,107 +48,17 @@ void fill(NSWindow* window, NSImage* image, NSString* reason)
     [content addSubview:label];
 }
 
-void stopApp()
-{
-    [NSApp stop:nil];
-    NSEvent* wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-                                       location:NSZeroPoint
-                                  modifierFlags:0
-                                      timestamp:0
-                                   windowNumber:0
-                                        context:nil
-                                        subtype:0
-                                          data1:0
-                                          data2:0];
-    [NSApp postEvent:wake atStart:YES];
-}
-
 dispatch_source_t stopOnSignal(int sig)
 {
     std::signal(sig, SIG_IGN);
     dispatch_source_t source =
         dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, uintptr_t(sig), 0, dispatch_get_main_queue());
-    dispatch_source_set_event_handler(source, ^{ stopApp(); });
+    dispatch_source_set_event_handler(source, ^{ app::stopMain(); });
     dispatch_resume(source);
     return source;
 }
 
-// The machine status and the guarded actions, and nothing of the document.
-class SafeModeProtocol {
-public:
-    SafeModeProtocol(const app::EngineConfig& opt, MachineActions::Restart restart, MachineActions::Stop stop)
-        : reason_(opt.safeMode), document_(Composition{}, [](auto) {}),
-          actions_(opt.state.empty() ? std::filesystem::path() : std::filesystem::path(opt.state) / "show-lock.json",
-                   std::move(restart), std::move(stop))
-    {
-        document_.setReadOnly("the engine is in safe mode: " + reason_, {"machine"});
-        document_.handle("machine", [this](const Message& message, DocumentServer::Sink reply) {
-            handle(message, reply);
-        });
-        try {
-            server_ = std::make_unique<WebSocketServer>(document_, opt.port);
-            std::printf("protocol on ws://0.0.0.0:%u (safe mode)\n", unsigned(server_->port()));
-        } catch (const std::exception& e) {
-            std::printf("protocol: %s\n", e.what());
-        }
-    }
-    ~SafeModeProtocol()
-    {
-        server_.reset();
-        document_.handle("machine", nullptr);
-    }
-
-private:
-    void handle(const Message& message, const DocumentServer::Sink& reply)
-    {
-        const std::string op = message.value("op", "");
-        if (op != "safeMode" && actions_.handle(message, reply))
-            return;
-        if (op == "unsubscribe")
-            return;
-        if (op != "status" && op != "subscribe")
-            return reply({{"type", "error"}, {"message", "the engine is in safe mode: " + op + " is not served"}});
-        reply({{"type", "machine"},
-               {"op", "status"},
-               {"mode", "safe"},
-               {"reason", reason_},
-               {"showLock", actions_.locked()},
-               {"version", buildId()},
-               {"outputs", Message::array()}});
-    }
-
-    std::string reason_;
-    DocumentServer document_;
-    MachineActions actions_;
-    std::unique_ptr<WebSocketServer> server_;
-};
-
 } // namespace
-
-MachineActions::Restart restartRequest(int* exitCode, void (*quit)())
-{
-    if (!std::getenv(restart::kSupervisedVariable))
-        return nullptr;
-    return [exitCode, quit](bool safeMode) {
-        const int code = safeMode ? restart::kSafeMode : restart::kNormal;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
-            *exitCode = code;
-            quit();
-        });
-    };
-}
-
-MachineActions::Stop stopRequest(int* exitCode, void (*quit)())
-{
-    if (!std::getenv(restart::kSupervisedVariable))
-        return nullptr;
-    return [exitCode, quit] {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
-            *exitCode = restart::kStop;
-            quit();
-        });
-    };
-}
 
 int runSafeMode(const app::EngineConfig& opt)
 {
@@ -187,8 +95,8 @@ int runSafeMode(const app::EngineConfig& opt)
     std::fflush(stdout);
 
     int exitCode = 0;
-    auto protocol =
-        std::make_unique<SafeModeProtocol>(opt, restartRequest(&exitCode, stopApp), stopRequest(&exitCode, stopApp));
+    auto protocol = std::make_unique<SafeModeProtocol>(opt, restartRequest(&exitCode, app::stopMain),
+                                                       stopRequest(&exitCode, app::stopMain));
 
     dispatch_source_t onInt = stopOnSignal(SIGINT);
     dispatch_source_t onTerm = stopOnSignal(SIGTERM);

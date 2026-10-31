@@ -1,6 +1,7 @@
 #include "engine/modulation_service.hpp"
 
 #include "document/modulation_edits.hpp"
+#include "engine/macro_sets_file.hpp"
 #include "platform/app_paths.hpp"
 #include "protocol/messages.hpp"
 
@@ -207,7 +208,7 @@ ModulationService::~ModulationService()
 
 std::filesystem::path ModulationService::defaultFile()
 {
-    return appDataFolder() / "MacroSets.json";
+    return defaultMacroSetsFile();
 }
 
 void ModulationService::handle(const Message& message, const DocumentServer::Sink& reply)
