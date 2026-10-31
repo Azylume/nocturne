@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -32,29 +33,45 @@ struct Counts {
     std::atomic<uint64_t> shown{0};
     std::atomic<uint64_t> unshown{0};
     std::atomic<uint64_t> hitches{0};
+    // Shown less than half a refresh after the picture before it, which then was never on screen for a whole refresh.
+    std::atomic<uint64_t> early{0};
     std::atomic<double> maxIntervalMs{0.0};
+    // Refreshes from the vblank a picture was drawn for to the refresh that showed it: the most, and how many pictures
+    // took more than two.
+    std::atomic<double> maxLag{0.0};
+    std::atomic<uint64_t> late{0};
     // Seconds after the first shown picture.
     std::atomic<double> lastHitchAt{-1.0};
+    // Seconds after the first shown picture before refreshes without a target, early pictures, hitches and lag count.
+    double settle = 0.0;
+    std::atomic<bool> settled{true};
     double firstShown = 0.0;
     double lastShown = 0.0;
     double period = 0.0;
 
-    void shownAt(double at)
+    void shownAt(double at, double vsync)
     {
         if (at <= 0.0) {
             ++unshown;
             return;
         }
         ++shown;
-        if (lastShown > 0.0) {
+        if (lastShown == 0.0)
+            firstShown = at;
+        if (at - firstShown >= settle)
+            settled = true;
+        if (lastShown > 0.0 && settled) {
             const double interval = at - lastShown;
             maxIntervalMs = std::max(maxIntervalMs.load(), interval * 1000.0);
+            maxLag = std::max(maxLag.load(), (at - vsync) / period);
+            if (at - vsync > 2.5 * period)
+                ++late;
             if (interval > 1.5 * period) {
                 ++hitches;
                 lastHitchAt = at - firstShown;
             }
-        } else {
-            firstShown = at;
+            if (interval < 0.5 * period)
+                ++early;
         }
         lastShown = at;
     }
@@ -63,8 +80,9 @@ struct Counts {
 // A present thread drawing a new colour into every refresh of its surface.
 class Presenter {
 public:
-    Presenter(azl::Surface& surface, const azl::gpu::Device& device)
-        : surface_(surface), queue_(device.makeQueue()), thread_([this] { run(); })
+    Presenter(azl::Surface& surface, const azl::gpu::Device& device, double settle = 0.0)
+        : surface_(surface), queue_(device.makeQueue()), counts_{.settle = settle, .settled = settle == 0.0},
+          thread_([this] { run(); })
     {
         counts_.period = 1.0 / surface.refreshHz();
     }
@@ -81,12 +99,13 @@ private:
     void run()
     {
         azl::setThreadRole(azl::ThreadRole::Frames);
-        surface_.runRefreshes(running_, [this](std::chrono::steady_clock::time_point) {
+        surface_.runRefreshes(running_, [this](std::chrono::steady_clock::time_point vsync) {
             azl::gpu::Scope scope;
             ++counts_.refreshes;
             const azl::gpu::Texture* target = surface_.nextTarget();
             if (!target) {
-                ++counts_.noTarget;
+                if (counts_.settled)
+                    ++counts_.noTarget;
                 return;
             }
             const double shade = double(counts_.presents % 64) / 63.0;
@@ -95,7 +114,8 @@ private:
                 .texture = target, .load = azl::gpu::Load::Clear, .clear = {shade, 0.2, 0.4, 1.0}};
             azl::gpu::RenderPass pass = cmd.begin(clear);
             pass.end();
-            surface_.present(cmd, [this](double at) { counts_.shownAt(at); });
+            const double drawnFor = std::chrono::duration<double>(vsync.time_since_epoch()).count();
+            surface_.present(cmd, [this, drawnFor](double at) { counts_.shownAt(at, drawnFor); });
             cmd.commit();
             ++counts_.presents;
         });
@@ -185,6 +205,53 @@ TEST_CASE("displays: the panel and a window present at the panel's rate, each on
         CHECK(double(c.presents) >= 0.97 * attached.front().refreshHz * seconds);
         CHECK(c.hitches == 0);
         CHECK(c.noTarget == 0);
+    }
+    if (azl::gpu::vulkan::validationEnabled())
+        CHECK(azl::gpu::vulkan::validationErrors() == 0);
+}
+
+TEST_CASE("displays: all monitors at once show each picture one refresh long, within two refreshes of its vblank")
+{
+    azl::MainLoop loop;
+    azl::WinDisplays monitors(false, 0);
+    std::vector<azl::DisplayInfo> attached = monitors.attached();
+    std::erase_if(attached, [](const azl::DisplayInfo& d) { return !d.mirrorOf.empty(); });
+    if (attached.empty()) {
+        MESSAGE("no monitor in this session: run in the desktop session");
+        return;
+    }
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
+    REQUIRE(device);
+    std::vector<std::unique_ptr<azl::Surface>> surfaces;
+    std::vector<std::unique_ptr<Presenter>> presenters;
+    for (const azl::DisplayInfo& d : attached) {
+        surfaces.push_back(monitors.open(d.id, device));
+        REQUIRE(surfaces.back());
+    }
+    // A new window's first presents reach the screen a refresh or two later each while the compositor takes it over.
+    for (const auto& surface : surfaces)
+        presenters.push_back(std::make_unique<Presenter>(*surface, device, 0.25));
+    // Long enough to see a race with the compositor that loses a few times a minute.
+    const double seconds = 3.0 * outputSeconds();
+    pump(loop, std::chrono::milliseconds(int64_t(seconds * 1000.0)));
+    for (auto& presenter : presenters)
+        presenter->stop();
+    surfaces.clear();
+    for (size_t i = 0; i < attached.size(); ++i) {
+        const Counts& c = presenters[i]->counts();
+        MESSAGE(attached[i].id << ": " << c.presents.load() / seconds << " presents/s, " << c.shown.load() / seconds
+                               << " shown/s, " << c.early.load() << " early, " << c.hitches.load()
+                               << " hitches, max interval " << c.maxIntervalMs.load() << " ms, at most "
+                               << c.maxLag.load() << " refreshes late (" << c.late.load() << " pictures more than 2), "
+                               << c.noTarget.load()
+                               << " without a target at " << attached[i].refreshHz << " Hz over " << seconds << " s");
+        CHECK(double(c.presents) >= 0.97 * attached[i].refreshHz * seconds);
+        // One missed refresh in 15 s is within the show machine's gate (0.05 hitches/s). Missed, or reported late by the
+        // present wait, it can count two hitches and an early picture, leave a picture or two late and skip a refresh.
+        CHECK(c.early <= 1);
+        CHECK(c.hitches <= 2);
+        CHECK(c.late <= 3);
+        CHECK(c.noTarget <= c.hitches);
     }
     if (azl::gpu::vulkan::validationEnabled())
         CHECK(azl::gpu::vulkan::validationErrors() == 0);
