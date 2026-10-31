@@ -1,11 +1,15 @@
-#include "engine/shader_cross.hpp"
+#include "gpu/glsl.hpp"
 #include "gpu/gpu.hpp"
 
-#include "test_client.hpp"
+#include "test_files.hpp"
 
 #include "doctest.h"
 
+#include "effects/shader_layout.hpp"
+
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -35,7 +39,7 @@ std::vector<uint8_t> pattern(size_t size)
 
 gpu::ShaderSource fullscreen(const std::string& glsl, const std::vector<std::string>& names)
 {
-    return {.msl = azl::mslSource(azl::fullscreenEntries(glsl, names))};
+    return gpu::compileGlsl(azl::fullscreenEntries(glsl, names));
 }
 
 const char* const kTint = R"(#version 450
@@ -82,7 +86,7 @@ TEST_CASE("a render pass clears, draws through a pipeline and signals a fence th
     const gpu::ShaderModule module = device.makeShaderModule(fullscreen(kTint, {"tint"}), &error);
     REQUIRE_MESSAGE(module, error);
     const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
-        {module, azl::mslFunction("fullscreen"), azl::mslFunction("tint"), gpu::Format::BGRA8}, {}, nullptr, &error);
+        {module, gpu::entryPoint("fullscreen"), gpu::entryPoint("tint"), gpu::Format::BGRA8}, {}, nullptr, &error);
     REQUIRE_MESSAGE(pipeline, error);
     const gpu::Fence fence = device.makeFence();
     REQUIRE(fence);
@@ -180,9 +184,9 @@ void main() { imageStore(target, ivec2(gl_GlobalInvocationID.xy), vec4(0.0, 1.0,
 )";
     std::string error;
     const gpu::ShaderModule module =
-        device.makeShaderModule({.msl = azl::mslSource({{"fill", azl::ShaderStage::Compute, fill}})}, &error);
+        device.makeShaderModule(gpu::compileGlsl({{"fill", azl::ShaderStage::Compute, fill}}), &error);
     REQUIRE_MESSAGE(module, error);
-    const gpu::ComputePipeline pipeline = device.makeComputePipeline(module, azl::mslFunction("fill"), &error);
+    const gpu::ComputePipeline pipeline = device.makeComputePipeline(module, gpu::entryPoint("fill"), &error);
     REQUIRE_MESSAGE(pipeline, error);
     CHECK(pipeline.maxThreads() >= 64);
     const gpu::Texture target = device.makeTexture(
@@ -214,7 +218,7 @@ TEST_CASE("a pipeline cache file built once gives the same pipeline without comp
     TempDir root;
     const std::string path = (root.path / "pipelines.bin").string();
     const gpu::ShaderModule module = device.makeShaderModule(fullscreen(kTint, {"tint"}));
-    const gpu::RenderPipelineDesc desc{module, azl::mslFunction("fullscreen"), azl::mslFunction("tint"),
+    const gpu::RenderPipelineDesc desc{module, gpu::entryPoint("fullscreen"), gpu::entryPoint("tint"),
                                        gpu::Format::RGBA16F, gpu::Blending::Add};
     bool cached = true;
     {
@@ -242,7 +246,7 @@ TEST_CASE("timestamps around a render pass resolve in order where the device tak
     CHECK(queries.count() == 2);
     const gpu::Texture target = device.makeTexture({.width = 64, .height = 64, .usage = gpu::Usage::RenderTarget});
     const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
-        {device.makeShaderModule(fullscreen(kTint, {"tint"})), azl::mslFunction("fullscreen"), azl::mslFunction("tint"),
+        {device.makeShaderModule(fullscreen(kTint, {"tint"})), gpu::entryPoint("fullscreen"), gpu::entryPoint("tint"),
          gpu::Format::BGRA8});
     REQUIRE(pipeline);
     gpu::Scope scope;
@@ -268,3 +272,156 @@ TEST_CASE("timestamps around a render pass resolve in order where the device tak
     CHECK(ticks[0] > 0);
     CHECK(ticks[1] >= ticks[0]);
 }
+
+namespace {
+
+// Draws three vertices through entries[0] (vertex) and entries[1] (fragment), `source` at texture 0, into a new BGRA8
+// target cleared to blue, and reads it back.
+std::vector<uint8_t> drawn(const gpu::Device& device, const gpu::Queue& queue, const std::vector<azl::ShaderEntry>& entries,
+                           uint32_t width, uint32_t height, const gpu::Texture* source = nullptr)
+{
+    std::string error;
+    const gpu::ShaderModule module = device.makeShaderModule(gpu::compileGlsl(entries), &error);
+    REQUIRE_MESSAGE(module, error);
+    const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
+        {module, gpu::entryPoint(entries[0].name), gpu::entryPoint(entries[1].name), gpu::Format::BGRA8}, {}, nullptr,
+        &error);
+    REQUIRE_MESSAGE(pipeline, error);
+    const gpu::Texture target =
+        device.makeTexture({.width = width, .height = height, .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue.commandBuffer();
+        gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&target, gpu::Load::Clear, {0.0, 0.0, 1.0, 1.0}});
+        pass.setPipeline(pipeline);
+        if (source)
+            pass.setTexture(0, *source);
+        pass.draw(3);
+        pass.end();
+        cmd.commit();
+    }
+    return readBack(device, queue, target);
+}
+
+} // namespace
+
+TEST_CASE("clip space points up on every backend: a triangle above y = 0 covers the top rows")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    const char* const upper = R"(#version 450
+void main()
+{
+    const vec2 corners[3] = vec2[](vec2(-1.0, 0.0), vec2(3.0, 0.0), vec2(-1.0, 4.0));
+    gl_Position = vec4(corners[gl_VertexIndex], 0.0, 1.0);
+}
+)";
+    const char* const red = R"(#version 450
+layout(location = 0) out vec4 color;
+void main() { color = vec4(1.0, 0.0, 0.0, 1.0); }
+)";
+    const std::vector<uint8_t> pixels =
+        drawn(device, queue, {{"upper", azl::ShaderStage::Vertex, upper}, {"red", azl::ShaderStage::Fragment, red}}, 8,
+              8);
+    // BGRA: row 0 red, row 7 still the clear's blue.
+    CHECK(pixels[2] == 255);
+    CHECK(pixels[0] == 0);
+    CHECK(pixels[7 * 8 * 4 + 2] == 0);
+    CHECK(pixels[7 * 8 * 4] == 255);
+}
+
+TEST_CASE("the fixed samplers read texture rows from the top: pixel and normalised coordinates, text clamps to zero")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    std::vector<uint8_t> texels(4 * 4 * 4);
+    for (size_t i = 0; i < texels.size(); ++i)
+        texels[i] = uint8_t(i * 3);
+    const gpu::Texture source =
+        device.makeTexture({.format = gpu::Format::RGBA8, .width = 4, .height = 4, .memory = gpu::Memory::Upload});
+    REQUIRE(device.upload(source, 0, texels.data(), 16));
+    const std::string reads = std::string(R"(#version 450
+)") + azl::kGlslSamplers + R"(
+layout(set = 1, binding = 0) uniform texture2D picture;
+layout(location = 0) out vec4 color;
+void main()
+{
+    if (gl_FragCoord.x < 1.0)
+        color = textureLod(sampler2D(picture, pix), vec2(2.5, 1.5), 0.0);
+    else if (gl_FragCoord.x < 2.0)
+        color = texture(sampler2D(picture, lin), vec2(0.625, 0.375));
+    else
+        color = texture(sampler2D(picture, textSampler), vec2(-0.5, 0.5));
+}
+)";
+    const std::vector<uint8_t> pixels = drawn(
+        device, queue,
+        {{"fullscreen", azl::ShaderStage::Vertex, azl::kFullscreenVertex}, {"reads", azl::ShaderStage::Fragment, reads}},
+        3, 1, &source);
+    // Texel (2, 1) of the RGBA upload, read back as BGRA.
+    const size_t texel = (1 * 4 + 2) * 4;
+    for (size_t x : {0, 1}) {
+        CAPTURE(x);
+        CHECK(pixels[x * 4 + 2] == texels[texel]);
+        CHECK(pixels[x * 4 + 1] == texels[texel + 1]);
+        CHECK(pixels[x * 4] == texels[texel + 2]);
+    }
+    CHECK(pixels[8] == 0);
+    CHECK(pixels[9] == 0);
+    CHECK(pixels[10] == 0);
+    CHECK(pixels[11] == 0);
+}
+
+TEST_CASE("each blending mode combines a premultiplied colour with the target as its formula says")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    std::string error;
+    const gpu::ShaderModule module = device.makeShaderModule(fullscreen(kTint, {"tint"}), &error);
+    REQUIRE_MESSAGE(module, error);
+    // Target d = (0.2, 0.4, 0.8, 1), source s premultiplied with alpha 0.5.
+    const std::array<double, 3> d{0.2, 0.4, 0.8};
+    const std::array<float, 4> s{0.4f, 0.2f, 0.1f, 0.5f};
+    struct Case {
+        gpu::Blending blending;
+        double (*formula)(double s, double d, double a);
+    };
+    const Case cases[] = {
+        {gpu::Blending::Normal, [](double s, double d, double a) { return s + d * (1 - a); }},
+        {gpu::Blending::Add, [](double s, double d, double) { return std::min(1.0, s + d); }},
+        {gpu::Blending::Screen, [](double s, double d, double) { return s * (1 - d) + d; }},
+        {gpu::Blending::Multiply, [](double s, double d, double a) { return s * d + d * (1 - a); }},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(int(c.blending));
+        const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
+            {module, gpu::entryPoint("fullscreen"), gpu::entryPoint("tint"), gpu::Format::RGBA8, c.blending}, {},
+            nullptr, &error);
+        REQUIRE_MESSAGE(pipeline, error);
+        const gpu::Texture target = device.makeTexture(
+            {.format = gpu::Format::RGBA8, .width = 2, .height = 2, .usage = gpu::Usage::RenderTarget});
+        {
+            gpu::Scope scope;
+            gpu::CommandBuffer cmd = queue.commandBuffer();
+            gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&target, gpu::Load::Clear, {d[0], d[1], d[2], 1.0}});
+            pass.setPipeline(pipeline);
+            pass.setBytes(0, s.data(), sizeof(s));
+            pass.draw(3);
+            pass.end();
+            cmd.commit();
+        }
+        const std::vector<uint8_t> pixels = readBack(device, queue, target);
+        for (size_t i = 0; i < 3; ++i)
+            CHECK(std::abs(int(pixels[i]) - int(std::lround(c.formula(s[i], d[i], s[3]) * 255.0))) <= 1);
+    }
+}
+
+#if !defined(__APPLE__)
+#include "gpu/gpu_vulkan.hpp"
+
+TEST_CASE("the Vulkan validation layer checks every GPU call the tests make")
+{
+    REQUIRE(gpu::Device::systemDefault());
+    CHECK(gpu::vulkan::validationEnabled());
+}
+#endif
