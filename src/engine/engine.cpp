@@ -393,7 +393,7 @@ void Engine::renderFrame(double seconds)
     stats_.sideSpares = sides_.spares();
     stats_.pooledTextures = intermediates_[0].size() + intermediates_[1].size() + groups_.size() + below_.size() +
                             fades_.size();
-    FrameTap::Done tapped = tap ? tap->encode(encoding.cmd.native(), *frame, *current, seconds) : nullptr;
+    FrameTap::Done tapped = tap ? tap->encode(encoding.cmd, *frame, *current, seconds) : nullptr;
     mark.encoded = traceNow();
     mark.fading = stats_.fading;
 
