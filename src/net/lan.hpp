@@ -9,6 +9,8 @@ namespace azl {
 // This machine's IPv4 addresses on its LAN interfaces: up, not loopback, not a tunnel (utun, Tailscale's
 // 100.64.0.0/10), private or link-local; in interface order.
 std::vector<std::string> lanAddresses();
+// Every numeric address, IPv4 and IPv6, of every interface of this machine.
+std::vector<std::string> interfaceAddresses();
 // The machine's Bonjour name, "<host>.local".
 std::string bonjourName();
 

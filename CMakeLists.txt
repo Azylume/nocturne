@@ -133,6 +133,7 @@ add_library(nocturne_protocol STATIC
   src/document/mapping.cpp
   src/document/cues.cpp
   src/document/lineup.cpp
+  src/net/lan.cpp
   src/net/socket_compat.cpp
   src/document/wall_clock.cpp
   src/document/modulation.cpp
@@ -164,7 +165,6 @@ if(WIN32)
 else()
   target_sources(nocturne_protocol PRIVATE
     src/document/composition_file_posix.cpp
-    src/net/lan.cpp
     src/net/pairing.cpp
     src/protocol/bundle_push.cpp
     src/supervisor/crash_guard.cpp
