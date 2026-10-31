@@ -78,7 +78,7 @@ MainSync::MainSync(DocumentServer& document, Engine& engine, MediaLibrary& libra
                    uint16_t clockPort, bool fresh)
     : document_(document), engine_(engine), library_(library), name_(std::move(name)), clockPort_(clockPort),
       fresh_(fresh),
-      files_(dispatch_queue_create("nocturne.sync.files", DISPATCH_QUEUE_SERIAL)), thread_([this] { run(); })
+      files_("nocturne.sync.files"), thread_([this] { run(); })
 {
 }
 
@@ -90,7 +90,7 @@ MainSync::~MainSync()
         stop_.notify_all();
     }
     thread_.join();
-    dispatch_sync(files_, ^{});
+    files_.flush();
 }
 
 size_t MainSync::nodes() const
@@ -129,7 +129,7 @@ void MainSync::fetch(const Message& message, const DocumentServer::Sink& reply)
     const uint64_t size = std::min(message.value("size", kMaxChunk), kMaxChunk);
     MediaLibrary* library = &library_;
     DocumentServer::Sink sink = reply;
-    dispatch_async(files_, ^{
+    files_.async([hash, offset, size, library, sink] {
         Message chunk = {{"type", "node"}, {"op", "chunk"}, {"hash", hash}, {"offset", offset}};
         const std::optional<MediaEntry> entry = library->find(hash);
         std::ifstream in;
@@ -211,7 +211,7 @@ struct NodeSync::Session {
 NodeSync::NodeSync(DocumentServer& document, Engine& engine, MediaLibrary& library, Clock now, Locate locate,
                    ConnectClock clock, bool fetch)
     : document_(document), engine_(engine), library_(library), now_(std::move(now)), locate_(std::move(locate)),
-      connectClock_(std::move(clock)), fetch_(fetch), files_(dispatch_queue_create("nocturne.sync.verify", DISPATCH_QUEUE_SERIAL))
+      connectClock_(std::move(clock)), fetch_(fetch), files_("nocturne.sync.verify")
 {
     document_.setReadOnly(readOnlyReason(""), kNodeOpen);
     thread_ = std::thread([this] { run(); });
@@ -225,7 +225,7 @@ NodeSync::~NodeSync()
         wake_.notify_all();
     }
     thread_.join();
-    dispatch_sync(files_, ^{});
+    files_.flush();
 }
 
 NodeStatus NodeSync::status() const
@@ -544,7 +544,7 @@ void NodeSync::abortFetch()
 // Hashes the copy off the connection's queue: a gigabyte takes seconds.
 void NodeSync::verify(std::string hash, std::filesystem::path part, std::filesystem::path file)
 {
-    dispatch_async(files_, ^{
+    files_.async([this, hash, part, file] {
         bool ok = false;
         std::error_code ec;
         std::filesystem::rename(part, file, ec);
