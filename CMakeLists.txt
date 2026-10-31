@@ -494,6 +494,7 @@ add_library(nocturne_engine STATIC
   src/output/recorder.mm
   src/output/return_video_service.cpp
   src/output/ycbcr_converter.mm
+  src/output/ycbcr_pass.cpp
   src/platform/mac_displays.mm
   src/platform/thermal.mm
 )
