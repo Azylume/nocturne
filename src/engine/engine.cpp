@@ -1339,7 +1339,7 @@ std::vector<uint32_t> Engine::bakeInputs(const Draw& draw, size_t prefix, float 
             const uint32_t bypassed = effect.bypass;
             put(&bypassed, sizeof(bypassed));
             for (size_t side = 0; side < stage.effect->sidePasses.size(); ++side) {
-                const MTL::Texture* target = gpu::native(sides_.output(draw.layer, effect.id, side));
+                const gpu::NativeTexture target = gpu::native(sides_.output(draw.layer, effect.id, side));
                 put(&target, sizeof(target));
             }
         }
