@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace azl {
@@ -65,11 +66,13 @@ public:
     virtual void onDevicesChange(std::function<void()> changed) = 0;
 };
 
-// Captures one CoreAudio input device, or a process tap of the system's or one app's audio (macOS 14.2+), into an
-// AudioAnalysis. The device is chosen by UID or name; when it (or the app) is missing or disappears the default input
-// runs instead, and the choice is taken back when it returns. A watchdog
-// restarts a device whose callbacks stop or whose sample rate changes. The audio callback only mixes the chosen
-// channels to mono and pushes them into the analysis; device changes run on a private serial queue.
+// Captures one input device, or a tap of the system's or one app's audio, into an AudioAnalysis: CoreAudio and process
+// taps (macOS 14.2+) on macOS, WASAPI shared mode and process loopback (Windows 10 2004+) on Windows, where system
+// audio leaves out this process and its children and falls back to the default output's loopback. The device is
+// chosen by UID or name; when it (or the app) is missing or disappears the default input runs instead, and the choice
+// is taken back when it returns. A watchdog restarts a device whose callbacks stop or whose sample rate changes. The
+// audio callback only mixes the chosen channels to mono and pushes them into the analysis; device changes run on a
+// private serial queue.
 class AudioInput : public AudioSource {
 public:
     explicit AudioInput(AudioAnalysis& analysis);
@@ -82,7 +85,8 @@ public:
     // Processes with audio, for per-app taps.
     static std::vector<AudioAppInfo> apps();
     // The microphone permission of this process. An AudioInput asks for it when it was never decided and an input
-    // other than "off" is wanted; the answer is reported through Changed.
+    // other than "off" is wanted; the answer is reported through Changed. On Windows it is the privacy setting for
+    // desktop apps' microphone access, which is never asked for.
     static std::string permission();
     // NOCTURNE_NO_AUDIO_INPUT=1: every input is "off" and the microphone permission is never asked for.
     static bool disabled();
@@ -106,9 +110,12 @@ private:
 AudioChoice startingInput(const AudioChoice& commandLine, const std::optional<ResumeAudio>& saved,
                           const std::vector<AudioDeviceInfo>& devices, std::string& log);
 
+// True when `text` contains `part`, ignoring ASCII case.
+bool containsIgnoringCase(std::string_view text, std::string_view part);
+
 // The process becomes responsible for itself, so macOS asks about and remembers microphone access for this binary
 // rather than for the terminal, SSH session or launchd job that started it. Re-executes the binary in place once;
-// returns only when that is not possible or already done.
+// returns only when that is not possible or already done. Does nothing off macOS.
 void becomeResponsibleProcess(char** argv);
 
 } // namespace azl

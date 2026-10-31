@@ -7,13 +7,14 @@
 
 namespace azl {
 
-// Opus through the system's own codec (AudioToolbox): mono, 48 kHz, 20 ms packets.
+// Opus, mono, 48 kHz, 20 ms packets: the system's own codec (AudioToolbox) on macOS, libopus elsewhere. Both write
+// plain Opus packets, so either side decodes the other's.
 inline constexpr double kOpusRate = 48000.0;
 inline constexpr size_t kOpusFrameSamples = 960;
 
 class OpusStreamEncoder {
 public:
-    // Takes mono samples at `inputRate` and resamples them. Throws when the system cannot encode Opus.
+    // Takes mono samples at `inputRate` and resamples them. Throws when the codec cannot be opened.
     OpusStreamEncoder(double inputRate, int bitrate);
     ~OpusStreamEncoder();
     OpusStreamEncoder(const OpusStreamEncoder&) = delete;
@@ -30,7 +31,7 @@ private:
 
 class OpusStreamDecoder {
 public:
-    // Throws when the system cannot decode Opus.
+    // Throws when the codec cannot be opened.
     OpusStreamDecoder();
     ~OpusStreamDecoder();
     OpusStreamDecoder(const OpusStreamDecoder&) = delete;

@@ -29,31 +29,6 @@ struct AudioRig {
     azl::AudioService service;
 };
 
-bool realAudio()
-{
-    const char* value = std::getenv("NOCTURNE_REAL_AUDIO");
-    return value && std::string(value) == "1";
-}
-
-azl::AudioInputStatus selectedInput(azl::AudioInput& input, const std::string& device)
-{
-    std::mutex mutex;
-    std::condition_variable changed;
-    bool selected = false;
-    input.onChange([&](const azl::AudioInputStatus&, const std::string& event) {
-        std::lock_guard lock(mutex);
-        selected = selected || event.starts_with("select");
-        changed.notify_all();
-    });
-    input.select(device);
-    std::unique_lock lock(mutex);
-    const bool done = changed.wait_for(lock, std::chrono::seconds(5), [&] { return selected; });
-    lock.unlock();
-    input.onChange(nullptr);
-    REQUIRE(done);
-    return input.status();
-}
-
 Message audio(Client& client, Message request)
 {
     request["type"] = "audio";
@@ -160,56 +135,6 @@ TEST_CASE("the audio log appends the analysis and settings changes as JSON lines
     for (const Message& m : lines) {
         CHECK(m.contains("wall"));
         CHECK_FALSE(m.contains("spectrum"));
-    }
-}
-
-TEST_CASE("an audio input never crashes on a missing device: it falls back to the default input or runs on nothing" *
-          doctest::skip(!realAudio()))
-{
-    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
-    azl::AudioInput input(analysis);
-    std::mutex mutex;
-    std::condition_variable changed;
-    std::vector<std::string> events;
-    input.onChange([&](const azl::AudioInputStatus&, const std::string& event) {
-        std::lock_guard lock(mutex);
-        events.push_back(event);
-        changed.notify_all();
-    });
-    const auto selected = [&](const std::string& device) {
-        std::unique_lock lock(mutex);
-        events.clear();
-        lock.unlock();
-        input.select(device);
-        lock.lock();
-        REQUIRE(changed.wait_for(lock, std::chrono::seconds(5), [&] {
-            return std::any_of(events.begin(), events.end(), [](const std::string& e) { return e.starts_with("select"); });
-        }));
-        return input.status();
-    };
-
-    const azl::AudioInputStatus missing = selected("No Such Device 1234");
-    CHECK(missing.requested == "No Such Device 1234");
-    CHECK((missing.state == "fallback" || missing.state == "none"));
-    CHECK(selected("off").state == "off");
-    const azl::AudioInputStatus fallback = selected("");
-    CHECK((fallback.state == "running" || fallback.state == "none"));
-    for (const azl::AudioDeviceInfo& d : azl::AudioInput::devices())
-        CHECK(d.channels > 0);
-    input.onChange(nullptr);
-}
-
-TEST_CASE("NOCTURNE_NO_AUDIO_INPUT keeps every audio input off, whatever is selected" *
-          doctest::skip(realAudio()))
-{
-    REQUIRE(azl::AudioInput::disabled());
-    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
-    azl::AudioInput input(analysis);
-    for (const std::string device : {"", "No Such Device 1234", "system"}) {
-        const azl::AudioInputStatus status = selectedInput(input, device);
-        CHECK(status.requested == "off");
-        CHECK(status.state == "off");
-        CHECK(status.uid.empty());
     }
 }
 

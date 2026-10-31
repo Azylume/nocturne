@@ -2,6 +2,7 @@
 #include "audio/return_audio.hpp"
 #include "net/websocket.hpp"
 #include "test_client.hpp"
+#include "tone.hpp"
 
 #include <atomic>
 #include <cmath>
@@ -11,36 +12,6 @@
 namespace {
 
 using Clock = std::chrono::steady_clock;
-
-constexpr double kTone = 440.0;
-
-std::vector<float> tone(double rate, double seconds, double amplitude = 0.5)
-{
-    std::vector<float> samples(size_t(rate * seconds));
-    for (size_t i = 0; i < samples.size(); ++i)
-        samples[i] = float(amplitude * std::sin(2.0 * M_PI * kTone * double(i) / rate));
-    return samples;
-}
-
-struct Heard {
-    double rms = 0.0;
-    double hz = 0.0;
-};
-
-// The level and the frequency, from the zero crossings, of 48 kHz samples after the first 0.1 s.
-Heard hear(const std::vector<float>& samples)
-{
-    const size_t skip = size_t(0.1 * azl::kOpusRate);
-    REQUIRE(samples.size() > skip + 4800);
-    double power = 0.0;
-    size_t crossings = 0;
-    for (size_t i = skip; i < samples.size(); ++i) {
-        power += double(samples[i]) * samples[i];
-        crossings += (samples[i - 1] < 0.0f) != (samples[i] < 0.0f);
-    }
-    const double seconds = double(samples.size() - skip) / azl::kOpusRate;
-    return {std::sqrt(power / double(samples.size() - skip)), double(crossings) / 2.0 / seconds};
-}
 
 // Every "listen" message the engine sends one in-process client.
 class Listener {
@@ -139,30 +110,6 @@ bool waitFor(const std::function<bool()>& done, double seconds = 10.0)
 }
 
 } // namespace
-
-TEST_CASE("return audio: the system's Opus codec carries a tone through at 44.1 and 48 kHz, chunked as an input")
-{
-    for (const double rate : {44100.0, 48000.0}) {
-        INFO(rate << " Hz in");
-        azl::OpusStreamEncoder encoder(rate, azl::ReturnAudio::kBitrate);
-        azl::OpusStreamDecoder decoder;
-        const std::vector<float> in = tone(rate, 2.0);
-        std::vector<float> out;
-        size_t packets = 0, bytes = 0;
-        for (size_t at = 0; at < in.size(); at += 441)
-            for (const auto& packet : encoder.encode(in.data() + at, std::min<size_t>(441, in.size() - at))) {
-                ++packets;
-                bytes += packet.size();
-                CHECK(decoder.decode(packet.data(), packet.size(), out));
-            }
-        CHECK(packets >= 95);
-        CHECK(packets <= 100);
-        CHECK(double(bytes) * 8.0 / 2.0 <= azl::ReturnAudio::kBitrate * 1.15);
-        const Heard heard = hear(out);
-        CHECK(heard.hz == doctest::Approx(kTone).epsilon(0.01));
-        CHECK(heard.rms == doctest::Approx(0.5 / std::sqrt(2.0)).epsilon(0.1));
-    }
-}
 
 TEST_CASE("return audio: a listening Director decodes the tone, within the bitrate bound; no listener, no audio bytes")
 {
