@@ -30,7 +30,12 @@ ParamDef options(ParamDef param, std::vector<std::string> names)
     return choice(std::move(param));
 }
 
-const std::vector<std::string> kOffOn{"Off", "On"};
+// A function, not a namespace-scope vector: other files define effects from their static initialisers too.
+const std::vector<std::string>& offOn()
+{
+    static const std::vector<std::string> values{"Off", "On"};
+    return values;
+}
 
 ParamDef in(const ParamUnit& unit, ParamDef param)
 {
@@ -699,7 +704,7 @@ void slicerDerive(const float* p, const float*, float, float beat, float* out)
 
 ParamDef style(std::string name, double on = 1.0)
 {
-    ParamDef param = options({std::move(name), 0.0, 1.0, on}, kOffOn);
+    ParamDef param = options({std::move(name), 0.0, 1.0, on}, offOn());
     param.group = "Styles";
     return param;
 }
@@ -745,8 +750,8 @@ EffectDef slicer()
                    in(units::whole, options({"movement", 0.0, 3.0, 3.0}, {"Still", "Slide", "Bounce", "Drift"})),
                    in(units::perSecond, {"speed", -2.0, 2.0, 0.1, ParamDrive::Phase}),
                    percent({"size", 0.05, 0.6, 0.25}),
-                   options({"corners", 0.0, 1.0, 0.0}, kOffOn),
-                   options({"links", 0.0, 1.0, 1.0}, kOffOn)},
+                   options({"corners", 0.0, 1.0, 0.0}, offOn()),
+                   options({"links", 0.0, 1.0, 1.0}, offOn())},
                   false,
                   R"(
     vec4 c = samplePixel(t, px);
@@ -1197,10 +1202,10 @@ EffectDef classicColorize()
              classic("colorBlue", "Color Blue", 0.0),
              classic("colorAlpha", "Color Alpha", 1.0),
              options(classic("mode", "Mode", 0.0), {"Color", "Palette"}),
-             options(classic("weighted", "Weighted", 1.0), kOffOn),
-             options(classic("greysKeep", "Keep", 0.0), kOffOn),
+             options(classic("weighted", "Weighted", 1.0), offOn()),
+             options(classic("greysKeep", "Keep", 0.0), offOn()),
              classic("greysTolerance", "Tolerance", 0.3),
-             options(classic("invert", "Invert", 0.0), kOffOn),
+             options(classic("invert", "Invert", 0.0), offOn()),
              classic("contrast", "Contrast", 0.2),
              options(classic("blendMode", "Blend Mode", 0.0), {"Alpha", "Add"})},
             false,
@@ -1251,7 +1256,7 @@ ParamDef classicBlend()
 
 ParamDef classicFlag(std::string name, std::string label, double defaultValue = 0.0)
 {
-    return classicChoice(std::move(name), std::move(label), defaultValue, kOffOn);
+    return classicChoice(std::move(name), std::move(label), defaultValue, offOn());
 }
 
 // Fills what the effect leaves transparent with black when blackBG (p[i]) is on. Expects the result in `o`.
