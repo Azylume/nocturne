@@ -3,6 +3,7 @@
 #include "engine/frame_ring.hpp"
 #include "engine/isf_compiler.hpp"
 #include "engine/metal_util.hpp"
+#include "engine/shader_cross.hpp"
 #include "engine/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
@@ -126,6 +127,11 @@ void derive(const PlannedPass& pass, std::vector<float>& values, const std::vect
         }
         offset += effect.params.size();
     }
+}
+
+std::string passMsl(const PlannedPass& pass)
+{
+    return mslSource(fullscreenEntries(pass.glsl, passEntries(pass)));
 }
 
 std::string shaderType(const Composition& composition, const Effect& effect)
@@ -452,35 +458,30 @@ std::vector<CompiledPass> ChainCompiler::compilePasses(SourceKind source, const 
 std::vector<NS::SharedPtr<MTL::RenderPipelineState>> ChainCompiler::pipelines(const PlannedPass& pass)
 {
     const MTL::PixelFormat format = targetFormat(pass);
-    const std::string key = pass.metal + "|" + std::to_string(format);
+    const std::string key = pass.glsl + "|" + std::to_string(format);
     if (auto it = pipelines_.find(key); it != pipelines_.end())
         return it->second;
 
     AZL_ZONE("compile pipelines");
     const auto start = std::chrono::steady_clock::now();
-    auto library = makeLibrary(device_.get(), pass.metal.c_str());
+    const std::vector<std::string> names = passEntries(pass);
+    auto library = makeLibrary(device_.get(), passMsl(pass).c_str());
+    const std::string vertex = mslFunction("fullscreen");
     std::vector<NS::SharedPtr<MTL::RenderPipelineState>> states;
     size_t archived = 0;
-    auto make = [&](const char* fragment, Blending blending) {
+    auto make = [&](const std::string& fragment, Blending blending) {
         bool hit = false;
-        auto state = makePipeline(device_.get(), library.get(), "fullscreen", fragment, format, blending, archive_.get(),
-                                  &hit);
+        auto state = makePipeline(device_.get(), library.get(), vertex.c_str(), mslFunction(fragment).c_str(), format,
+                                  blending, archive_.get(), &hit);
         archived += hit;
         return state;
     };
-    if (!pass.intoComposition) {
-        states.push_back(make("passMain", Blending::None));
-    } else {
-        std::vector<std::pair<const char*, const char*>> entries{{"passMain", "passBlend"}};
-        if (pass.source != SourceKind::YuvFade)
-            entries.push_back({"fadeMain", "fadeBlend"});
-        if (singlePassFade(pass))
-            entries.push_back({"fadeSingleMain", "fadeSingleBlend"});
-        for (const auto& [main, blend] : entries) {
-            for (Blending blending : kFixedFunction)
-                states.push_back(make(main, blending));
-            states.push_back(make(blend, Blending::None));
-        }
+    if (!pass.intoComposition)
+        states.push_back(make(names.front(), Blending::None));
+    for (size_t i = 0; pass.intoComposition && i + 1 < names.size(); i += 2) {
+        for (Blending blending : kFixedFunction)
+            states.push_back(make(names[i], blending));
+        states.push_back(make(names[i + 1], Blending::None));
     }
     const auto micros = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());

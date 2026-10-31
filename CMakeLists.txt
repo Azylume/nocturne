@@ -101,7 +101,7 @@ endforeach()
 add_library(nocturne_shader_cross STATIC src/engine/shader_cross.cpp src/engine/isf_compiler.cpp)
 target_include_directories(nocturne_shader_cross PUBLIC src)
 target_link_libraries(nocturne_shader_cross PUBLIC nocturne_protocol PRIVATE glslang::glslang
-  glslang::glslang-default-resource-limits spirv-cross-msl)
+  glslang::glslang-default-resource-limits spirv-cross-msl spirv-cross-glsl)
 
 file(GLOB isf_files CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/isf/*/*.fs)
 list(SORT isf_files)
@@ -137,6 +137,7 @@ add_library(nocturne_protocol STATIC
   src/document/text.cpp
   src/document/palette.cpp
   src/effects/chain_planner.cpp
+  src/effects/shader_layout.cpp
   src/effects/classic_presets.cpp
   src/effects/colour.cpp
   src/effects/effect_registry.cpp

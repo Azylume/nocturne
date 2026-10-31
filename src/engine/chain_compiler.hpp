@@ -55,6 +55,10 @@ EffectList effectList(const std::vector<Effect>& effects);
 // A layer holding a text clip compiles its chains for text pictures too.
 bool holdsText(const Layer& layer);
 
+// The pass's entry points and the fullscreen vertex shader as one Metal source, each function named
+// mslFunction(entry). Throws with the compiler's error when the GLSL does not compile. Any thread.
+std::string passMsl(const PlannedPass& pass);
+
 // The stages' parameter values in the order the generated shader reads them.
 void paramsOf(const PlannedPass& pass, const EffectList& effects, std::vector<float>& values);
 // A bypassed effect's dry/wet, its last parameter, is 0 whatever drives it.
