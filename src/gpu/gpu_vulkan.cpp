@@ -145,6 +145,7 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     VkPhysicalDeviceMemoryProperties memory{};
     uint32_t family = 0;
     bool timestamps = false;
+    bool presentWait = false;
     VkDeviceSize uniformAlign = 256;
     PFN_vkCmdPushDescriptorSetKHR pushDescriptorSet = nullptr;
     PFN_vkGetCalibratedTimestampsKHR calibratedTimestamps = nullptr;
@@ -704,23 +705,37 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
     if (calibration)
         extensions.push_back(calibration);
 
-    VkPhysicalDeviceVulkan13Features has13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDevicePresentWaitFeaturesKHR hasWait{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR};
+    VkPhysicalDevicePresentIdFeaturesKHR hasId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR, &hasWait};
+    VkPhysicalDeviceVulkan13Features has13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, &hasId};
     VkPhysicalDeviceVulkan12Features has12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &has13};
     VkPhysicalDeviceFeatures2 has{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &has12};
     vkGetPhysicalDeviceFeatures2(d.physical, &has);
     if (!has13.dynamicRendering || !has13.synchronization2 || !has12.timelineSemaphore || !has12.scalarBlockLayout ||
-        !has.features.textureCompressionBC)
+        !has12.hostQueryReset || !has.features.textureCompressionBC)
         return false;
+    // Lets an output's present thread wait for a frame to reach the display (vsync phase).
+    d.presentWait = hasExtension(available, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+                    hasExtension(available, VK_KHR_PRESENT_WAIT_EXTENSION_NAME) && hasId.presentId &&
+                    hasWait.presentWait;
+    if (d.presentWait) {
+        extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+    }
 
-    VkPhysicalDeviceVulkan13Features use13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDevicePresentWaitFeaturesKHR useWait{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR};
+    useWait.presentWait = VK_TRUE;
+    VkPhysicalDevicePresentIdFeaturesKHR useId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR, &useWait};
+    useId.presentId = VK_TRUE;
+    VkPhysicalDeviceVulkan13Features use13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+                                           d.presentWait ? &useId : nullptr};
     use13.dynamicRendering = VK_TRUE;
     use13.synchronization2 = VK_TRUE;
-    use13.pipelineCreationCacheControl = has13.pipelineCreationCacheControl;
     use13.robustImageAccess = has13.robustImageAccess;
     VkPhysicalDeviceVulkan12Features use12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &use13};
     use12.timelineSemaphore = VK_TRUE;
     use12.scalarBlockLayout = VK_TRUE;
-    use12.hostQueryReset = has12.hostQueryReset;
+    use12.hostQueryReset = VK_TRUE;
     use12.uniformBufferStandardLayout = has12.uniformBufferStandardLayout;
     VkPhysicalDeviceFeatures2 use{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &use12};
     use.features.textureCompressionBC = VK_TRUE;
@@ -1843,6 +1858,11 @@ void signalSemaphore(CommandBuffer& cmd, VkSemaphore semaphore)
 {
     cmd.native()->signals.push_back(
         {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, nullptr, semaphore, 0, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0});
+}
+
+bool presentWait(const Device& device)
+{
+    return device.native()->presentWait;
 }
 
 VkResult present(const Queue& queue, const VkPresentInfoKHR& info)
