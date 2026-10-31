@@ -110,7 +110,9 @@ public:
 private:
     struct Target {
         std::string source;
-        std::vector<NS::SharedPtr<MTL::Texture>> textures;
+        std::vector<gpu::Texture> textures;
+        // The JPEG path's picture as the CPU reads it.
+        gpu::Readback readback;
         std::vector<std::shared_ptr<std::remove_pointer_t<IOSurfaceRef>>> surfaces;
         size_t next = 0;
         bool announced = false;
@@ -167,7 +169,7 @@ private:
     Engine& engine_;
     std::atomic<MediaLibrary*> library_{nullptr};
     std::atomic<bool> clipsOn_{false};
-    NS::SharedPtr<MTL::CommandQueue> queue_;
+    gpu::Queue queue_;
     profile::GpuTimeline gpu_;
     ScreenPainter painter_;
     std::unique_ptr<ClipEffectsPreview> effects_;

@@ -121,7 +121,7 @@ bool previewScreen(const std::string& source, const Composition& composition, Sc
 PreviewService::PreviewService(DocumentServer& document, Engine& engine)
     : document_(document),
       engine_(engine),
-      queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
+      queue_(engine.gpuDevice().makeQueue()),
       gpu_(engine.device(), "previews", ""),
       painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
       thread_([this] {
@@ -248,23 +248,27 @@ PreviewService::Target PreviewService::makeTarget(const std::string& source, con
         target.strip = stripKey(*hash, watch.width, watch.height);
         target.cell = watch.cell;
     }
+    if (!watch.surface) {
+        if (!hash) {
+            target.textures.push_back(engine_.gpuDevice().makeTexture(
+                {.format = kFrameFormat, .width = watch.width, .height = watch.height,
+                 .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled}));
+            target.readback = gpu::Readback(engine_.gpuDevice(), target.textures.back());
+        }
+        return target;
+    }
     MTL::Device* device = engine_.device();
     auto* desc =
         MTL::TextureDescriptor::texture2DDescriptor(gpu::metalFormat(kFrameFormat), watch.width, watch.height, false);
     desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     desc->setStorageMode(device->hasUnifiedMemory() ? MTL::StorageModeShared : MTL::StorageModeManaged);
-    for (size_t i = 0; i < (watch.surface ? kSurfaceRing : 1); ++i) {
-        if (!watch.surface) {
-            if (!hash)
-                target.textures.push_back(NS::TransferPtr(device->newTexture(desc)));
-            continue;
-        }
+    for (size_t i = 0; i < kSurfaceRing; ++i) {
         IOSurfaceRef surface = globalSurface(watch.width, watch.height);
         if (!surface)
             break;
         target.surfaces.emplace_back(surface, CFRelease);
         if (!hash)
-            target.textures.push_back(NS::TransferPtr(device->newTexture(desc, surface, 0)));
+            target.textures.push_back(gpu::Texture::adopt(device->newTexture(desc, surface, 0)));
     }
     return target;
 }
@@ -340,8 +344,8 @@ std::map<std::string, size_t> PreviewService::sizes()
                 surfaceBytes += IOSurfaceGetAllocSize(surface.get());
             textures += target.textures.size();
             for (const auto& texture : target.textures)
-                if (!texture->iosurface())
-                    textureBytes += texture->allocatedSize();
+                if (!texture.native()->iosurface())
+                    textureBytes += texture.allocatedBytes();
         }
     size_t pictures = 0, pictureBytes = 0, jpegBytes = 0;
     for (const auto& [key, strip] : strips_) {
@@ -429,34 +433,33 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
         return connected;
 
     AZL_ZONE("paint previews");
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    MTL::CommandBuffer* cmd = queue_->commandBuffer();
     std::vector<Target*> painted;
-    for (Target& target : watch.targets) {
-        Screen screen;
-        if (target.textures.empty() || !previewScreen(target.source, *composition, screen))
-            continue;
-        MTL::Texture* texture = target.textures[target.next].get();
-        if (watch.surface)
-            markSurface(target.surfaces[target.next].get(), -1);
-        painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
-        if (texture->storageMode() == MTL::StorageModeManaged) {
-            MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
-            blit->synchronizeResource(texture);
-            blit->endEncoding();
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue_.commandBuffer();
+        for (Target& target : watch.targets) {
+            Screen screen;
+            if (target.textures.empty() || !previewScreen(target.source, *composition, screen))
+                continue;
+            const gpu::Texture& texture = target.textures[target.next];
+            if (watch.surface)
+                markSurface(target.surfaces[target.next].get(), -1);
+            painter_.encode(cmd.native(), frame.get(), ScreenView{screen}, texture.native());
+            if (watch.surface)
+                cmd.synchronize(texture);
+            else
+                target.readback.encode(cmd);
+            painted.push_back(&target);
         }
-        painted.push_back(&target);
+        if (painted.empty())
+            return connected;
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        AZL_GPU_COLLECT(gpu_);
+        paintStats_.pictures += painted.size();
+        const gpu::Completion done = cmd.completion();
+        paintStats_.gpuMicros += uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
     }
-    if (painted.empty()) {
-        pool->release();
-        return connected;
-    }
-    cmd->commit();
-    cmd->waitUntilCompleted();
-    AZL_GPU_COLLECT(gpu_);
-    paintStats_.pictures += painted.size();
-    paintStats_.gpuMicros += uint64_t(std::max(0.0, cmd->GPUEndTime() - cmd->GPUStartTime()) * 1e6);
-    pool->release();
 
     for (Target* target : painted) {
         Message message = {{"type", "preview"}, {"op", "frame"}, {"source", target->source}, {"frame", frame->index}};
@@ -477,13 +480,10 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             markSurface(target->surfaces[target->next].get(), int64_t(frame->index));
             message["surface"] = target->next;
         } else {
-            const size_t bytesPerRow = size_t(watch.width) * 4;
-            std::vector<uint8_t> pixels(bytesPerRow * watch.height);
-            target->textures[target->next]->getBytes(pixels.data(), bytesPerRow,
-                                                     MTL::Region(0, 0, watch.width, watch.height), 0);
+            const gpu::Readback& pixels = target->readback;
             message["width"] = watch.width;
             message["height"] = watch.height;
-            message["jpeg"] = Message::binary(encodeJpeg(pixels.data(), watch.width, watch.height, bytesPerRow));
+            message["jpeg"] = Message::binary(encodeJpeg(pixels.data(), watch.width, watch.height, pixels.rowBytes()));
         }
         connected = document_.send(client, message) && connected;
         target->next = (target->next + 1) % target->textures.size();
@@ -562,7 +562,7 @@ bool PreviewService::drawEffects(const Target& target, const Strip& strip, size_
     picture = strip.pictures[index];
     const TransportState transport = engine_.transport();
     const std::string slot = std::to_string(target.cell->layer) + "/" + std::to_string(target.cell->column);
-    return effects_->draw(queue_.get(), composition, *clip, slot, picture, strip.width, strip.height, transport.time,
+    return effects_->draw(queue_.native(), composition, *clip, slot, picture, strip.width, strip.height, transport.time,
                           transport.beat, engine_.audio());
 }
 
