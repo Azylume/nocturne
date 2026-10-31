@@ -28,6 +28,11 @@ std::filesystem::path appLogsFolder()
     return home() / "Library/Logs/Nocturne";
 }
 
+std::filesystem::path videosFolder()
+{
+    return home() / "Movies";
+}
+
 std::filesystem::path executablePath()
 {
     uint32_t size = 0;

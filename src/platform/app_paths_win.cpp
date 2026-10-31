@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <shlobj.h>
+
 #include <string>
 
 namespace azl {
@@ -28,6 +30,16 @@ std::filesystem::path appDataFolder()
 std::filesystem::path appLogsFolder()
 {
     return appDataFolder() / "Logs";
+}
+
+std::filesystem::path videosFolder()
+{
+    PWSTR path = nullptr;
+    std::filesystem::path folder = std::filesystem::temp_directory_path();
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos, KF_FLAG_DEFAULT, nullptr, &path)))
+        folder = path;
+    CoTaskMemFree(path);
+    return folder;
 }
 
 std::filesystem::path executablePath()

@@ -1,0 +1,5 @@
+# Test cases the Windows CI job skips on top of realtime-tests.txt: they store a real entry in the Credential Manager,
+# which a session without a user profile's credential store (a CI runner, an SSH session) refuses. They run on a
+# Windows machine's desktop session. tools/ci-tests.sh reads this list on Windows; a new entry needs a reviewer's OK.
+*a credential stored in the Credential Manager reads back for its account only*
+*the API key comes from the Credential Manager or the environment, never from a file on Windows*

@@ -33,6 +33,9 @@ build/nocturne --offscreen                      # a smoke run that shows no wind
 - The suite renders on the GPU and needs a logged-in macOS session. Some cases are GPU timing reports, not checks.
 - Optional builds: `-DNOCTURNE_SANITIZE=ON` (ASan + UBSan), `-DNOCTURNE_TRACY=ON` (profiler), fuzzing per
   `fuzz/README.md` (a new parser gets a harness).
+- Windows (port in progress): the `cmd.exe` commands in CONTRIBUTING.md (VS x64 environment, clang-cl, Ninja,
+  vcpkg), then `build\nocturne_tests.exe --test-case="*HAP*"` and `tools\make-installer.ps1`. CI's `windows` job runs
+  the engine suite without `.github/windows-ci-tests.txt` and builds the installer.
 - **In a Linux or cloud sandbox nothing here builds or runs** (Metal, AppKit, AVFoundation). You can still edit code,
   docs, ISF `.fs` files and scripts. Say in the PR that it was **not built or tested**, and what a human should run.
 
@@ -70,7 +73,8 @@ build/nocturne --offscreen                      # a smoke run that shows no wind
 - Touching the trust model in `SECURITY.md`: pairing token, `Origin` refusal, pre-pairing limits, path confinement,
   bundle signature checks.
 - A new built-in C++/Metal effect. New effects should be ISF shaders (direction of issue #34).
-- Adding a line to `.github/realtime-tests.txt` (needs a reviewer's OK), or changing what an ADR decided.
+- Adding a line to `.github/realtime-tests.txt` or `.github/windows-ci-tests.txt` (needs a reviewer's OK), or changing
+  what an ADR decided.
 - Pushing a branch or opening a PR when your human did not ask for it; force-pushing even your own branch (use
   `--force-with-lease`).
 
@@ -154,6 +158,7 @@ Prose here is the weakest guard; a check that fails is stronger. Know which rule
 |---|---|
 | Every commit signed off | DCO workflow (`.github/workflows/dco.yml`), every PR |
 | Builds, engine and UI suites pass on arm64 | CI (`.github/workflows/ci.yml`); skipped for docs-only changes |
+| Builds and the engine suite pass on Windows; the installer builds | CI `windows` job; skipped for docs-only changes |
 | Both slices in every binary | CI `universal` job, on `main` and nightly only, not on PRs |
 | A curated ISF effect or generator has a test entry | "every built-in ISF shader loads" (`tests/isf_engine_test.cpp`) |
 | An ISF effect's golden is not the plain card | the same file's golden test (2% of pixels must differ) |

@@ -292,17 +292,9 @@ if(WIN32)
   target_link_libraries(nocturne_media PUBLIC d2d1 dwrite ole32 windowscodecs)
 endif()
 
-# Return video's packet rules; Apple adds its H.264 encoder below.
+# Return video's packet rules; its H.264 encoder and decoder are added with recording's encoder below.
 add_library(nocturne_return_video STATIC src/output/return_video.cpp)
 target_link_libraries(nocturne_return_video PUBLIC nocturne_protocol)
-
-# Return video's decoder off Apple; Apple's VideoToolbox encoder and decoder are added below.
-if(NOT APPLE)
-  target_sources(nocturne_return_video PRIVATE src/output/h264_decoder_ffmpeg.cpp)
-  target_include_directories(nocturne_return_video PRIVATE ${FFMPEG_INCLUDE_DIRS})
-  target_link_directories(nocturne_return_video PUBLIC ${FFMPEG_LIBRARY_DIRS})
-  target_link_libraries(nocturne_return_video PUBLIC ${FFMPEG_LIBRARIES})
-endif()
 
 # The protocol's WebSocket: Network.framework on Apple, plain sockets elsewhere.
 add_library(nocturne_net STATIC src/net/websocket_frames.cpp src/net/websocket_rules.cpp)
@@ -378,6 +370,21 @@ target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
 add_executable(nocturne_fake_engine tests/fake_engine.cpp)
 target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
 
+# Recording's settings, file naming, disk reserve, rollover and audio timing. Its encoder and return video's H.264
+# encoder and decoder are VideoToolbox and AVFoundation on Apple (added below), FFmpeg elsewhere (ADR 0016).
+add_library(nocturne_record STATIC src/output/recording.cpp)
+target_include_directories(nocturne_record PUBLIC src)
+target_link_libraries(nocturne_record PUBLIC nocturne_platform)
+if(NOT APPLE)
+  target_sources(nocturne_record PRIVATE src/output/movie_encoder_ffmpeg.cpp)
+  target_sources(nocturne_return_video PRIVATE src/output/h264_encoder_ffmpeg.cpp src/output/h264_decoder_ffmpeg.cpp)
+  foreach(target nocturne_record nocturne_return_video)
+    target_include_directories(${target} PUBLIC ${FFMPEG_INCLUDE_DIRS})
+    target_link_directories(${target} PUBLIC ${FFMPEG_LIBRARY_DIRS})
+    target_link_libraries(${target} PUBLIC ${FFMPEG_LIBRARIES})
+  endforeach()
+endif()
+
 add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
 target_link_libraries(nocturne_app_config PUBLIC nocturne_media nocturne_net)
 
@@ -415,9 +422,10 @@ add_subdirectory(src/ui)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp tests/record_ffmpeg_test.cpp
+    tests/return_video_encode_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues)
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues nocturne_record nocturne_return_video)
   if(WIN32)
     # Until the engine builds here, nocturne runs safe mode, --mic-check and --displays
     # (src/app/engine_missing_win.cpp).
@@ -497,6 +505,7 @@ target_link_libraries(nocturne_engine PUBLIC
   nocturne_gpu
   nocturne_engine_logic
   nocturne_media
+  nocturne_record
   nocturne_return_video
   nocturne_audio
   nocturne_shader_cross
