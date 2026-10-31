@@ -24,10 +24,11 @@
 
 #include "engine/fsr_upscaler.hpp"
 
-#include "engine/metal_util.hpp"
 #include "engine/shader_cross.hpp"
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace azl {
 
@@ -197,29 +198,41 @@ void main() {
 
 } // namespace
 
-FsrUpscaler::FsrUpscaler(MTL::Device* device, MTL::PixelFormat format)
+FsrUpscaler::FsrUpscaler(const gpu::Device& device, gpu::Format format)
 {
-    const auto library = makeLibrary(device, mslSource(fullscreenEntries(kSource, {"easu", "rcas"})).c_str());
-    easu_ = makePipeline(device, library.get(), mslFunction("fullscreen").c_str(), mslFunction("easu").c_str(), format);
-    rcas_ = makePipeline(device, library.get(), mslFunction("fullscreen").c_str(), mslFunction("rcas").c_str(), format);
+    std::string error;
+    const gpu::ShaderModule module =
+        device.makeShaderModule({.msl = mslSource(fullscreenEntries(kSource, {"easu", "rcas"}))}, &error);
+    if (!module)
+        throw std::runtime_error(error);
+    auto make = [&](const char* fragment) {
+        gpu::RenderPipeline pipeline =
+            device.makeRenderPipeline({module, mslFunction("fullscreen"), mslFunction(fragment), format}, {}, nullptr,
+                                      &error);
+        if (!pipeline)
+            throw std::runtime_error(error);
+        return pipeline;
+    };
+    easu_ = make("easu");
+    rcas_ = make("rcas");
 }
 
-void FsrUpscaler::encodeEasu(MTL::RenderCommandEncoder* enc, MTL::Texture* input, MTL::Texture* target) const
+void FsrUpscaler::encodeEasu(gpu::RenderPass& pass, const gpu::Texture& input, const gpu::Texture& target) const
 {
-    const float size[2] = {float(target->width()), float(target->height())};
-    enc->setRenderPipelineState(easu_.get());
-    enc->setFragmentTexture(input, 0);
-    enc->setFragmentBytes(size, sizeof(size), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    const float size[2] = {float(target.width()), float(target.height())};
+    pass.setPipeline(easu_);
+    pass.setTexture(0, input);
+    pass.setBytes(0, size, sizeof(size));
+    pass.draw(3);
 }
 
-void FsrUpscaler::encodeRcas(MTL::RenderCommandEncoder* enc, MTL::Texture* input) const
+void FsrUpscaler::encodeRcas(gpu::RenderPass& pass, const gpu::Texture& input) const
 {
     const float sharpness = std::exp2(-kSharpness);
-    enc->setRenderPipelineState(rcas_.get());
-    enc->setFragmentTexture(input, 0);
-    enc->setFragmentBytes(&sharpness, sizeof(sharpness), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    pass.setPipeline(rcas_);
+    pass.setTexture(0, input);
+    pass.setBytes(0, &sharpness, sizeof(sharpness));
+    pass.draw(3);
 }
 
 } // namespace azl
