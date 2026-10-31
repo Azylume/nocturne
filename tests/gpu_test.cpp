@@ -214,6 +214,41 @@ void main() { imageStore(target, ivec2(gl_GlobalInvocationID.xy), vec4(0.0, 1.0,
     CHECK(pixels[pixels.size() - 4] == 0);
 }
 
+// Information, not a gate: what encoding and committing a frame costs the render thread.
+TEST_CASE("CPU time to encode and commit a frame of eight passes")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    const gpu::RenderPipeline pipeline = device.makeRenderPipeline({device.makeShaderModule(fullscreen(kTint, {"tint"})),
+                                                                    gpu::entryPoint("fullscreen"),
+                                                                    gpu::entryPoint("tint"), gpu::Format::BGRA8});
+    REQUIRE(pipeline);
+    const gpu::TextureDesc desc{.width = 64, .height = 64, .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled};
+    const std::array<gpu::Texture, 2> targets{device.makeTexture(desc), device.makeTexture(desc)};
+    const std::array<float, 4> tint{0.5f, 0.5f, 0.5f, 1.0f};
+    constexpr int kFrames = 500;
+    std::chrono::steady_clock::duration encoding{};
+    for (int frame = 0; frame < kFrames; ++frame) {
+        gpu::Scope scope;
+        const auto start = std::chrono::steady_clock::now();
+        gpu::CommandBuffer cmd = queue.commandBuffer();
+        for (int i = 0; i < 8; ++i) {
+            gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&targets[i % 2], gpu::Load::DontCare});
+            pass.setPipeline(pipeline);
+            pass.setTexture(0, targets[(i + 1) % 2]);
+            pass.setBytes(0, tint.data(), sizeof(tint));
+            pass.draw(3);
+            pass.end();
+        }
+        cmd.commit();
+        encoding += std::chrono::steady_clock::now() - start;
+        if (frame + 1 == kFrames)
+            cmd.waitUntilCompleted();
+    }
+    MESSAGE("encode + commit of 8 passes: "
+            << std::chrono::duration<double, std::micro>(encoding).count() / kFrames << " us per frame");
+}
+
 TEST_CASE("a pipeline cache file built once gives the same pipeline without compiling")
 {
     const gpu::Device device = gpu::Device::systemDefault();
