@@ -491,6 +491,7 @@ add_library(nocturne_engine STATIC
   src/output/outputs.cpp
   src/output/record_service.cpp
   src/output/screen_displays.cpp
+  src/output/recorder.cpp
   src/output/recorder.mm
   src/output/return_video_service.cpp
   src/output/ycbcr_converter.mm
