@@ -109,6 +109,27 @@ ComPtr<IDWriteFont> installedFont(const std::wstring& name)
     return font;
 }
 
+// The font Windows draws in place of `name` (FontSubstitutes: Helvetica is Arial), which GDI applies and DirectWrite
+// does not; empty when it names none.
+std::wstring substituteOf(const std::wstring& name)
+{
+    wchar_t value[LF_FACESIZE] = {};
+    DWORD bytes = sizeof value;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes",
+                     name.c_str(), RRF_RT_REG_SZ, nullptr, value, &bytes) != ERROR_SUCCESS)
+        return {};
+    return value;
+}
+
+// The installed font of that name, else the one Windows substitutes for it; null when neither is installed.
+ComPtr<IDWriteFont> findFont(const std::wstring& name)
+{
+    if (ComPtr<IDWriteFont> font = installedFont(name))
+        return font;
+    const std::wstring substitute = substituteOf(name);
+    return substitute.empty() ? nullptr : installedFont(substitute);
+}
+
 // Looking a name up walks every installed font, so each name is looked up once per process.
 ComPtr<IDWriteFont> createFont(const std::string& name, bool& missing)
 {
@@ -118,7 +139,7 @@ ComPtr<IDWriteFont> createFont(const std::string& name, bool& missing)
     std::lock_guard lock(mutex);
     auto it = found.find(name);
     if (it == found.end())
-        it = found.emplace(name, installedFont(wide(name))).first;
+        it = found.emplace(name, findFont(wide(name))).first;
     if (it->second)
         return it->second;
     missing = true;
