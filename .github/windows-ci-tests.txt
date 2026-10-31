@@ -13,3 +13,9 @@ off Apple, past its maximum length a recording goes on in the next numbered file
 off Apple, the recording's audio track is AAC at 48 kHz in sync with the frames whatever the input rate
 off Apple, a recording never makes its caller wait: a slow writer drops recorded frames
 off Apple, a recording cut off by a killed engine still plays up to its last fragment and is recovered
+# These send return video, which needs a hardware H.264 encoder. Microsoft's software one (h264_mf without a GPU) is a
+# known gap: FFmpeg 9.0.2 sets its low latency mode with the wrong type, so it holds back 6 frames and frame 0 gets no
+# packet, and its large first frames make about 500 kbit/s against a 440 kbit/s limit. NOCTURNE_SOFTWARE_ENCODE=1
+# shows it on any Windows machine.
+off Apple, return video is H.264 with its parameter sets on key frames and decodes back to the pictures
+off Apple, the return video of moving noise stays inside its share of the budget
