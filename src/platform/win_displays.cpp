@@ -33,8 +33,8 @@ constexpr const char* kVirtualPrefix = "window-";
 constexpr uint32_t kImages = 3;
 // A new window's first presents reach the screen a refresh or two later each while the compositor takes it over.
 constexpr double kWarmUpSeconds = 0.1;
-// How often the waiter thread looks whether a present reached the screen.
-constexpr std::chrono::microseconds kShownPoll{250};
+// The waiter thread gives the swapchain back this long before the present thread's next turn on it.
+constexpr std::chrono::microseconds kTurnMargin{1000};
 
 double steadySeconds(std::chrono::steady_clock::time_point at)
 {
@@ -125,13 +125,17 @@ public:
             vsync_ = vblank.wait();
             lastVblank_ = vsync_.time_since_epoch().count();
             sleepUntil(vsync_ + period_ / 2);
-            if (warmUp > 0) {
-                --warmUp;
-                presentBlack();
-            } else {
-                onRefresh(vsync_);
+            {
+                std::lock_guard turn(swapchainMutex_);
+                if (warmUp > 0) {
+                    --warmUp;
+                    presentBlack();
+                } else {
+                    onRefresh(vsync_);
+                }
+                presentPending();
             }
-            presentPending();
+            endTurn();
         }
     }
 
@@ -142,11 +146,7 @@ public:
         if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
-        VkResult result = VK_SUCCESS;
-        {
-            std::lock_guard lock(swapchainMutex_);
-            result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
-        }
+        const VkResult result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -223,11 +223,7 @@ private:
         info.swapchainCount = 1;
         info.pSwapchains = &swapchain_;
         info.pImageIndices = &sent.image;
-        VkResult result = VK_SUCCESS;
-        {
-            std::lock_guard lock(swapchainMutex_);
-            result = gpu::vulkan::present(queue_, info);
-        }
+        const VkResult result = gpu::vulkan::present(queue_, info);
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -248,6 +244,7 @@ private:
     void waitForPresents()
     {
         setThreadRole(ThreadRole::Frames);
+        setThreadName("present wait");
         std::chrono::steady_clock::time_point shown{};
         std::unique_lock lock(waitMutex_);
         for (;;) {
@@ -257,7 +254,7 @@ private:
             Waiting next = std::move(waiting_.front());
             waiting_.pop_front();
             lock.unlock();
-            const VkResult result = pollUntilShown(next.id);
+            const VkResult result = waitUntilShown(next.id);
             if (result == VK_SUCCESS)
                 shown = std::max(shown, refreshBefore(std::chrono::steady_clock::now()));
             next.shown(result == VK_SUCCESS ? steadySeconds(shown) : 0.0);
@@ -266,20 +263,44 @@ private:
         }
     }
 
-    // Waiter thread. The NVIDIA driver faults when a present wait runs while the present thread presents or acquires on
-    // the same swapchain, so each look takes turns with them and never blocks: a present thread never waits for it.
-    VkResult pollUntilShown(uint64_t id)
+    // Present thread, after its turn on the swapchain.
+    void endTurn()
+    {
+        {
+            std::lock_guard lock(waitMutex_);
+            ++turns_;
+        }
+        waitWake_.notify_all();
+    }
+
+    // Waiter thread. The swapchain is externally synchronized for vkWaitForPresentKHR, and the NVIDIA driver faults when
+    // a present wait overlaps a present. So the wait runs only between the present thread's turns, never starts while
+    // one runs, and times out kTurnMargin before the next one, so the present thread does not wait for it.
+    VkResult waitUntilShown(uint64_t id)
     {
         for (;;) {
+            const uint64_t turn = turns_;
             VkResult result = VK_TIMEOUT;
-            {
-                std::lock_guard lock(swapchainMutex_);
-                result = waitForPresent_(vk_, swapchain_, id, 0);
+            if (std::unique_lock swapchain(swapchainMutex_, std::try_to_lock); swapchain) {
+                if (const int64_t timeout = nanosecondsBeforeNextTurn(); timeout > 0)
+                    result = waitForPresent_(vk_, swapchain_, id, uint64_t(timeout));
             }
             if (result != VK_TIMEOUT || stopWaiting_)
                 return result;
-            sleepUntil(std::chrono::steady_clock::now() + kShownPoll);
+            std::unique_lock lock(waitMutex_);
+            waitWake_.wait(lock, [&] { return stopWaiting_ || turns_ != turn; });
         }
+    }
+
+    // Until kTurnMargin before the present thread's next turn, half a refresh after a vblank.
+    int64_t nanosecondsBeforeNextTurn() const
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point vblank{std::chrono::steady_clock::duration(lastVblank_.load())};
+        auto end = vblank + period_ / 2 - kTurnMargin;
+        if (end <= now)
+            end += period_ * ((now - end) / period_ + 1);
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(end - now).count();
     }
 
     // The refresh that showed a present whose wait returned at `woke`. The wait returns a little after that refresh,
@@ -432,8 +453,11 @@ private:
     // The last vblank, for the waiter thread.
     std::atomic<std::chrono::steady_clock::rep> lastVblank_{0};
 
-    // Held for each call on the swapchain from the present thread or the waiter thread, never across a wait.
+    // Held by the present thread for its turn on the swapchain each refresh, and by the waiter thread for a present wait
+    // that ends before the next turn.
     std::mutex swapchainMutex_;
+    // The present thread's turns so far.
+    std::atomic<uint64_t> turns_{0};
     std::mutex waitMutex_;
     std::condition_variable waitWake_;
     std::deque<Waiting> waiting_;
