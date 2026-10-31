@@ -8,7 +8,7 @@
     {
       "name": "ffmpeg",
       "default-features": false,
-      "features": ["avcodec", "avformat", "swresample", "swscale", "nvcodec", "opus"],
+      "features": ["avcodec", "avformat", "avdevice", "swresample", "swscale", "nvcodec", "opus"],
       "platform": "!osx"
     },
     {
