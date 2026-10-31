@@ -79,6 +79,8 @@ struct ParsedArgs {
 
 // The arguments after the program name.
 ParsedArgs parseEngineArgs(const std::vector<std::string>& args);
+// The same for a program: prints the usage and exits on --help (0) or a bad flag (2).
+EngineConfig parseCommandLine(const std::vector<std::string>& args);
 
 // The saved configuration beside the state in `stateDir`.
 std::filesystem::path engineConfigFile(const std::filesystem::path& stateDir);

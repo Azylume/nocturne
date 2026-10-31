@@ -422,20 +422,22 @@ public:
         }
     }
 
-    MTL::Texture* nextTarget() override
+    const gpu::Texture* nextTarget() override
     {
         drawable_ = [layer_ nextDrawable];
-        return drawable_ ? (__bridge MTL::Texture*)drawable_.texture : nullptr;
+        texture_ = drawable_ ? gpu::Texture::retain((__bridge MTL::Texture*)drawable_.texture) : gpu::Texture{};
+        return texture_ ? &texture_ : nullptr;
     }
 
-    void present(MTL::CommandBuffer* cmd, Shown shown) override
+    void present(gpu::CommandBuffer& cmd, Shown shown) override
     {
         id<CAMetalDrawable> drawable = drawable_;
         drawable_ = nil;
+        texture_ = {};
         [drawable addPresentedHandler:^(id<MTLDrawable> presented) {
             shown(presented.presentedTime);
         }];
-        cmd->presentDrawable((__bridge MTL::Drawable*)drawable);
+        cmd.native()->presentDrawable((__bridge MTL::Drawable*)drawable);
     }
 
 private:
@@ -445,6 +447,8 @@ private:
     AZLRefreshTarget* target_ = nil;
     CADisplayLink* link_ = nil;
     id<CAMetalDrawable> drawable_ = nil;
+    // The drawable's texture, as the present thread draws into it.
+    gpu::Texture texture_;
     AZLCursorHider* cursorHider_ = nil;
 };
 
@@ -589,8 +593,9 @@ std::vector<DisplayInfo> MacDisplays::attached() const
     return displays;
 }
 
-std::unique_ptr<Surface> MacDisplays::open(const std::string& id, MTL::Device* device)
+std::unique_ptr<Surface> MacDisplays::open(const std::string& id, const gpu::Device& gpuDevice)
 {
+    MTL::Device* device = gpuDevice.native();
     if (impl_->virtualDisplays > 0) {
         const int index = virtualIndex(id, impl_->virtualDisplays);
         NSArray<NSScreen*>* screens = [NSScreen screens];

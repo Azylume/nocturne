@@ -2,7 +2,8 @@
 
 #include "engine/frame_ring.hpp"
 #include "engine/isf_compiler.hpp"
-#include "engine/metal_util.hpp"
+#include "engine/shader_cross.hpp"
+#include "gpu/glsl.hpp"
 #include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
@@ -45,14 +46,23 @@ bool stepped(const Effect& effect, const std::string& param)
                        [&](const EffectStep& step) { return step.params.contains(param); });
 }
 
-MTL::PixelFormat targetFormat(const PlannedPass& pass)
+gpu::Format targetFormat(const PlannedPass& pass)
 {
     if (pass.intoComposition)
         return kFrameFormat;
-    return pass.float16 ? MTL::PixelFormatRGBA16Float : MTL::PixelFormatBGRA8Unorm;
+    return pass.float16 ? gpu::Format::RGBA16F : gpu::Format::BGRA8;
 }
 
-constexpr Blending kFixedFunction[] = {Blending::Normal, Blending::Add, Blending::Screen, Blending::Multiply};
+template <class T>
+T orThrow(T made, const std::string& error)
+{
+    if (!made)
+        throw std::runtime_error(error);
+    return made;
+}
+
+constexpr gpu::Blending kFixedFunction[] = {gpu::Blending::Normal, gpu::Blending::Add, gpu::Blending::Screen,
+                                            gpu::Blending::Multiply};
 
 } // namespace
 
@@ -128,6 +138,16 @@ void derive(const PlannedPass& pass, std::vector<float>& values, const std::vect
     }
 }
 
+bool archivesWork(std::string_view deviceName)
+{
+    return deviceName.find("Paravirtual") == std::string_view::npos;
+}
+
+std::string passMsl(const PlannedPass& pass)
+{
+    return mslSource(fullscreenEntries(pass.glsl, passEntries(pass)));
+}
+
 std::string shaderType(const Composition& composition, const Effect& effect)
 {
     const EffectDef* def = findEffect(effect.type);
@@ -161,8 +181,8 @@ std::string chainKey(const Composition& composition, ChainKind kind, const Effec
     return key;
 }
 
-ChainCompiler::ChainCompiler(MTL::Device* device, std::filesystem::path cache)
-    : device_(NS::RetainPtr(device)), cachePath_(std::move(cache)), thread_([this] {
+ChainCompiler::ChainCompiler(const gpu::Device& device, std::filesystem::path cache)
+    : device_(device), cachePath_(std::move(cache)), thread_([this] {
           setThreadRole(ThreadRole::Background);
           AZL_THREAD_NAME("compile");
           openArchive();
@@ -177,24 +197,17 @@ void ChainCompiler::openArchive()
 {
     if (cachePath_.empty())
         return;
-    if (!archivesWork(device_->name()->utf8String())) {
-        std::fprintf(stderr, "nocturne: no pipeline cache on %s, which traps adding to one\n",
-                     device_->name()->utf8String());
+    if (!archivesWork(device_.name())) {
+        std::fprintf(stderr, "nocturne: no pipeline cache on %s, which traps adding to one\n", device_.name().c_str());
         return;
     }
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    auto desc = NS::TransferPtr(MTL::BinaryArchiveDescriptor::alloc()->init());
     std::error_code ec;
-    if (std::filesystem::exists(cachePath_, ec))
-        desc->setUrl(NS::URL::fileURLWithPath(NS::String::string(cachePath_.c_str(), NS::UTF8StringEncoding)));
-    NS::Error* error = nullptr;
-    archive_ = NS::TransferPtr(device_->newBinaryArchive(desc.get(), &error));
-    if (!archive_ && desc->url()) {
-        std::fprintf(stderr, "nocturne: pipeline cache %s not loaded, starting empty\n", cachePath_.c_str());
-        desc->setUrl(nullptr);
-        archive_ = NS::TransferPtr(device_->newBinaryArchive(desc.get(), &error));
+    const bool exists = std::filesystem::exists(cachePath_, ec);
+    archive_ = device_.openPipelineCache(exists ? cachePath_.string() : "");
+    if (!archive_ && exists) {
+        std::fprintf(stderr, "nocturne: pipeline cache %s not loaded, starting empty\n", cachePath_.string().c_str());
+        archive_ = device_.openPipelineCache("");
     }
-    pool->release();
 }
 
 void ChainCompiler::reportFirstIdle()
@@ -214,17 +227,13 @@ void ChainCompiler::saveArchive()
         return;
     AZL_ZONE("save pipeline archive");
     archiveChanged_ = false;
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     const std::filesystem::path written = cachePath_.string() + ".new";
-    NS::Error* error = nullptr;
+    std::string error;
     std::error_code ec;
-    if (archive_->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(written.c_str(), NS::UTF8StringEncoding)),
-                                 &error))
+    if (device_.savePipelineCache(archive_, written.string(), &error))
         std::filesystem::rename(written, cachePath_, ec);
     else
-        std::fprintf(stderr, "nocturne: pipeline cache %s not written: %s\n", cachePath_.c_str(),
-                     error ? error->localizedDescription()->utf8String() : "");
-    pool->release();
+        std::fprintf(stderr, "nocturne: pipeline cache %s not written: %s\n", cachePath_.string().c_str(), error.c_str());
 }
 
 ChainCompiler::~ChainCompiler()
@@ -384,7 +393,7 @@ void ChainCompiler::run()
 std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
 {
     AZL_ZONE("compile chain");
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    gpu::Scope scope;
     std::shared_ptr<CompiledChain> chain;
     try {
         if (crash::skipped("effect", job.key))
@@ -402,7 +411,6 @@ std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
         chain = std::make_shared<CompiledChain>();
         if (!effects.empty() && effects.front()->generator) {
             chain->generator = compilePasses(SourceKind::Generator, effects);
-            pool->release();
             return chain;
         }
         if (job.kind == ChainKind::Group)
@@ -419,7 +427,6 @@ std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
         chain.reset();
         fail(job.types, e.what());
     }
-    pool->release();
     return chain;
 }
 
@@ -449,38 +456,36 @@ std::vector<CompiledPass> ChainCompiler::compilePasses(SourceKind source, const 
     return passes;
 }
 
-std::vector<NS::SharedPtr<MTL::RenderPipelineState>> ChainCompiler::pipelines(const PlannedPass& pass)
+std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pass)
 {
-    const MTL::PixelFormat format = targetFormat(pass);
-    const std::string key = pass.metal + "|" + std::to_string(format);
+    const gpu::Format format = targetFormat(pass);
+    const std::string key = pass.glsl + "|" + std::to_string(int(format));
     if (auto it = pipelines_.find(key); it != pipelines_.end())
         return it->second;
 
     AZL_ZONE("compile pipelines");
     const auto start = std::chrono::steady_clock::now();
-    auto library = makeLibrary(device_.get(), pass.metal.c_str());
-    std::vector<NS::SharedPtr<MTL::RenderPipelineState>> states;
+    const std::vector<std::string> names = passEntries(pass);
+    std::string error;
+    const gpu::ShaderModule module = orThrow(
+        device_.makeShaderModule(gpu::compileGlsl(fullscreenEntries(pass.glsl, names)), &error), error);
+    const std::string vertex = gpu::entryPoint("fullscreen");
+    std::vector<gpu::RenderPipeline> states;
     size_t archived = 0;
-    auto make = [&](const char* fragment, Blending blending) {
+    auto make = [&](const std::string& fragment, gpu::Blending blending) {
         bool hit = false;
-        auto state = makePipeline(device_.get(), library.get(), "fullscreen", fragment, format, blending, archive_.get(),
-                                  &hit);
+        auto state = orThrow(device_.makeRenderPipeline({module, vertex, gpu::entryPoint(fragment), format, blending},
+                                                        archive_, &hit, &error),
+                             error);
         archived += hit;
         return state;
     };
-    if (!pass.intoComposition) {
-        states.push_back(make("passMain", Blending::None));
-    } else {
-        std::vector<std::pair<const char*, const char*>> entries{{"passMain", "passBlend"}};
-        if (pass.source != SourceKind::YuvFade)
-            entries.push_back({"fadeMain", "fadeBlend"});
-        if (singlePassFade(pass))
-            entries.push_back({"fadeSingleMain", "fadeSingleBlend"});
-        for (const auto& [main, blend] : entries) {
-            for (Blending blending : kFixedFunction)
-                states.push_back(make(main, blending));
-            states.push_back(make(blend, Blending::None));
-        }
+    if (!pass.intoComposition)
+        states.push_back(make(names.front(), gpu::Blending::None));
+    for (size_t i = 0; pass.intoComposition && i + 1 < names.size(); i += 2) {
+        for (gpu::Blending blending : kFixedFunction)
+            states.push_back(make(names[i], blending));
+        states.push_back(make(names[i + 1], gpu::Blending::None));
     }
     const auto micros = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());

@@ -1,5 +1,7 @@
 #include "media/text_renderer.hpp"
 
+#include "media/picture_upload.hpp"
+
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
 
@@ -118,22 +120,6 @@ std::vector<uint8_t> drawPlane(const std::vector<Line>& lines, const std::vector
     return plane;
 }
 
-// The next mip level of a two-channel plane: each texel the mean of the 2x2 below it.
-std::vector<uint8_t> halved(const std::vector<uint8_t>& rg, uint32_t width, uint32_t height)
-{
-    const uint32_t w = std::max(1u, width / 2), h = std::max(1u, height / 2);
-    std::vector<uint8_t> out(size_t(w) * h * 2);
-    for (uint32_t y = 0; y < h; ++y)
-        for (uint32_t x = 0; x < w; ++x)
-            for (uint32_t c = 0; c < 2; ++c) {
-                const uint32_t x0 = std::min(2 * x, width - 1), x1 = std::min(2 * x + 1, width - 1);
-                const uint32_t y0 = std::min(2 * y, height - 1), y1 = std::min(2 * y + 1, height - 1);
-                const auto at = [&](uint32_t u, uint32_t v) { return uint32_t(rg[(size_t(v) * width + u) * 2 + c]); };
-                out[(size_t(y) * w + x) * 2 + c] = uint8_t((at(x0, y0) + at(x1, y0) + at(x0, y1) + at(x1, y1) + 2) / 4);
-            }
-    return out;
-}
-
 double alignShift(TextAlign align, double width)
 {
     switch (align) {
@@ -146,7 +132,7 @@ double alignShift(TextAlign align, double width)
 
 } // namespace
 
-VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, const TextLayout& layout,
+VideoFrameRef TextRenderer::rasterise(const MediaDevice* device, uint32_t height, const TextLayout& layout,
                                       std::set<std::string>& missingFonts)
 {
     const double px = layout.size * height;
@@ -192,22 +178,15 @@ VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, cons
         rg[2 * i + 1] = stroke[i];
     }
 
-    auto desc = NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatRG8Unorm, width, rows, true));
-    desc->setUsage(MTL::TextureUsageShaderRead);
-    desc->setStorageMode(MTL::StorageModeManaged);
-    auto texture = std::make_shared<NS::SharedPtr<MTL::Texture>>(NS::TransferPtr(device->newTexture(desc.get())));
+    DecodedPicture picture;
+    picture.planes[0] = {PlaneFormat::RG8, int(width), int(rows), size_t(width) * 2, rg.data()};
+    picture.planeCount = 1;
+    auto texture = std::make_shared<gpu::Texture>(uploadPicture(*device, picture, true)[0]);
     if (!*texture)
         return nullptr;
-    uint32_t w = width, h = rows;
-    for (NS::UInteger level = 0; level < (*texture)->mipmapLevelCount(); ++level) {
-        (*texture)->replaceRegion(MTL::Region(0, 0, w, h), level, rg.data(), NS::UInteger(w) * 2);
-        rg = halved(rg, w, h);
-        w = std::max(1u, w / 2);
-        h = std::max(1u, h / 2);
-    }
 
     auto frame = std::make_shared<VideoFrame>();
-    frame->luma = texture->get();
+    frame->luma = *texture;
     frame->resources = texture;
     frame->text = VideoFrame::Text{{float(-padLeft - std::round(alignShift(layout.align, blockWidth))),
                                     float(-pad - std::round(blockHeight / 2.0)), float(width), float(rows)},
@@ -215,8 +194,8 @@ VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, cons
     return frame;
 }
 
-TextRenderer::TextRenderer(MTL::Device* device, uint32_t height)
-    : device_(NS::RetainPtr(device)), height_(height), thread_([this] { run(); })
+TextRenderer::TextRenderer(const MediaDevice* device, uint32_t height)
+    : device_(device ? *device : MediaDevice{}), height_(height), thread_([this] { run(); })
 {
 }
 

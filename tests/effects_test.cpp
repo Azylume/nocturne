@@ -1,8 +1,10 @@
 #include "audio/audio_analysis.hpp"
 #include "engine/chain_compiler.hpp"
 #include "engine/frame_ring.hpp"
-#include "engine/metal_util.hpp"
+#include "engine/shader_cross.hpp"
 #include "golden.hpp"
+#include "gpu/glsl.hpp"
+#include "platform/process.hpp"
 #include "test_client.hpp"
 
 #include <doctest.h>
@@ -13,10 +15,23 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <stdexcept>
 #include <vector>
-#include <unistd.h>
 
 namespace {
+
+namespace gpu = azl::gpu;
+
+// Builds the pass's pipeline as the chain compiler does, into `format`; throws when it does not build.
+void buildPass(const gpu::Device& device, const azl::PlannedPass& pass, gpu::Format format)
+{
+    std::string error;
+    const gpu::ShaderModule module =
+        device.makeShaderModule(gpu::compileGlsl(azl::fullscreenEntries(pass.glsl, {"passMain"})), &error);
+    if (!module || !device.makeRenderPipeline(
+                       {module, gpu::entryPoint("fullscreen"), gpu::entryPoint("passMain"), format}, {}, nullptr, &error))
+        throw std::runtime_error(error);
+}
 
 using azl::AddEffect;
 using azl::SetEffectParam;
@@ -51,15 +66,15 @@ void checkRgb(const azl::Image& image, uint32_t x, uint32_t y, int r, int g, int
 azl::EffectDef fakeNeighbourhood()
 {
     return {"testInvert", azl::StageKind::Neighbourhood, {}, false, R"(
-    float4 sum = 0.0;
+    vec4 sum = vec4(0.0);
     for (int j = -1; j <= 1; ++j)
         for (int i = -1; i <= 1; ++i)
-            sum += t.sample(pix, px + float2(i, j)) * (i == 0 && j == 0 ? 1.0 : 0.0);
-    return float4(1.0 - sum.rgb, sum.a);
+            sum += samplePixel(t, px + vec2(i, j)) * (i == 0 && j == 0 ? 1.0 : 0.0);
+    return vec4(1.0 - sum.rgb, sum.a);
 )", {}};
 }
 
-// A test-only effect whose Metal does not compile.
+// A test-only effect whose GLSL does not compile.
 azl::EffectDef brokenEffect()
 {
     return {"testBroken", azl::StageKind::Pointwise, {}, false, "\n    return c * undefinedValue;\n", {}};
@@ -192,12 +207,13 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravir
     CHECK(azl::archivesWork("Apple M2 Pro"));
     CHECK(azl::archivesWork("Intel(R) UHD Graphics 630"));
     CHECK_FALSE(azl::archivesWork("Apple Paravirtual device"));
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    const bool archives = azl::archivesWork(device->name()->utf8String());
-    const std::filesystem::path cache =
-        std::filesystem::temp_directory_path() / ("nocturne-pipelines-" + std::to_string(::getpid()) + ".metallib");
+    const bool archives = azl::archivesWork(gpu::Device::systemDefault().name());
+    const std::filesystem::path cache = std::filesystem::temp_directory_path() /
+                                        ("nocturne-pipelines-" + std::to_string(azl::currentProcessId()) +
+                                         gpu::kPipelineCacheExtension);
     std::filesystem::remove(cache);
-    const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cache.c_str()};
+    const std::string cachePath = cache.string();
+    const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cachePath.c_str()};
     {
         azl::EngineHarness harness(config, 60.0, {}, twoLayers());
         harness.step();
@@ -301,9 +317,9 @@ TEST_CASE("the planner fuses pointwise and remap stages and cuts before a neighb
     headroom.needsFloat16 = true;
     CHECK(azl::planChain(azl::SourceKind::Yuv, {&headroom, &fake})[1].float16);
 
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const gpu::Device device = gpu::Device::systemDefault();
     for (const azl::PlannedPass& pass : cut)
-        CHECK_NOTHROW(azl::makePipeline(device.get(), pass.metal.c_str(), "fullscreen", "passMain", azl::kFrameFormat));
+        CHECK_NOTHROW(buildPass(device, pass, azl::kFrameFormat));
 }
 
 TEST_CASE("a neighbourhood effect reads a materialised 8-bit intermediate")
@@ -417,11 +433,10 @@ TEST_CASE("every v1 effect declares its stage kind and the planner fuses accordi
     CHECK(stageIndexes(trails[1]) == std::vector<size_t>{0, 1, 2});
     CHECK(trails[1].intoComposition);
 
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const gpu::Device device = gpu::Device::systemDefault();
     for (const auto& chain : {trails, azl::planChain(SourceKind::Texture, effects({"classicTrails", "trails"}))})
         for (const azl::PlannedPass& pass : chain)
-            CHECK_NOTHROW(azl::makePipeline(device.get(), pass.metal.c_str(), "fullscreen", "passMain",
-                                            pass.float16 ? MTL::PixelFormatRGBA16Float : azl::kFrameFormat));
+            CHECK_NOTHROW(buildPass(device, pass, pass.float16 ? gpu::Format::RGBA16F : azl::kFrameFormat));
 }
 
 TEST_CASE("frame stats show the passes and full-resolution intermediates of the fused chains")
@@ -745,11 +760,11 @@ TEST_CASE("a stage at dry/wet 0 returns its input before evaluating its effect, 
     for (const char* type : {"colorize", "transform", "edgeDetection", "trails"}) {
         CAPTURE(type);
         const auto passes = azl::planChain(azl::SourceKind::Texture, effects({type}));
-        const std::string& metal = passes.back().metal;
+        const std::string& metal = passes.back().glsl;
         const std::string wet = "pb[" + std::to_string(azl::findEffect(type)->params.size() - 1) + "]";
         const size_t guard = metal.find("if (" + wet + " == 0.0) return");
         REQUIRE(guard != std::string::npos);
-        CHECK(guard < metal.find(std::string("fx_") + type + "(", metal.find("float4 s1(")));
+        CHECK(guard < metal.find(std::string("fx_") + type + "(", metal.find("vec4 s1(")));
     }
 }
 
@@ -779,9 +794,9 @@ void registerFull(const std::string& type, const std::string& full, const Edits&
                 ++found;
             }
         };
-        edit(def.metal);
+        edit(def.glsl);
         for (azl::SidePass& side : def.sidePasses)
-            edit(side.metal);
+            edit(side.glsl);
         REQUIRE(found > 0);
     }
     azl::registerEffect(std::move(def));
@@ -811,25 +826,25 @@ TEST_CASE("a parameter at its no-op value skips the work it would do for nothing
         bool clip = false;
     };
     const Case cases[] = {
-        {"edgeDetection", {{"if (p[0] == 0.0)", "if (false)"}}, "multiplier", 0.0, 0.3},
-        {"classicEdgeDetection", {{"if (p[1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3},
-        {"classicEdgeDetection", {{"if (p[1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3, {{"mode", 0.0}}},
-        {"trails", {{"if (p[0] == 0.0)", "if (false)"}}, "feedback", 0.0, 0.8, {}, true},
-        {"classicShiftRgb", {{"i == 0 || a != last", "true"}, {"all(q == px) ? c : ", ""}}, "g", 0.0, 0.02},
-        {"classicShiftRgb", {{"i == 0 || a != last", "true"}, {"all(q == px) ? c : ", ""}}, "g", 0.0, 0.02,
+        {"edgeDetection", {{"if (pb[p + 0] == 0.0)", "if (false)"}}, "multiplier", 0.0, 0.3},
+        {"classicEdgeDetection", {{"if (pb[p + 1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3},
+        {"classicEdgeDetection", {{"if (pb[p + 1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3, {{"mode", 0.0}}},
+        {"trails", {{"if (pb[p + 0] == 0.0)", "if (false)"}}, "feedback", 0.0, 0.8, {}, true},
+        {"classicShiftRgb", {{"i == 0 || a != last", "true"}, {"q == px ? c : ", ""}}, "g", 0.0, 0.02},
+        {"classicShiftRgb", {{"i == 0 || a != last", "true"}, {"q == px ? c : ", ""}}, "g", 0.0, 0.02,
          {{"mode", 2.0}}},
-        {"classicStripper_resample", {{"p[3] == 0.0 ? 1 : 4", "4"}}, "directionSpread", 0.0, 0.2,
+        {"classicStripper_resample", {{"pb[p + 3] == 0.0 ? 1 : 4", "4"}}, "directionSpread", 0.0, 0.2,
          {{"number", 0.4}, {"mode", 0.5}, {"globalWidth", 0.5}}},
         {"reveal", {{"blend > 0.0 ? 2 : 1", "2"}}, "evolve", 0.0, 0.3},
-        {"transform", {{"if (p[3] != 0.0)", "if (true)"}}, "rotation", 0.0, 3.0, {{"scale", 0.9}}},
-        {"colorize", {{"if (p[4] == 0.0)", "if (false)"}}, "alpha", 0.0, 0.5},
-        {"classicColorize", {{"if (p[3] != 0.0)", "if (true)"}}, "colorAlpha", 0.0, 0.5},
+        {"transform", {{"if (pb[p + 3] != 0.0)", "if (true)"}}, "rotation", 0.0, 3.0, {{"scale", 0.9}}},
+        {"colorize", {{"if (pb[p + 4] == 0.0)", "if (false)"}}, "alpha", 0.0, 0.5},
+        {"classicColorize", {{"if (pb[p + 3] != 0.0)", "if (true)"}}, "colorAlpha", 0.0, 0.5},
         {"classicColorize",
-         {{"float keep = 0.0;\n        if (p[6] > 0.5)\n            keep = exp(-pow((hi - lo) / max(0.475 * pow(p[7], "
+         {{"float keep = 0.0;\n        if (pb[p + 6] > 0.5)\n            keep = exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], "
            "1.5), 1e-5), 1.5));",
-           "float keep = p[6] > 0.5 ? exp(-pow((hi - lo) / max(0.475 * pow(p[7], 1.5), 1e-5), 1.5)) : 0.0;"}},
+           "float keep = pb[p + 6] > 0.5 ? exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], 1.5), 1e-5), 1.5)) : 0.0;"}},
          "greysKeep", 0.0, 1.0, {{"colorGreen", 0.5}}},
-        {"noise", {{"if (p[2] == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
+        {"noise", {{"if (pb[p + 2] == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
     };
     TempDir media;
     const fs::path clip = copyMedia("count_240.mp4", media.path / "clip.mp4");
@@ -869,17 +884,17 @@ namespace {
 
 // Classic Shift Glitch's shader as it was when every pixel hashed the bands itself.
 constexpr const char* kShiftGlitchHashing = R"(
-    float period = 2.0 * (1.0 - p[0]);
+    float period = 2.0 * (1.0 - pb[p + 0]);
     uint pattern = period > 0.0 ? uint(floor(max(h.beat, 0.0) / period)) : uint(max(h.time, 0.0) * 60.0);
-    int2 count = p[3] > 0.0 ? int2(ceil(12.0 * float2(p[2], p[1]) - 1e-4)) : int2(0);
-    int2 top = int2(-1);
-    float2 from = px;
+    ivec2 count = pb[p + 3] > 0.0 ? ivec2(ceil(12.0 * vec2(pb[p + 2], pb[p + 1]) - 1e-4)) : ivec2(0);
+    ivec2 top = ivec2(-1);
+    vec2 from = px;
     for (int axis = 0; axis < 2; ++axis) {
         float dim = axis == 0 ? h.size.y : h.size.x, at = axis == 0 ? px.y : px.x;
         uint seed = pcg(pattern * 2u + uint(axis));
         for (int i = count[axis] - 1; i >= (axis == 0 ? 0 : max(top.x, 0)); --i) {
             uint n = pcg(seed ^ (uint(i + 1) * 0x9e3779b9u));
-            float high = max(1.0, float(n & 0xffffu) / 65535.0 * 0.5 * p[3] * dim);
+            float high = max(1.0, float(n & 0xffffu) / 65535.0 * 0.5 * pb[p + 3] * dim);
             float start = float(n >> 16u) / 65536.0 * dim;
             if (at < start || at >= start + high)
                 continue;
@@ -890,12 +905,12 @@ constexpr const char* kShiftGlitchHashing = R"(
             break;
         }
     }
-    float2 s = px;
+    vec2 s = px;
     if (top.y >= 0 && top.y >= top.x)
         s.x = from.x;
     else if (top.x >= 0)
         s.y = from.y;
-    return clamp(s, float2(0.5), h.size - 0.5);
+    return clamp(s, vec2(0.5), h.size - 0.5);
 )";
 
 // Classic Shift Glitch copied as `type`, with this shader and these derived values.
@@ -909,7 +924,7 @@ std::string registerShiftGlitch(const std::string& type, const char* metal,
     def.params.pop_back();
     def.variant = true;
     if (metal) {
-        def.metal = metal;
+        def.glsl = metal;
         def.derived = 0;
     }
     def.derive = derive;
@@ -1373,8 +1388,7 @@ TEST_CASE("every effect type and variant compiles first in a layer chain on the 
         for (const azl::EffectVariant& variant : azl::findEffect(type)->variants)
             types.push_back(type + "_" + variant.name);
     }
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    azl::ChainCompiler compiler(device.get());
+    azl::ChainCompiler compiler(azl::gpu::Device::systemDefault());
     std::vector<std::string> failures;
     compiler.onFailure([&](const std::vector<std::string>& chain, const std::string& error) {
         failures.push_back(chain.front() + ": " + error.substr(0, 300));

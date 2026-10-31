@@ -556,7 +556,7 @@ void NodeSync::verify(std::string hash, std::filesystem::path part, std::filesys
             std::filesystem::remove(file, ec);
         if (ok)
             engine_.mediaAdded(hash);
-        std::printf("node sync: %s %s\n", ok ? "copied" : "copy failed for", file.filename().c_str());
+        std::printf("node sync: %s %s\n", ok ? "copied" : "copy failed for", file.filename().string().c_str());
         std::fflush(stdout);
         std::lock_guard lock(mutex_);
         verifying_.erase(hash);

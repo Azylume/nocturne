@@ -3,7 +3,9 @@
 #include "platform/thread_priority.hpp"
 #include "golden.hpp"
 #include "net/websocket.hpp"
+#ifdef __APPLE__
 #include "platform/mac_displays.hpp"
+#endif
 #include "test_client.hpp"
 #include "test_paths.hpp"
 
@@ -42,8 +44,8 @@ void registerGradient()
         return;
     azl::registerEffect({.type = "testGradient",
                          .kind = azl::StageKind::Pointwise,
-                         .metal = "\n    float2 uv = px / h.size;\n"
-                                  "    return float4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
+                         .glsl = "\n    vec2 uv = px / h.size;\n"
+                                 "    return vec4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
 }
 
 azl::Layer gradientLayer(uint64_t id)
@@ -603,6 +605,8 @@ TEST_CASE("a slowed output does not affect the other outputs or the render rate"
     CHECK(rate("proj-b") < 25.0);
 }
 
+// macOS's output windows; Windows' twins are in tests/win_outputs_test.cpp.
+#ifdef __APPLE__
 TEST_CASE("only a borderless fullscreen output hides the cursor")
 {
     CHECK(azl::hidesCursor(false, 0));
@@ -642,6 +646,7 @@ TEST_CASE("Escape alone in an output window releases its display and Cmd+Q alone
     CHECK_FALSE(azl::outputKeyFor(kQ, Mods{.command = true, .shift = true}, "q").has_value());
     CHECK_FALSE(azl::outputKeyFor(kQ, Mods{.command = true, .control = true}, "q").has_value());
 }
+#endif
 
 // Escape on an output goes through the document, like `nocturne-ctl screendisplay SCREEN none`: the screen keeps its
 // slices and masks, its output parks, and the inverse edit gives the display back.
@@ -982,13 +987,7 @@ TEST_CASE("map arrangement: nocturne-ctl screen move, hide and order")
     azl::EngineHarness harness(kSize, kStillFps, {},
                                stage({screen(1, "", {slice(1, kKeystone)}), screen(2, "", {slice(2, kKeystone)})}));
     azl::WebSocketServer server(harness.document(), 0);
-    auto ctl = [&](const std::string& args) {
-        const fs::path binary = ctlPath();
-        const std::string command =
-            "'" + binary.string() + "' --port " + std::to_string(server.port()) + " " + args + " >/dev/null 2>&1";
-        const int status = std::system(command.c_str());
-        return WEXITSTATUS(status);
-    };
+    auto ctl = [&](const std::string& args) { return runNocturneCtl(server.port(), args).code; };
     CHECK(ctl("screen move 2 300 -12.5") == 0);
     CHECK(ctl("screen hide 1 on") == 0);
     CHECK(ctl("screen order 2 0") == 0);
@@ -1132,11 +1131,7 @@ TEST_CASE("displays per machine: nocturne-ctl screendisplay moves the screen on 
 {
     azl::EngineHarness harness(kSize, kStillFps, {}, stage({named(1, "Main", "proj-a")}));
     azl::WebSocketServer server(harness.document(), 0);
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(server.port()) +
-                                " screendisplay 1 proj-b >/dev/null 2>&1";
-    const int status = std::system(command.c_str());
-    CHECK(WEXITSTATUS(status) == 0);
+    CHECK(runNocturneCtl(server.port(), "screendisplay 1 proj-b").code == 0);
     CHECK(harness.document().document().screens[0].display == "proj-b");
     CHECK(harness.screenDisplays().roles() == azl::RoleDisplays{{"Main", {"proj-b"}}});
     Client client(harness.document());

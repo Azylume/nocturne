@@ -14,12 +14,13 @@
 
 namespace azl {
 
-// Records the composition, or one screen through its mapping, to a QuickTime movie with VideoToolbox: HEVC (the
-// hardware encoder where the machine has one) or ProRes 422.
+// Records the composition, or one screen through its mapping, to a QuickTime movie with VideoToolbox on Apple and
+// FFmpeg elsewhere: HEVC (the hardware encoder where the machine has one) or ProRes 422.
 //
-// The render thread only fills a pooled IOSurface-backed pixel buffer from each frame on the frame's own command buffer:
-// one compute pass writes the encoder's own Y'CbCr format where the recorder knows it (else a BGRA copy the encoder
-// converts itself); a screen or another size is painted first. Once the GPU finished it, the buffer joins a bounded queue that the
+// The render thread only fills a pooled picture (an IOSurface-backed pixel buffer on Apple, an FFmpeg frame elsewhere)
+// from each frame on the frame's own command buffer: one compute pass writes the encoder's own Y'CbCr format where the
+// recorder knows it (else, on Apple, a BGRA copy the encoder converts itself; elsewhere the planes are read back);
+// a screen or another size is painted first. Once the GPU finished it, the buffer joins a bounded queue that the
 // recorder's own thread encodes and writes. Nothing on the render thread ever waits: with no free buffer or a full
 // queue, the recorded frame is dropped and counted.
 //
@@ -132,7 +133,13 @@ public:
 
 private:
     struct Session;
+    struct PlatformSession;
 
+    // The platform's session; throws std::runtime_error when it cannot record with these settings.
+    std::shared_ptr<Session> makeSession(Settings settings, AudioPlan audio, SpaceProvider space,
+                                         std::chrono::milliseconds spaceInterval);
+    // Whether a movie, or a partial one a killed engine left, has a frame to play.
+    static bool plays(const std::filesystem::path& file);
     void ended(Session& session, const Ended& ended);
     static void removeAudioTap(Session& session);
 

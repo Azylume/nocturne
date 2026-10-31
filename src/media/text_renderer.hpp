@@ -15,11 +15,11 @@ namespace azl {
 
 // Rasterises text clips on its own thread (CoreText on Apple, DirectWrite on Windows), once per layout, so the render
 // thread never waits for text layout. A font that is not installed falls back to the system font with a logged
-// warning.
+// warning; on Windows a name the system substitutes takes its substitute first (Helvetica is Arial).
 class TextRenderer {
 public:
     // Text sizes are fractions of `height`, the composition's height in pixels.
-    TextRenderer(MediaDevice* device, uint32_t height);
+    TextRenderer(const MediaDevice* device, uint32_t height);
     ~TextRenderer();
 
     // Any thread, never blocks: rasterises the layouts not done yet and drops the rest.
@@ -30,18 +30,14 @@ public:
     std::set<std::string> missingFonts() const;
 
     // Blocking, on any thread: the picture of one layout.
-    static VideoFrameRef rasterise(MediaDevice* device, uint32_t height, const TextLayout& layout,
+    static VideoFrameRef rasterise(const MediaDevice* device, uint32_t height, const TextLayout& layout,
                                    std::set<std::string>& missingFonts);
 
 private:
     void run();
 
-#ifdef __APPLE__
-    MediaDevice* device() const { return device_.get(); }
-    NS::SharedPtr<MTL::Device> device_;
-#else
-    MediaDevice* device() const { return nullptr; }
-#endif
+    const MediaDevice* device() const { return device_ ? &device_ : nullptr; }
+    MediaDevice device_;
     uint32_t height_;
     mutable std::mutex mutex_;
     std::condition_variable changed_;

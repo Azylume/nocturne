@@ -51,8 +51,9 @@ azl::HapTexture hapTextureOf(azl::PictureFormat format, int plane)
 #ifdef __APPLE__
 // Copied out with a blit: on Apple's Paravirtual device (a macOS VM, as on CI runners) getBytes does not see what
 // VideoToolbox wrote into a decoder's IOSurface-backed texture.
-std::vector<uint8_t> textureBytes(MTL::Texture* texture, size_t rowBytes, size_t rows)
+std::vector<uint8_t> textureBytes(const azl::gpu::Texture& from, size_t rowBytes, size_t rows)
 {
+    MTL::Texture* texture = from.native();
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     MTL::Device* device = texture->device();
     MTL::CommandQueue* queue = device->newCommandQueue();
@@ -177,14 +178,12 @@ void checkColour(const Rgba& image, int x, int y, int r, int g, int b)
 class Device {
 public:
 #ifdef __APPLE__
-    Device() : device_(MTL::CreateSystemDefaultDevice()) {}
-    ~Device() { device_->release(); }
-    azl::MediaDevice* get() const { return device_; }
+    const azl::MediaDevice* get() const { return &device_; }
 
 private:
-    MTL::Device* device_;
+    azl::MediaDevice device_ = azl::MediaDevice::systemDefault();
 #else
-    azl::MediaDevice* get() const { return nullptr; }
+    const azl::MediaDevice* get() const { return nullptr; }
 #endif
 };
 

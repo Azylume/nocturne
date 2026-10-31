@@ -29,14 +29,18 @@ elseif(WIN32)
     clock_win.cpp
     credentials_win.cpp
     crypto_win.cpp
+    main_loop_win.cpp
     preview_channel_win.cpp
     process_win.cpp
     thermal_win.cpp
     thread_priority_win.cpp
+    win_monitors.cpp
+    win_output_window.cpp
     work_queue_std.cpp
   )
   target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32 powrprof ole32 shell32 oleaut32 wbemuuid)
+  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32 powrprof ole32 shell32 oleaut32 wbemuuid
+    user32 dxgi setupapi)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 
@@ -56,6 +60,9 @@ set(platform_tests
   ${repo_root}/tests/platform_thermal_test.cpp
   ${repo_root}/tests/platform_thread_test.cpp
 )
+if(WIN32)
+  list(APPEND platform_tests ${repo_root}/tests/win_displays_test.cpp)
+endif()
 
 if(NOT platform_standalone)
   set(NOCTURNE_PLATFORM_TESTS ${platform_tests} PARENT_SCOPE)
