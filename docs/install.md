@@ -92,8 +92,8 @@ building it from source.
 ## Windows (preview, port in progress)
 
 The Windows port is still in progress ([#35](https://github.com/Azylume/nocturne/issues/35)). Its installer,
-`Nocturne-<version>-windows-x64-unsigned.exe`, comes from `tools\make-installer.ps1` (see `docs/reference.md`); it is
-not on the releases page yet. It needs Windows 10 version
+`Nocturne-<version>-windows-x64-unsigned.exe`, comes from the `nocturne-windows-installer` artifact of a CI run or
+from `tools\make-installer.ps1` (see `docs/reference.md`); it is not on the releases page yet. It needs Windows 10 version
 2004 or later, 64-bit, and admin rights.
 
 ### Verify and run the installer
