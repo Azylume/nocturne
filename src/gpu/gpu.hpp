@@ -271,8 +271,13 @@ public:
     // Fragment-stage constants at `index`, copied at the call.
     void setBytes(uint32_t index, const void* data, size_t size);
     void setVertexBytes(uint32_t index, const void* data, size_t size);
+    // A buffer's bytes from `offset` at buffer `index` of the fragment or the vertex stage.
+    void setBuffer(uint32_t index, const Buffer& buffer, size_t offset = 0);
+    void setVertexBuffer(uint32_t index, const Buffer& buffer, size_t offset = 0);
     void setScissor(const Scissor& scissor);
     void draw(uint32_t vertices, uint32_t instances = 1);
+    // `count` uint32 indices from byte `offset` of `indices`.
+    void drawIndexed(const Buffer& indices, uint32_t count, size_t offset = 0, uint32_t instances = 1);
     // A timestamp between draws: for TimestampMode::DrawBoundary.
     void writeTimestamp(const TimestampQueries& queries, uint32_t index);
     void end();
@@ -295,6 +300,8 @@ public:
     void setBytes(uint32_t index, const void* data, size_t size);
     // `width` x `height` threads in groups of `groupWidth` x `groupHeight`; partial groups at the edges.
     void dispatch(uint32_t width, uint32_t height, uint32_t groupWidth, uint32_t groupHeight);
+    // `groupsX` x `groupsY` whole groups of `groupWidth` x `groupHeight` threads.
+    void dispatchGroups(uint32_t groupsX, uint32_t groupsY, uint32_t groupWidth, uint32_t groupHeight);
     void end();
     NativeComputePass native() const { return pass_; }
 

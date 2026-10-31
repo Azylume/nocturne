@@ -226,6 +226,14 @@ inline void RenderPass::setVertexBytes(uint32_t index, const void* data, size_t 
 {
     pass_->setVertexBytes(data, size, index);
 }
+inline void RenderPass::setBuffer(uint32_t index, const Buffer& buffer, size_t offset)
+{
+    pass_->setFragmentBuffer(buffer.native(), offset, index);
+}
+inline void RenderPass::setVertexBuffer(uint32_t index, const Buffer& buffer, size_t offset)
+{
+    pass_->setVertexBuffer(buffer.native(), offset, index);
+}
 inline void RenderPass::setScissor(const Scissor& s)
 {
     pass_->setScissorRect(MTL::ScissorRect{s.x, s.y, s.width, s.height});
@@ -237,6 +245,11 @@ inline void RenderPass::draw(uint32_t vertices, uint32_t instances)
     else
         pass_->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(vertices),
                               NS::UInteger(instances));
+}
+inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances)
+{
+    pass_->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(count), MTL::IndexTypeUInt32,
+                                 indices.native(), NS::UInteger(offset), NS::UInteger(instances));
 }
 inline void RenderPass::writeTimestamp(const TimestampQueries& queries, uint32_t index)
 {
@@ -266,6 +279,10 @@ inline void ComputePass::setBytes(uint32_t index, const void* data, size_t size)
 inline void ComputePass::dispatch(uint32_t width, uint32_t height, uint32_t groupWidth, uint32_t groupHeight)
 {
     pass_->dispatchThreads(MTL::Size(width, height, 1), MTL::Size(groupWidth, groupHeight, 1));
+}
+inline void ComputePass::dispatchGroups(uint32_t groupsX, uint32_t groupsY, uint32_t groupWidth, uint32_t groupHeight)
+{
+    pass_->dispatchThreadgroups(MTL::Size(groupsX, groupsY, 1), MTL::Size(groupWidth, groupHeight, 1));
 }
 inline void ComputePass::end()
 {
