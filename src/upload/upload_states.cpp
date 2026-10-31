@@ -106,7 +106,7 @@ void UploadStates::load()
     std::ifstream in(file_);
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (!j.is_object()) {
-        std::fprintf(stderr, "upload states: unreadable %s\n", file_.c_str());
+        std::fprintf(stderr, "upload states: unreadable %s\n", file_.string().c_str());
         return;
     }
     for (const auto& [hash, entry] : j.items()) {

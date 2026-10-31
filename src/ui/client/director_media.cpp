@@ -102,7 +102,7 @@ void DirectorMedia::renderStill(const std::string& hash)
         try {
             jpeg = videoStill(file, kStillWidth);
         } catch (const std::exception& e) {
-            std::fprintf(stderr, "still of %s: %s\n", file.c_str(), e.what());
+            std::fprintf(stderr, "still of %s: %s\n", file.string().c_str(), e.what());
         }
         stills_.store(hash, jpeg);
         {

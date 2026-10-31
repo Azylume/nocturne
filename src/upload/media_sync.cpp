@@ -27,7 +27,7 @@ SyncOverride loadMode(const fs::path& file)
     if (j.is_object() && j.value("override", Message()).is_string())
         if (const auto mode = overrideFromName(j["override"].get<std::string>()))
             return *mode;
-    std::fprintf(stderr, "media sync: unreadable %s, syncing by the Gig window\n", file.c_str());
+    std::fprintf(stderr, "media sync: unreadable %s, syncing by the Gig window\n", file.string().c_str());
     return SyncOverride::Auto;
 }
 
