@@ -31,7 +31,7 @@ fs::path pathField(const Message& message, const char* key)
 
 void print(const char* what, const fs::path& path, const std::vector<std::string>& warnings)
 {
-    std::printf("composition: %s %s\n", what, path.c_str());
+    std::printf("composition: %s %s\n", what, path.string().c_str());
     for (const std::string& w : warnings)
         std::printf("composition: warning: %s\n", w.c_str());
     std::fflush(stdout);
