@@ -33,6 +33,8 @@ constexpr const char* kVirtualPrefix = "window-";
 constexpr uint32_t kImages = 3;
 // A new window's first presents reach the screen a refresh or two later each while the compositor takes it over.
 constexpr double kWarmUpSeconds = 0.1;
+// How often the waiter thread looks whether a present reached the screen.
+constexpr std::chrono::microseconds kShownPoll{250};
 
 double steadySeconds(std::chrono::steady_clock::time_point at)
 {
@@ -140,7 +142,11 @@ public:
         if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
-        const VkResult result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        VkResult result = VK_SUCCESS;
+        {
+            std::lock_guard lock(swapchainMutex_);
+            result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        }
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -217,7 +223,11 @@ private:
         info.swapchainCount = 1;
         info.pSwapchains = &swapchain_;
         info.pImageIndices = &sent.image;
-        const VkResult result = gpu::vulkan::present(queue_, info);
+        VkResult result = VK_SUCCESS;
+        {
+            std::lock_guard lock(swapchainMutex_);
+            result = gpu::vulkan::present(queue_, info);
+        }
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -247,14 +257,28 @@ private:
             Waiting next = std::move(waiting_.front());
             waiting_.pop_front();
             lock.unlock();
-            VkResult result = VK_TIMEOUT;
-            while (result == VK_TIMEOUT && !stopWaiting_)
-                result = waitForPresent_(vk_, swapchain_, next.id, 50'000'000);
+            const VkResult result = pollUntilShown(next.id);
             if (result == VK_SUCCESS)
                 shown = std::max(shown, refreshBefore(std::chrono::steady_clock::now()));
             next.shown(result == VK_SUCCESS ? steadySeconds(shown) : 0.0);
             shownId_ = next.id;
             lock.lock();
+        }
+    }
+
+    // Waiter thread. The NVIDIA driver faults when a present wait runs while the present thread presents or acquires on
+    // the same swapchain, so each look takes turns with them and never blocks: a present thread never waits for it.
+    VkResult pollUntilShown(uint64_t id)
+    {
+        for (;;) {
+            VkResult result = VK_TIMEOUT;
+            {
+                std::lock_guard lock(swapchainMutex_);
+                result = waitForPresent_(vk_, swapchain_, id, 0);
+            }
+            if (result != VK_TIMEOUT || stopWaiting_)
+                return result;
+            sleepUntil(std::chrono::steady_clock::now() + kShownPoll);
         }
     }
 
@@ -408,6 +432,8 @@ private:
     // The last vblank, for the waiter thread.
     std::atomic<std::chrono::steady_clock::rep> lastVblank_{0};
 
+    // Held for each call on the swapchain from the present thread or the waiter thread, never across a wait.
+    std::mutex swapchainMutex_;
     std::mutex waitMutex_;
     std::condition_variable waitWake_;
     std::deque<Waiting> waiting_;
