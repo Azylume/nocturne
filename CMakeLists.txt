@@ -339,8 +339,18 @@ elseif(WIN32)
   target_link_libraries(nocturne_http PUBLIC winhttp)
 endif()
 
+# On Windows the programs autostart and the UI start are Windows-subsystem apps: they never open a console window.
+# They keep main(); their output reaches a pipe the parent passes, else nothing, and their log files are unchanged.
+function(nocturne_windowless target)
+  if(WIN32)
+    set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE ON)
+    target_link_options(${target} PRIVATE /ENTRY:mainCRTStartup)
+  endif()
+endfunction()
+
 add_executable(nocturne-supervisor src/app/supervisor.cpp)
 target_link_libraries(nocturne-supervisor PRIVATE nocturne_protocol)
+nocturne_windowless(nocturne-supervisor)
 
 file(READ src/desk/page.html desk_page)
 configure_file(src/desk/page.cpp.in desk_page.cpp @ONLY)
@@ -348,6 +358,7 @@ add_library(nocturne_desk STATIC src/desk/desk_server.cpp ${CMAKE_CURRENT_BINARY
 target_link_libraries(nocturne_desk PUBLIC nocturne_net)
 add_executable(nocturne-desk src/app/desk.cpp)
 target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
+nocturne_windowless(nocturne-desk)
 
 add_library(nocturne_upload STATIC src/upload/media_sync.cpp src/upload/media_upload.cpp src/upload/s3.cpp
   src/upload/upload_states.cpp)
@@ -505,6 +516,7 @@ if(NOT APPLE)
     target_compile_options(nocturne_win_displays PRIVATE -Wno-missing-field-initializers)
     add_executable(nocturne src/app/main_win.cpp src/app/engine_main.cpp src/app/main_thread_win.cpp
       src/app/safe_mode.cpp src/app/safe_mode_win.cpp src/app/displays_win.cpp)
+    nocturne_windowless(nocturne)
     target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync
       nocturne_djlink nocturne_upload nocturne_win_displays windowscodecs ole32 psapi shell32)
     # Engines and harnesses live on the main thread's stack: 8 MB on macOS, so the same here instead of 1 MB.

@@ -320,6 +320,24 @@ TEST_CASE("screen and slice colour: the slice's adds to the screen's, clamped")
     CHECK(command(client, azl::SetScreenColor{5, {}})["type"] == "error");
 }
 
+TEST_CASE("a screen whose warps hold more than 64 KB of points still shades each slice with its own uniforms")
+{
+    // Every slice's uniforms are bound at its offset in one buffer that also holds the warps' points: from the first
+    // slice on, more than a uniform block may reach on many GPUs.
+    constexpr int n = azl::kMaxWarpPatches;
+    std::vector<azl::Slice> slices;
+    for (uint64_t id = 1; id <= 4; ++id) {
+        azl::Slice warped = slice(id);
+        warped.warp = {{n, n}, false, flatGrid(n, n)};
+        warped.color = {.brightness = -0.5};
+        slices.push_back(warped);
+    }
+    azl::EngineHarness harness(kSize, kStillFps, {}, gradient({screen(1, slices)}));
+    harness.step();
+    const auto [r, g] = gradientAt(300, 200);
+    CHECK(near(pixel(harness.readScreen(1), 300, 200), r / 2, g / 2));
+}
+
 TEST_CASE("the test card lives in composition space: overlapping slices show the same pixels; all screens at once")
 {
     azl::EngineHarness harness(kSize, kStillFps, {},
