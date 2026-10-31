@@ -332,6 +332,9 @@ target_link_libraries(nocturne_desk PUBLIC nocturne_net)
 add_executable(nocturne-desk src/app/desk.cpp)
 target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
 
+add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
+target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
+
 # The UI's engine launcher, apart from the UI so it builds and is tested where the UI does not build yet.
 add_library(nocturne_engine_launcher STATIC src/ui/client/engine_launcher.cpp)
 target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
@@ -370,9 +373,10 @@ target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/ui/engine_launcher_test.cpp)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/ui/engine_launcher_test.cpp
+    tests/venues_key_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_engine_launcher)
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_engine_launcher nocturne_venues)
   return()
 endif()
 
@@ -473,9 +477,6 @@ target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
 add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
   src/harness/fake_displays.cpp)
 target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
-
-add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
-target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
 
 add_library(nocturne_sync STATIC src/sync/node_sync.mm)
 target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
