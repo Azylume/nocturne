@@ -330,6 +330,9 @@ TEST_CASE("supervisor: on Windows the real engine runs under it with no standard
     INFO(supervised.log());
     CHECK(supervised.stop() == 0);
     CHECK(contains(supervised.log(), "engine exited with status 0"));
-    CHECK(contains(supervised.engineLog(), "stopped"));
+    const std::string engineLog = supervised.engineLog();
+    CHECK(contains(engineLog, "stopped"));
+    CHECK_FALSE(contains(engineLog, "\r\r"));
+    CHECK(count(engineLog, "\r\n") == count(engineLog, "\n"));
 }
 #endif
