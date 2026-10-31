@@ -9,6 +9,7 @@ extern "C" {
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -28,7 +29,8 @@ struct Candidate {
     std::vector<std::pair<const char*, const char*>> options;
 };
 
-// In the order they are tried: NVENC, then Media Foundation's encoder on the GPU, then Microsoft's software one.
+// In the order they are tried: NVENC, then Media Foundation's encoder on the GPU, then Microsoft's software one, the
+// only one with NOCTURNE_SOFTWARE_ENCODE=1.
 const std::vector<Candidate>& candidates()
 {
     static const std::vector<Candidate> list{
@@ -129,7 +131,11 @@ struct H264Encoder::Session {
 H264Encoder::H264Encoder(uint32_t width, uint32_t height, double fps, uint32_t kbps)
     : session_(std::make_unique<Session>())
 {
+    const char* software = std::getenv("NOCTURNE_SOFTWARE_ENCODE");
+    const bool hardwareAllowed = !software || !*software || *software == '0';
     for (const Candidate& candidate : candidates()) {
+        if (candidate.hardware && !hardwareAllowed)
+            continue;
         if ((session_->codec = openEncoder(candidate, width, height, fps, kbps))) {
             hardware_ = candidate.hardware;
             break;
