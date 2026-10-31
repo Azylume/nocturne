@@ -39,6 +39,12 @@ std::filesystem::path videosFolder()
     return home() / "Movies";
 }
 
+std::filesystem::path documentsFolder()
+{
+    const std::filesystem::path home = homeFolder();
+    return (home.empty() ? std::filesystem::path("/") : home) / "Documents";
+}
+
 std::filesystem::path executablePath()
 {
     uint32_t size = 0;

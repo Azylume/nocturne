@@ -1,4 +1,6 @@
 #include "app/engine_config.hpp"
+#include "media/media_library.hpp"
+#include "platform/app_paths.hpp"
 #include "test_client.hpp"
 
 #include <doctest.h>
@@ -214,6 +216,18 @@ TEST_CASE("engine config: the usage text is unchanged")
     const char* dir = std::getenv("NOCTURNE_GOLDEN_DIR");
     const fs::path golden = fs::path(dir ? dir : NOCTURNE_GOLDEN_DIR) / "engine_usage.txt";
     CHECK(std::string(azl::app::kEngineUsage) == readFile(golden));
+}
+
+TEST_CASE("engine config: the usage names this platform's folders")
+{
+    const std::string usage = azl::app::engineUsage();
+#ifdef __APPLE__
+    CHECK(usage == azl::app::kEngineUsage);
+#else
+    CHECK(usage.find("~/") == std::string::npos);
+    CHECK(usage.find(azl::MediaLibrary::defaultRoot().string()) != std::string::npos);
+    CHECK(usage.find((azl::videosFolder() / "Nocturne").string()) != std::string::npos);
+#endif
 }
 
 TEST_CASE("engine config: saved beside the state and loaded back the same")

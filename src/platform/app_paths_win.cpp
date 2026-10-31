@@ -20,6 +20,17 @@ std::filesystem::path localAppData()
     return value;
 }
 
+// The system's folder for `id`, or the temporary folder when it has none.
+std::filesystem::path knownFolder(REFKNOWNFOLDERID id)
+{
+    PWSTR path = nullptr;
+    std::filesystem::path folder = std::filesystem::temp_directory_path();
+    if (SUCCEEDED(SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &path)))
+        folder = path;
+    CoTaskMemFree(path);
+    return folder;
+}
+
 } // namespace
 
 std::filesystem::path homeFolder()
@@ -47,12 +58,12 @@ std::filesystem::path appLogsFolder()
 
 std::filesystem::path videosFolder()
 {
-    PWSTR path = nullptr;
-    std::filesystem::path folder = std::filesystem::temp_directory_path();
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos, KF_FLAG_DEFAULT, nullptr, &path)))
-        folder = path;
-    CoTaskMemFree(path);
-    return folder;
+    return knownFolder(FOLDERID_Videos);
+}
+
+std::filesystem::path documentsFolder()
+{
+    return knownFolder(FOLDERID_Documents);
 }
 
 std::filesystem::path executablePath()

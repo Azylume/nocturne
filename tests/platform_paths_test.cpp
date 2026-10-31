@@ -30,6 +30,18 @@ TEST_CASE("platform: the user's videos folder is ~/Movies on Apple and the Video
 #endif
 }
 
+TEST_CASE("platform: the user's documents folder is ~/Documents on Apple and the Documents known folder on Windows")
+{
+#ifdef _WIN32
+    CHECK(azl::documentsFolder().is_absolute());
+    CHECK(std::filesystem::is_directory(azl::documentsFolder()));
+    CHECK(azl::documentsFolder() != std::filesystem::temp_directory_path());
+#else
+    ScopedEnv base("HOME", "/Users/test");
+    CHECK(azl::documentsFolder() == std::filesystem::path("/Users/test/Documents"));
+#endif
+}
+
 TEST_CASE("platform: the running program finds itself and the programs beside it")
 {
     const std::filesystem::path self = azl::executablePath();

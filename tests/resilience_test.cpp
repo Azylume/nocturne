@@ -177,6 +177,7 @@ TEST_CASE("a half-copied clip is flagged and never plays; once the copy complete
     CHECK(libraryStatus(client, complete) == "ok");
 }
 
+#ifndef _WIN32
 TEST_CASE("a removed media drive: its clips hold their last frame as missing files and play again when it returns")
 {
     TempDir root;
@@ -212,6 +213,7 @@ TEST_CASE("a removed media drive: its clips hold their last frame as missing fil
     CHECK(shown(harness, 1) != now);
     CHECK(libraryStatus(client, onDrive) == "ok");
 }
+#endif
 
 namespace {
 
@@ -247,6 +249,43 @@ struct MediaDrive {
 #endif
 
 } // namespace
+
+#ifdef _WIN32
+// Windows refuses to rename a folder whose files are open, so the drive is a VHDX that is detached and attached again.
+TEST_CASE("a removed media drive: its clips hold their last frame as missing files and play again when it returns")
+{
+    TempDir root;
+    MediaDrive show(32);
+    azl::EngineHarness harness(kSize, 60.0, {}, twoLayers());
+    Client client(harness.document());
+    const std::string onDrive = play(client, 1, copyMedia("count_100.mp4", show.mount / "clips/loop.mp4"));
+    play(client, 2, copyMedia("count_240.mp4", root.path / "local/long.mp4"));
+    harness.step(10);
+
+    REQUIRE(show.detach());
+    harness.step(220);
+    CHECK(clipError(client, onDrive)["layer"] == 1);
+    CHECK(libraryStatus(client, onDrive) == "missing");
+    const int held = shown(harness, 1);
+    const int other = shown(harness, 2);
+    harness.step(30);
+    CHECK(shown(harness, 1) == held);
+    CHECK(shown(harness, 2) == other + 15);
+
+    REQUIRE(show.attach());
+    int now = held;
+    CHECK(eventually(
+        [&] {
+            harness.step(2);
+            now = shown(harness, 1);
+            return now != held;
+        },
+        10.0));
+    harness.step(4);
+    CHECK(shown(harness, 1) != now);
+    CHECK(libraryStatus(client, onDrive) == "ok");
+}
+#endif
 
 TEST_CASE("a media drive force-detached while it plays, then attached again at the same place, plays again")
 {
@@ -595,18 +634,21 @@ TEST_CASE("a full disk stops state saves with one notice; the show goes on and s
     Client client(harness.document());
     azl::StateSaver saver(state / "composition.json", [] { return std::nullopt; });
 
-    for (int i = 0; i < 40; ++i) {
+    // Three seconds of changes: a save is tried a second after the first unsaved change, so two tries land inside
+    // however little time the steps themselves take.
+    constexpr int kChanges = 60;
+    for (int i = 0; i < kChanges; ++i) {
         const auto before = Clock::now();
         saver.changed(std::make_shared<const azl::Composition>(harness.document().document()));
         CHECK(Clock::now() - before < std::chrono::milliseconds(5));
-        apply(client, azl::SetLayerOpacity{1, i / 40.0});
+        apply(client, azl::SetLayerOpacity{1, double(i) / kChanges});
         harness.step();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     CHECK(saver.failures() >= 2);
     CHECK(saver.saves() == 0);
     CHECK(fs::is_empty(state));
-    CHECK(harness.stats().rendered == 40);
+    CHECK(harness.stats().rendered == kChanges);
 
     REQUIRE(folderWritable(state, true));
     CHECK(eventually([&] { return saver.saves() >= 1; }, 3.0));
