@@ -844,7 +844,7 @@ void ScreenPainter::encodeSlices(MTL::RenderCommandEncoder* enc, const Frame* fr
     bindSliceBuffers(enc);
     enc->setFragmentTexture(prepared_->screenMask ? prepared_->screenMask : noMask_.get(), 2);
     for (const Draw& draw : prepared_->draws) {
-        MTL::Texture* picture = card ? card : frame->picture(draw.input);
+        MTL::Texture* picture = card ? card : gpu::native(frame->picture(draw.input));
         if (!picture)
             continue;
         enc->setFragmentTexture(picture, 0);

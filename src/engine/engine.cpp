@@ -215,14 +215,14 @@ std::unique_ptr<State> outgoing(State& state)
 
 } // namespace
 
-Engine::Engine(MTL::Device* device, EngineConfig config, MediaLibrary* library)
-    : device_(NS::RetainPtr(device)), config_(config), queue_(NS::TransferPtr(device->newCommandQueue())),
-      gpu_(device, "render", ""),
-      compiler_(device, config.pipelineCache ? config.pipelineCache : ""),
-      decoders_(device, library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
-      texts_(device, config.height),
-      sides_(device, config.width, config.height),
-      ring_(std::make_shared<FrameRing>(device, config.width, config.height, config.frameCount)),
+Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* library)
+    : device_(gpuDevice), config_(config), queue_(NS::TransferPtr(device()->newCommandQueue())),
+      gpu_(device(), "render", ""),
+      compiler_(device(), config.pipelineCache ? config.pipelineCache : ""),
+      decoders_(device(), library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
+      texts_(device(), config.height),
+      sides_(gpuDevice, config.width, config.height),
+      ring_(std::make_shared<FrameRing>(gpuDevice, config.width, config.height, config.frameCount)),
       autopilots_(clock_, cues_, seed_, [this](const Layer& layer, uint64_t column) { return playable(layer, column); }),
       effectSteps_(clock_, cues_, seed_)
 {
@@ -235,16 +235,16 @@ Engine::Engine(MTL::Device* device, EngineConfig config, MediaLibrary* library)
     poolTexture(fades_, 1, kFrameFormat, {config.width, config.height});
     poolTexture(fades_, 0, kFrameFormat, {config.width, config.height});
     if (config.gpuProfile) {
-        profile_ = std::make_unique<GpuProfile>(device, profile::kEnabled ? 2 : 0);
+        profile_ = std::make_unique<GpuProfile>(device(), profile::kEnabled ? 2 : 0);
         std::fprintf(stderr, "nocturne: GPU profile: %s\n", profile_->mode());
         if (!profile_->enabled())
             profile_.reset();
     }
-    previewTimer_ = std::make_unique<GpuProfile>(device, 1, true);
+    previewTimer_ = std::make_unique<GpuProfile>(device(), 1, true);
     if (!previewTimer_->enabled())
         previewTimer_.reset();
     if (config_.fsrUpscale)
-        fsr_.emplace(device, kFrameFormat);
+        fsr_.emplace(device(), gpu::metalFormat(kFrameFormat));
 }
 
 Engine::~Engine()
@@ -383,7 +383,7 @@ void Engine::renderFrame(double seconds)
     if (previewTimer_ && !previewOnly.empty())
         encoding.previewTimes = previewTimer_->begin();
     encoding.previewOnly = std::move(previewOnly);
-    encodeStack(encoding, frame->texture.get(), MTL::ClearColor(0, 0, 0, 1), draws);
+    encodeStack(encoding, &frame->texture, MTL::ClearColor(0, 0, 0, 1), draws);
     stats_.passes = encoding.passes;
     stats_.previewPasses = encoding.previewPasses;
     stats_.bakedPasses = encoding.bakedPasses;
@@ -1078,7 +1078,8 @@ void Engine::addCompositionChain(std::vector<Draw>& draws, const std::shared_ptr
     draws.push_back(std::move(draw));
 }
 
-void Engine::encodeStack(FrameEncoding& frame, MTL::Texture* target, MTL::ClearColor clear, std::vector<Draw>& draws)
+void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, MTL::ClearColor clear,
+                         std::vector<Draw>& draws)
 {
     AZL_ZONE("encode stack");
     for (Draw& draw : draws) {
@@ -1204,11 +1205,11 @@ uint32_t Engine::blankStage(const Draw& draw, bool opaque) const
     return blank;
 }
 
-MTL::RenderCommandEncoder* Engine::composite(FrameEncoding& frame, MTL::Texture* target,
+MTL::RenderCommandEncoder* Engine::composite(FrameEncoding& frame, const gpu::Texture* target,
                                              MTL::RenderCommandEncoder* enc, const Draw& draw, bool opaque)
 {
     const auto variant = blendVariant(draw.blend);
-    MTL::Texture* below = nullptr;
+    const gpu::Texture* below = nullptr;
     if (variant == BlendVariant::Shader || frame.profile) {
         endPass(frame, enc);
         if (variant == BlendVariant::Shader)
@@ -1265,8 +1266,8 @@ void Engine::encodeInputs(FrameEncoding& frame, Draw& draw)
             continue;
         }
         auto& pool = intermediates_[pass.plan.float16];
-        const auto format = pass.plan.float16 ? MTL::PixelFormatRGBA16Float : MTL::PixelFormatBGRA8Unorm;
-        MTL::Texture* target = bake.action == StaticBake::Action::Bake && bake.kept == i
+        const auto format = pass.plan.float16 ? gpu::Format::RGBA16F : gpu::Format::BGRA8;
+        const gpu::Texture* target = bake.action == StaticBake::Action::Bake && bake.kept == i
                                    ? bake.texture
                                    : poolTexture(pool, ordinal * 2 + written++ % 2, format, sizeOf(draw));
         label(frame, draw, &pass);
@@ -1307,20 +1308,18 @@ Engine::BakePlan Engine::planBake(const Draw& draw, float seconds)
     if (plan.action == StaticBake::Action::Bake) {
         baked.picture = picture ? picture->resources : nullptr;
         if (plan.kept) {
-            const auto format = (*draw.passes)[*plan.kept].plan.float16 ? MTL::PixelFormatRGBA16Float
-                                                                         : MTL::PixelFormatBGRA8Unorm;
+            const auto format =
+                (*draw.passes)[*plan.kept].plan.float16 ? gpu::Format::RGBA16F : gpu::Format::BGRA8;
             const auto [width, height] = sizeOf(draw);
-            if (!baked.texture || baked.texture->width() != width || baked.texture->height() != height ||
-                baked.texture->pixelFormat() != format) {
-                auto desc =
-                    NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(format, width, height, false));
-                desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-                desc->setStorageMode(MTL::StorageModePrivate);
-                baked.texture = NS::TransferPtr(device_->newTexture(desc.get()));
-            }
+            if (!baked.texture || baked.texture.width() != width || baked.texture.height() != height ||
+                baked.texture.format() != format)
+                baked.texture = device_.makeTexture({.format = format,
+                                                     .width = width,
+                                                     .height = height,
+                                                     .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
         }
     }
-    plan.texture = baked.texture.get();
+    plan.texture = &baked.texture;
     return plan;
 }
 
@@ -1348,7 +1347,7 @@ std::vector<uint32_t> Engine::bakeInputs(const Draw& draw, size_t prefix, float 
             const uint32_t bypassed = effect.bypass;
             put(&bypassed, sizeof(bypassed));
             for (size_t side = 0; side < stage.effect->sidePasses.size(); ++side) {
-                const MTL::Texture* target = sides_.output(draw.layer, effect.id, side);
+                const MTL::Texture* target = gpu::native(sides_.output(draw.layer, effect.id, side));
                 put(&target, sizeof(target));
             }
         }
@@ -1373,9 +1372,9 @@ std::vector<uint32_t> Engine::bakeInputs(const Draw& draw, size_t prefix, float 
 // The draw's last pass at full opacity into a transparent picture the frame keeps.
 void Engine::encodePicture(FrameEncoding& frame, const Draw& draw)
 {
-    NS::SharedPtr<MTL::Texture> picture = ring_->claimPicture();
+    gpu::Texture picture = ring_->claimPicture();
     label(frame, draw, &draw.passes->back(), "picture");
-    auto* enc = beginPass(frame, picture.get(), MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0));
+    auto* enc = beginPass(frame, &picture, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0));
     if (draw.reduced)
         encodeUpscaled(enc, draw, BlendVariant::Normal, nullptr, frame.seconds, 1.0f, {config_.width, config_.height});
     else
@@ -1422,15 +1421,15 @@ void Engine::encodeReduced(FrameEncoding& frame, Draw& draw)
     if (!fsr_ || draw.divisor == 1)
         return;
 
-    MTL::Texture* scaled = poolTexture(easu_, 0, kFrameFormat, baseOf(draw));
+    const gpu::Texture* scaled = poolTexture(easu_, 0, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "easu");
     enc = beginPass(frame, scaled, MTL::LoadActionDontCare);
-    fsr_->encodeEasu(enc, draw.reduced, scaled);
+    fsr_->encodeEasu(enc, draw.reduced->native(), scaled->native());
     endPass(frame, enc);
     draw.reduced = poolTexture(upscaled_, index, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "rcas");
     enc = beginPass(frame, draw.reduced, MTL::LoadActionDontCare);
-    fsr_->encodeRcas(enc, scaled);
+    fsr_->encodeRcas(enc, scaled->native());
     endPass(frame, enc);
     frame.passes += 2;
 }
@@ -1465,7 +1464,7 @@ bool Engine::singlePass(const Draw& draw)
 }
 
 // A draw's last pass, or during a transition the pass that mixes its two pictures.
-void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, MTL::Texture* below,
+void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, const gpu::Texture* below,
                         float seconds, float opacity) const
 {
     if (draw.from.empty())
@@ -1493,7 +1492,8 @@ void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendV
                &mix, draw.mixed[0]);
 }
 
-void Engine::encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, MTL::Texture* below,
+void Engine::encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+                            const gpu::Texture* below,
                             float seconds, float opacity, Size into) const
 {
     Draw scaled{nullptr, &noEffects_, nullptr, opacity, draw.blend, draw.layer, {}};
@@ -1518,19 +1518,19 @@ void Engine::encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Dr
 
     auto* enc = beginPass(frame, target.write, MTL::LoadActionDontCare);
     if (target.prev)
-        enc->setFragmentTexture(target.prev, kPrevSlot);
+        enc->setFragmentTexture(target.prev->native(), kPrevSlot);
     for (size_t i = 0; i < side; ++i)
-        enc->setFragmentTexture(sides_.output(draw.layer, effect, i), kSideSlot + i);
+        enc->setFragmentTexture(gpu::native(sides_.output(draw.layer, effect, i)), kSideSlot + i);
     encodePass(enc, pass, 0, draw, draw.input, nullptr, frame.seconds, 1.0f);
     endPass(frame, enc);
 }
 
-MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, MTL::Texture* target, MTL::LoadAction load,
+MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, const gpu::Texture* target, MTL::LoadAction load,
                                              MTL::ClearColor clear) const
 {
     auto* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
     auto* color = desc->colorAttachments()->object(0);
-    color->setTexture(target);
+    color->setTexture(target->native());
     color->setLoadAction(load);
     color->setClearColor(clear);
     color->setStoreAction(MTL::StoreActionStore);
@@ -1589,21 +1589,21 @@ void Engine::label(FrameEncoding& frame, const Draw& draw, const CompiledPass* p
 }
 
 // Shader blend modes read the target as it is so far from a copy: Intel GPUs cannot read a render target in place.
-MTL::Texture* Engine::copyBelow(FrameEncoding& frame, MTL::Texture* target)
+const gpu::Texture* Engine::copyBelow(FrameEncoding& frame, const gpu::Texture* target)
 {
-    MTL::Texture* below = poolTexture(below_, 0, kFrameFormat, {uint32_t(target->width()), uint32_t(target->height())});
+    const gpu::Texture* below = poolTexture(below_, 0, kFrameFormat, {target->width(), target->height()});
     auto* pass = MTL::BlitPassDescriptor::blitPassDescriptor();
     AZL_GPU_ZONE(&gpu_, pass, "copy below");
     auto* blit = frame.cmd->blitCommandEncoder(pass);
-    blit->copyFromTexture(target, below);
+    blit->copyFromTexture(target->native(), below->native());
     blit->endEncoding();
     frame.passes++;
     return below;
 }
 
 void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
-                        MTL::Texture* input, MTL::Texture* below, float seconds, float opacity,
-                        const TransitionMix* mix, MTL::Texture* from) const
+                        const gpu::Texture* input, const gpu::Texture* below, float seconds, float opacity,
+                        const TransitionMix* mix, const gpu::Texture* from) const
 {
     PassHeader header = passHeader(draw, seconds, opacity);
     if (pass.plan.intoComposition)
@@ -1626,14 +1626,14 @@ void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass
         enc->setFragmentTexture(draw.picture->luma, 0);
     }
     if (pass.plan.source == SourceKind::Texture || pass.plan.source == SourceKind::Group)
-        enc->setFragmentTexture(input, 0);
+        enc->setFragmentTexture(gpu::native(input), 0);
     if (below)
-        enc->setFragmentTexture(below, kBelowSlot);
+        enc->setFragmentTexture(below->native(), kBelowSlot);
     const std::vector<size_t> combined = combinedStages(pass.plan);
     for (size_t j = 0; j < combined.size(); ++j) {
         const PlannedStage& stage = pass.plan.stages[combined[j]];
         enc->setFragmentTexture(
-            sides_.output(draw.layer, effectId(*draw.effects, stage), stage.effect->sidePasses.size() - 1),
+            gpu::native(sides_.output(draw.layer, effectId(*draw.effects, stage), stage.effect->sidePasses.size() - 1)),
             kAuxSlot + j);
     }
 
@@ -1650,25 +1650,22 @@ void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass
     enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
     if (mix) {
         if (from)
-            enc->setFragmentTexture(from, kFromSlot);
+            enc->setFragmentTexture(from->native(), kFromSlot);
         enc->setFragmentBytes(mix, sizeof(*mix), 2);
     }
     enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
 }
 
-MTL::Texture* Engine::poolTexture(std::vector<NS::SharedPtr<MTL::Texture>>& pool, size_t index,
-                                  MTL::PixelFormat format, Size size)
+const gpu::Texture* Engine::poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size)
 {
     if (pool.size() <= index)
         pool.resize(index + 1);
-    if (!pool[index] || pool[index]->width() != size.width || pool[index]->height() != size.height) {
-        auto desc =
-            NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(format, size.width, size.height, false));
-        desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-        desc->setStorageMode(MTL::StorageModePrivate);
-        pool[index] = NS::TransferPtr(device_->newTexture(desc.get()));
-    }
-    return pool[index].get();
+    if (!pool[index] || pool[index].width() != size.width || pool[index].height() != size.height)
+        pool[index] = device_.makeTexture({.format = format,
+                                           .width = size.width,
+                                           .height = size.height,
+                                           .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    return &pool[index];
 }
 
 void Engine::setPreviewPictures(std::set<uint64_t> layers)

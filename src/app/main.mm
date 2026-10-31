@@ -913,7 +913,7 @@ int run(const EngineConfig& opt)
         azl::startingSettings(azl::loadMachineSettings(settingsFile), settingsFlags(opt));
     std::unique_ptr<azl::FrameTrace> trace =
         opt.frameTrace.empty() ? nullptr : std::make_unique<azl::FrameTrace>(opt.frameTrace);
-    azl::Engine engine(device.get(),
+    azl::Engine engine(azl::gpu::Device::retain(device.get()),
                        {.width = opt.width,
                         .height = opt.height,
                         .clipCacheBytes = size_t(starting.settings.frameCacheMB) << 20,

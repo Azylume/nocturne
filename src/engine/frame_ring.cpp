@@ -10,29 +10,29 @@ constexpr size_t kKept = 3;
 
 } // namespace
 
-MTL::Texture* Frame::picture(uint64_t input) const
+const gpu::Texture* Frame::picture(uint64_t input) const
 {
     if (input == 0)
-        return texture.get();
+        return &texture;
     for (const auto& [id, picture] : pictures)
         if (id == input)
-            return picture.get();
+            return &picture;
     return nullptr;
 }
 
-FrameRing::FrameRing(MTL::Device* device, uint32_t width, uint32_t height, int count)
-    : device_(NS::RetainPtr(device)), width_(width), height_(height)
+FrameRing::FrameRing(const gpu::Device& device, uint32_t width, uint32_t height, int count)
+    : device_(device), width_(width), height_(height)
 {
     for (int i = 0; i < count; ++i)
         free_.push_back(newTexture());
 }
 
-NS::SharedPtr<MTL::Texture> FrameRing::newTexture() const
+gpu::Texture FrameRing::newTexture() const
 {
-    auto desc = NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, width_, height_, false));
-    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    desc->setStorageMode(MTL::StorageModePrivate);
-    return NS::TransferPtr(device_->newTexture(desc.get()));
+    return device_.makeTexture({.format = kFrameFormat,
+                                .width = width_,
+                                .height = height_,
+                                .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
 }
 
 std::shared_ptr<Frame> FrameRing::claim()
@@ -49,7 +49,7 @@ std::shared_ptr<Frame> FrameRing::claim()
     });
 }
 
-NS::SharedPtr<MTL::Texture> FrameRing::claimPicture()
+gpu::Texture FrameRing::claimPicture()
 {
     {
         std::lock_guard lock(mutex_);

@@ -123,7 +123,7 @@ PreviewService::PreviewService(DocumentServer& document, Engine& engine)
       engine_(engine),
       queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
       gpu_(engine.device(), "previews", ""),
-      painter_(engine.device(), kFrameFormat, {engine.config().width, engine.config().height}),
+      painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("previews");
           run();
@@ -249,7 +249,8 @@ PreviewService::Target PreviewService::makeTarget(const std::string& source, con
         target.cell = watch.cell;
     }
     MTL::Device* device = engine_.device();
-    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, watch.width, watch.height, false);
+    auto* desc =
+        MTL::TextureDescriptor::texture2DDescriptor(gpu::metalFormat(kFrameFormat), watch.width, watch.height, false);
     desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     desc->setStorageMode(device->hasUnifiedMemory() ? MTL::StorageModeShared : MTL::StorageModeManaged);
     for (size_t i = 0; i < (watch.surface ? kSurfaceRing : 1); ++i) {

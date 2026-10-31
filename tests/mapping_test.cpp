@@ -443,7 +443,7 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
         desc->setStorageMode(MTL::StorageModePrivate);
         return NS::TransferPtr(device->newTexture(desc.get()));
     };
-    azl::Frame frame{.texture = texture()};
+    azl::Frame frame{.texture = azl::gpu::Texture::retain(texture().get())};
     auto target = texture();
     const auto compileStart = std::chrono::steady_clock::now();
     azl::ScreenPainter painter(device.get(), MTL::PixelFormatBGRA8Unorm, {1920, 1080});

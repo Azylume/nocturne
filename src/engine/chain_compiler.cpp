@@ -49,7 +49,7 @@ bool stepped(const Effect& effect, const std::string& param)
 MTL::PixelFormat targetFormat(const PlannedPass& pass)
 {
     if (pass.intoComposition)
-        return kFrameFormat;
+        return gpu::metalFormat(kFrameFormat);
     return pass.float16 ? MTL::PixelFormatRGBA16Float : MTL::PixelFormatBGRA8Unorm;
 }
 
