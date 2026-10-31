@@ -216,6 +216,58 @@ if(WIN32)
   target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
 endif()
 
+# Media: HAP, the decoders' frame caches, the Media Library and text. Reading and writing movies, stills and text
+# rasterising use AVFoundation and CoreText on Apple, FFmpeg and DirectWrite elsewhere (ADR 0016).
+add_library(nocturne_media STATIC
+  src/media/hap.cpp
+  src/media/hap_encoder.cpp
+  src/media/media_library.cpp
+  src/media/snappy.cpp
+  src/media/text_renderer.cpp
+  src/media/video_decoder.cpp
+)
+target_include_directories(nocturne_media PUBLIC src)
+target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile)
+if(APPLE)
+  target_sources(nocturne_media PRIVATE
+    src/media/clip_decoders.cpp
+    src/media/composition_media.cpp
+    src/media/composition_service.cpp
+    src/media/hap_movie.mm
+    src/media/hap_texture.mm
+    src/media/keep_local.cpp
+    src/media/library_service.cpp
+    src/media/stills.mm
+    src/media/text_renderer_coretext.cpp
+    src/media/video_source_avf.mm
+  )
+  target_include_directories(nocturne_media PUBLIC third_party/metal-cpp)
+  target_link_libraries(nocturne_media PUBLIC
+    "-framework AVFoundation"
+    "-framework CoreMedia"
+    "-framework CoreVideo"
+    "-framework CoreText"
+    "-framework CoreGraphics"
+    "-framework ImageIO"
+    "-framework Metal"
+    "-framework Foundation"
+  )
+else()
+  find_package(FFMPEG REQUIRED)
+  target_sources(nocturne_media PRIVATE
+    src/media/hap_movie_ffmpeg.cpp
+    src/media/stills_ffmpeg.cpp
+    src/media/video_source_ffmpeg.cpp
+  )
+  target_include_directories(nocturne_media PRIVATE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(nocturne_media PUBLIC ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(nocturne_media PUBLIC ${FFMPEG_LIBRARIES})
+endif()
+if(WIN32)
+  target_sources(nocturne_media PRIVATE src/media/text_renderer_dwrite.cpp)
+  target_link_libraries(nocturne_media PUBLIC bcrypt d2d1 dwrite ole32 windowscodecs)
+endif()
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -230,10 +282,13 @@ if(APPLE)
 endif()
 add_test(NAME nocturne_tests COMMAND nocturne_tests)
 
+add_executable(nocturne-hap-encode src/app/hap_encode.cpp)
+target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
+
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross)
+  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media)
   return()
 endif()
 
@@ -243,38 +298,6 @@ target_link_libraries(nocturne_net PUBLIC nocturne_protocol nocturne_return_vide
 add_library(nocturne_return_video STATIC src/output/return_video.cpp src/output/h264_stream.mm)
 target_link_libraries(nocturne_return_video PUBLIC nocturne_protocol "-framework VideoToolbox" "-framework CoreMedia"
   "-framework CoreVideo" "-framework Foundation")
-
-add_library(nocturne_media STATIC
-  src/media/clip_decoders.cpp
-  src/media/composition_media.cpp
-  src/media/composition_service.cpp
-  src/media/hap.cpp
-  src/media/hap_encoder.cpp
-  src/media/hap_movie.mm
-  src/media/hap_texture.mm
-  src/media/keep_local.cpp
-  src/media/library_service.cpp
-  src/media/media_library.cpp
-  src/media/snappy.cpp
-  src/media/stills.mm
-  src/media/text_renderer.cpp
-  src/media/text_renderer_coretext.cpp
-  src/media/video_decoder.cpp
-  src/media/video_source_avf.mm
-)
-target_include_directories(nocturne_media PUBLIC src third_party/metal-cpp)
-target_link_libraries(nocturne_media PUBLIC
-  nocturne_protocol
-  nocturne_profile
-  "-framework AVFoundation"
-  "-framework CoreMedia"
-  "-framework CoreVideo"
-  "-framework CoreText"
-  "-framework CoreGraphics"
-  "-framework ImageIO"
-  "-framework Metal"
-  "-framework Foundation"
-)
 
 add_library(nocturne_engine STATIC
   src/engine/effect_stepper.cpp
@@ -363,9 +386,6 @@ target_link_libraries(nocturne_upload PUBLIC nocturne_media nocturne_http)
 
 add_executable(nocturne-upload src/app/upload.cpp)
 target_link_libraries(nocturne-upload PRIVATE nocturne_upload)
-
-add_executable(nocturne-hap-encode src/app/hap_encode.cpp)
-target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 
 add_executable(nocturne-decode-bench src/app/decode_bench.mm)
 target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media)

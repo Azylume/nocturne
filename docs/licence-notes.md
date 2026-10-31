@@ -102,3 +102,10 @@ No GPL code is linked or vendored for HAP.
 
 The icon art in `assets/icon/` is original to this project and under the repository's licence. The OFL covers the
 typeface only: the lettering is not a font and is not sold on its own.
+
+## Media off Apple (Windows port, checked 2026-10-31)
+
+| Project | Licence | Compatible | Used how |
+|---|---|---|---|
+| FFmpeg 9.0.2 (vcpkg, features avcodec avformat avdevice swresample swscale nvcodec opus; no `gpl`, no `nonfree`) | LGPL-2.1-or-later | yes | linked as DLLs off Apple only (ADR 0016): decoding and the QuickTime container for HAP in `src/media/*_ffmpeg.cpp`; the macOS build does not use it |
+| stb_image_write.h v1.16 (github.com/nothings/stb, commit 003501f) | MIT or public domain (dual) | yes | vendored in `third_party/stb/stb_image_write.h` with its licence text; JPEG stills off Apple (`src/media/stills_ffmpeg.cpp`) |
