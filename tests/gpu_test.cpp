@@ -140,10 +140,10 @@ void main() { color = colour; }
     std::string error;
     const std::vector<azl::ShaderEntry> entries{{"indexedVertex", azl::ShaderStage::Vertex, vertex},
                                                 {"indexedPaint", azl::ShaderStage::Fragment, fragment}};
-    const gpu::ShaderModule module = device.makeShaderModule({.msl = azl::mslSource(entries)}, &error);
+    const gpu::ShaderModule module = device.makeShaderModule(gpu::compileGlsl(entries), &error);
     REQUIRE_MESSAGE(module, error);
     const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
-        {module, azl::mslFunction("indexedVertex"), azl::mslFunction("indexedPaint"), gpu::Format::BGRA8});
+        {module, gpu::entryPoint("indexedVertex"), gpu::entryPoint("indexedPaint"), gpu::Format::BGRA8});
     REQUIRE(pipeline);
     // The left half of the target as two triangles, after 16 bytes the shader never reads.
     const std::array<float, 12> points{9.0f, 9.0f, 9.0f, 9.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f};

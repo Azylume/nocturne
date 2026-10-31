@@ -196,6 +196,14 @@ inline void RenderPass::setVertexBytes(uint32_t index, const void* data, size_t 
 {
     vk::pushBytes(pass_, vk::kVertexBuffers + index, data, size);
 }
+inline void RenderPass::setBuffer(uint32_t index, const Buffer& buffer, size_t offset)
+{
+    vk::bindBuffer(pass_, index, buffer.native(), offset);
+}
+inline void RenderPass::setVertexBuffer(uint32_t index, const Buffer& buffer, size_t offset)
+{
+    vk::bindBuffer(pass_, vk::kVertexBuffers + index, buffer.native(), offset);
+}
 inline void RenderPass::setScissor(const Scissor& s)
 {
     vk::setScissor(pass_, s.x, s.y, s.width, s.height);
@@ -205,6 +213,10 @@ inline void RenderPass::draw(uint32_t vertices, uint32_t instances)
     if (pass_->dirty)
         vk::flush(pass_);
     vkCmdDraw(pass_->cmd, vertices, instances, 0, 0);
+}
+inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances)
+{
+    vk::drawIndexed(pass_, indices.native(), count, offset, instances);
 }
 inline void RenderPass::writeTimestamp(const TimestampQueries& queries, uint32_t index)
 {
@@ -234,6 +246,10 @@ inline void ComputePass::setBytes(uint32_t index, const void* data, size_t size)
 inline void ComputePass::dispatch(uint32_t width, uint32_t height, uint32_t, uint32_t)
 {
     vk::dispatch(pass_, width, height);
+}
+inline void ComputePass::dispatchGroups(uint32_t groupsX, uint32_t groupsY, uint32_t, uint32_t)
+{
+    vk::dispatchGroups(pass_, groupsX, groupsY);
 }
 inline void ComputePass::end()
 {
