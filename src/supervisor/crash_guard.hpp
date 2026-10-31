@@ -18,12 +18,13 @@ struct Mark {
     std::string key;
     // For people: the file name or the effect chain.
     std::string name;
-    // pthread_threadid_np of the thread inside the operation.
+    // The thread inside the operation: pthread_threadid_np, GetCurrentThreadId on Windows.
     uint64_t thread = 0;
 };
 
 struct Crash {
     uint64_t thread = 0;
+    // On Windows the signal the structured exception stands for (SIGSEGV for an access violation).
     int signal = 0;
 };
 
@@ -39,7 +40,8 @@ void setup(const std::filesystem::path& marksFile, const std::filesystem::path& 
 bool skipped(const std::string& kind, const std::string& key);
 // Records the calling thread as the crashing one; async-signal-safe, and only the first call counts.
 void recordCrash(int signal);
-// Installs handlers for the crash signals that record the crash and then let it proceed.
+// Installs handlers for the crash signals that record the crash and then let it proceed. On Windows an unhandled
+// exception filter and SIGABRT do the same, and no error dialog keeps the crashed process alive.
 void installCrashHandlers();
 
 // Records the mark for as long as it lives. Fault injection for tests: with NOCTURNE_CRASH_ON=kind:key (or kind:name)
