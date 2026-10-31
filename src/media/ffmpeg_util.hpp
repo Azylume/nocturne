@@ -14,7 +14,7 @@ extern "C" {
 namespace azl::ff {
 
 struct FormatFree {
-    void operator()(AVFormatContext* f) const { avformat_close_input(&f); }
+    void operator()(AVFormatContext* f) const;
 };
 struct CodecFree {
     void operator()(AVCodecContext* c) const { avcodec_free_context(&c); }
@@ -41,15 +41,9 @@ inline std::string describe(int error)
     return text;
 }
 
-// The file's demuxer, or null with `error` set. Paths are UTF-8, which FFmpeg's file protocol expects on every
-// platform.
-inline Format openFormat(const std::filesystem::path& file, int& error)
-{
-    AVFormatContext* raw = nullptr;
-    const std::u8string path = file.u8string();
-    error = avformat_open_input(&raw, reinterpret_cast<const char*>(path.c_str()), nullptr, nullptr);
-    return Format(error < 0 ? nullptr : raw);
-}
+// The file's demuxer, or null with `error` set. The file may be renamed or deleted while it is open, as on POSIX: on
+// Windows it is read through a handle that shares deletion, which FFmpeg's own file protocol does not.
+Format openFormat(const std::filesystem::path& file, int& error);
 
 // The index of the file's first video stream, or -1. Attached pictures (cover art) are not video.
 inline int videoStream(const AVFormatContext* format)

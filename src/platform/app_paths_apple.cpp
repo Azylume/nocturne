@@ -18,6 +18,12 @@ std::filesystem::path home()
 
 } // namespace
 
+std::filesystem::path homeFolder()
+{
+    const char* home = std::getenv("HOME");
+    return home ? home : "";
+}
+
 std::filesystem::path appDataFolder()
 {
     return home() / "Library/Application Support/Nocturne";

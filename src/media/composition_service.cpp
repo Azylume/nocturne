@@ -1,6 +1,7 @@
 #include "media/composition_service.hpp"
 
 #include "media/composition_media.hpp"
+#include "platform/app_paths.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -22,8 +23,8 @@ fs::path pathField(const Message& message, const char* key)
 {
     std::string path = message.value(key, "");
     if (path.starts_with("~/"))
-        if (const char* home = std::getenv("HOME"))
-            path = home + path.substr(1);
+        if (const fs::path home = homeFolder(); !home.empty())
+            path = (home / path.substr(2)).string();
     if (!path.empty() && !fs::path(path).is_absolute())
         throw std::runtime_error(std::string("composition ") + key + " must be an absolute path on the engine machine");
     return path;

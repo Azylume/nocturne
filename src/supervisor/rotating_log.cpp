@@ -48,7 +48,8 @@ void RotatingLog::write(const std::string& text)
 void RotatingLog::open()
 {
 #ifdef _WIN32
-    file_ = _wfopen(path_.c_str(), L"a");
+    // Binary, so lines end in "\n" as written and the size it counts is the file's.
+    file_ = _wfopen(path_.c_str(), L"ab");
 #else
     file_ = std::fopen(path_.c_str(), "a");
 #endif

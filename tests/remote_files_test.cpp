@@ -1,3 +1,4 @@
+#include "platform/app_paths.hpp"
 #include "protocol/remote_files.hpp"
 #include "test_client.hpp"
 #include "test_paths.hpp"
@@ -57,10 +58,10 @@ TEST_CASE("a client on another machine may name paths inside the allowed folders
     CHECK_FALSE(refusal("/etc/passwd", roots).empty());
     CHECK_FALSE(refusal((f / "shows/tonight.json").string(), {}).empty());
 
-    const char* home = std::getenv("HOME");
-    REQUIRE(home);
-    CHECK(refusal("~/Nocturne/shows/a.json", {fs::path(home) / "Nocturne/shows"}).empty());
-    CHECK_FALSE(refusal("~/Documents/a.json", {fs::path(home) / "Nocturne/shows"}).empty());
+    const fs::path home = azl::homeFolder();
+    REQUIRE_FALSE(home.empty());
+    CHECK(refusal("~/Nocturne/shows/a.json", {home / "Nocturne/shows"}).empty());
+    CHECK_FALSE(refusal("~/Documents/a.json", {home / "Nocturne/shows"}).empty());
 }
 
 TEST_CASE("the path fields of composition, library, record and preset messages are checked; other messages pass")
@@ -131,7 +132,7 @@ TEST_CASE("over the protocol a remote client saves and loads only inside the all
     CHECK(refused(remote.next(), "outside"));
     remote.send({{"type", "library"}, {"op", "add"}, {"path", (f / "media/secret.mp4").string()}});
     CHECK(refused(remote.next(), "outside"));
-    remote.send({{"type", "record"}, {"op", "folders"}, {"path", "/"}});
+    remote.send({{"type", "record"}, {"op", "folders"}, {"path", f.root.path.root_path().string()}});
     CHECK(refused(remote.next(), "outside"));
 
     local.send({{"type", "composition"}, {"op", "save"}, {"path", outside.string()}});

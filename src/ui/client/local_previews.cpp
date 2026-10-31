@@ -19,11 +19,11 @@ namespace {
 constexpr size_t kClipCacheBytes = size_t(256) << 20;
 constexpr size_t kPreloadBytes = size_t(256) << 20;
 
-NS::SharedPtr<MTL::Device> systemDevice()
+gpu::Device systemDevice()
 {
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    gpu::Device device = gpu::Device::systemDefault();
     if (!device)
-        throw std::runtime_error("no Metal device");
+        throw std::runtime_error("no GPU device");
     return device;
 }
 
@@ -41,7 +41,7 @@ struct LocalPreviews::Impl {
                                : std::make_unique<MediaLibrary>(options.library.empty() ? MediaLibrary::defaultRoot()
                                                                                         : options.library)),
           library(options.shared ? *options.shared : *owned),
-          engine(gpu::Device::retain(device.get()),
+          engine(device,
                  {.width = options.width,
                   .height = options.height,
                   .clipCacheBytes = kClipCacheBytes,
@@ -89,7 +89,7 @@ struct LocalPreviews::Impl {
             engine.setComposition(std::move(composition));
     }
 
-    NS::SharedPtr<MTL::Device> device;
+    gpu::Device device;
     std::unique_ptr<MediaLibrary> owned;
     MediaLibrary& library;
     Engine engine;

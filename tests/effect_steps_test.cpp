@@ -101,16 +101,9 @@ Message edit(Client& client, const azl::Edit& e)
 
 std::string ctl(uint16_t port, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(port) + " " + args + " 2>&1";
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        out += buffer;
-    CHECK(pclose(pipe) == 0);
-    return out;
+    const CtlOutput run = runNocturneCtl(port, args);
+    CHECK(run.code == 0);
+    return run.output;
 }
 
 } // namespace

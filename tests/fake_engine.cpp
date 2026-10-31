@@ -5,6 +5,7 @@
 //   hang              stops beating and ignores stop requests until it is killed
 //   fault             faults while it holds a "clip" mark for poison.mp4
 //   fault-elsewhere   faults on another thread while this one holds that mark
+//   fault-compiling   faults while it holds an "effect" mark for the chain "chain"
 // It quits on a stop request, and when nobody reads its heartbeat any more.
 #include "platform/process.hpp"
 #include "supervisor/crash_guard.hpp"
@@ -66,6 +67,10 @@ std::optional<int> run(const std::string& command)
         hang();
     if (command == "fault") {
         azl::crash::Scope opening("clip", "poison", "poison.mp4");
+        fault();
+    }
+    if (command == "fault-compiling") {
+        azl::crash::Scope compiling("effect", "chain", "chain");
         fault();
     }
     if (command == "fault-elsewhere") {

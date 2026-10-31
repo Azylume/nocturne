@@ -2,12 +2,11 @@
 #include "test_paths.hpp"
 #include "fake_s3.hpp"
 #include "media/media_library.hpp"
+#include "platform/process.hpp"
+#include "scoped_env.hpp"
 #include "upload/media_upload.hpp"
 
 #include <doctest.h>
-
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -15,47 +14,46 @@
 
 namespace {
 
-std::string shell(const std::string& command)
-{
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[4096];
-    for (size_t n; (n = fread(buffer, 1, sizeof buffer, pipe)) > 0;)
-        out.append(buffer, n);
-    pclose(pipe);
-    return out;
-}
-
 struct CtlRun {
     std::string out;
     int status = 0;
 };
 
-// The ctl binary with `home` as HOME and the fake bucket's settings in the environment.
+// Nocturne's own files under `home`, as the ctl binary finds them with ctlAt's environment.
+fs::path supportUnder(const fs::path& home)
+{
+#ifdef _WIN32
+    return home / "Nocturne";
+#else
+    return home / "Library/Application Support/Nocturne";
+#endif
+}
+
+// The ctl binary with `home` as HOME (LOCALAPPDATA on Windows) and the fake bucket's settings in the environment.
 CtlRun ctlAt(const fs::path& home, const FakeS3& s3, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "HOME='" + home.string() + "' NOCTURNE_R2_ENDPOINT=" + s3.endpoint() +
-                                " NOCTURNE_R2_BUCKET=" + FakeS3::kBucket + " NOCTURNE_R2_ACCESS_KEY_ID=" +
-                                FakeS3::kKeyId + " NOCTURNE_R2_SECRET_ACCESS_KEY=" + FakeS3::kSecret + " '" +
-                                binary.string() + "' " + args + " 2>&1";
-    CtlRun run;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        run.out += buffer;
-    const int wait = pclose(pipe);
-    run.status = WEXITSTATUS(wait);
-    return run;
+    const CtlOutput run = runCtl(args, {{"HOME", home.string()},
+                                        {"LOCALAPPDATA", home.string()},
+                                        {"NOCTURNE_R2_ENDPOINT", s3.endpoint()},
+                                        {"NOCTURNE_R2_BUCKET", FakeS3::kBucket},
+                                        {"NOCTURNE_R2_ACCESS_KEY_ID", FakeS3::kKeyId},
+                                        {"NOCTURNE_R2_SECRET_ACCESS_KEY", FakeS3::kSecret}});
+    return {run.output, run.code};
+}
+
+// What ffprobe prints about `file`.
+std::string ffprobe(std::vector<std::string> args, const fs::path& file)
+{
+    args.insert(args.begin(), {"-v", "error"});
+    args.push_back(file.string());
+    return runProgram({.program = "ffprobe", .args = args, .searchPath = true}).output;
 }
 
 std::vector<double> keyframeTimes(const fs::path& file)
 {
     std::vector<double> times;
-    std::istringstream in(shell("ffprobe -v error -select_streams v:0 -show_entries packet=pts_time,flags -of csv=p=0 '" +
-                                file.string() + "'"));
+    std::istringstream in(
+        ffprobe({"-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0"}, file));
     for (std::string line; std::getline(in, line);)
         if (line.find(",K") != std::string::npos)
             times.push_back(std::stod(line));
@@ -180,20 +178,32 @@ TEST_CASE("missing R2 settings or secret fail with what to set")
 {
     for (const char* name : {"NOCTURNE_R2_ENDPOINT", "NOCTURNE_R2_BUCKET", "NOCTURNE_R2_ACCESS_KEY_ID",
                              "NOCTURNE_R2_SECRET_ACCESS_KEY"})
-        unsetenv(name);
+        setEnv(name, nullptr);
     TempDir dir;
     const fs::path config = dir.path / "r2.json";
     CHECK_THROWS_WITH(azl::loadR2Config(config), doctest::Contains("endpoint, bucket, access_key_id"));
 
     writeAll(config, R"({"endpoint": "https://example.invalid", "bucket": "media", "access_key_id": "id"})");
+#ifdef _WIN32
+    CHECK_THROWS_WITH(azl::loadR2Config(config, "nocturne-r2-test-no-such-item"),
+                      doctest::Contains("no R2 secret access key: add it to the Windows Credential Manager with "
+                                        "`cmdkey /generic:nocturne-r2-test-no-such-item /user:id /pass`"));
+#else
     CHECK_THROWS_WITH(azl::loadR2Config(config, "nocturne-r2-test-no-such-item"),
                       doctest::Contains("no R2 secret access key: add it to the login keychain"));
+#endif
 
     writeAll(config, R"({"endpoint": "https://example.invalid", "bucket": "media", "access_key_id": "id",
                          "secret_access_key": "s"})");
+#ifdef _WIN32
+    // Windows gives the file no owner-only permission to check: a secret in it is never used.
+    CHECK_THROWS_WITH(azl::loadR2Config(config), doctest::Contains("Windows cannot keep it private there"));
+    ScopedEnv secret("NOCTURNE_R2_SECRET_ACCESS_KEY", "s");
+#else
     fs::permissions(config, fs::perms::owner_read | fs::perms::owner_write | fs::perms::others_read);
     CHECK_THROWS_WITH(azl::loadR2Config(config), doctest::Contains("others can read it"));
     fs::permissions(config, fs::perms::owner_read | fs::perms::owner_write);
+#endif
     const azl::S3Config loaded = azl::loadR2Config(config);
     CHECK(loaded.endpoint == "https://example.invalid");
     CHECK(loaded.secretAccessKey == "s");
@@ -211,8 +221,7 @@ TEST_CASE("conversion gives H.264 with a keyframe every second, no audio, and a 
     CHECK(azl::sha256File(first.file) == azl::sha256File(second.file));
     CHECK(azl::convertForPlayback(source, dir.path / "a").kind == "cached");
 
-    CHECK(shell("ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 '" + first.file.string() +
-                "'") == "h264,video\n");
+    CHECK(ffprobe({"-show_entries", "stream=codec_type,codec_name", "-of", "csv=p=0"}, first.file) == "h264,video\n");
     const std::vector<double> keyframes = keyframeTimes(first.file);
     REQUIRE(keyframes.size() == 8);
     for (size_t i = 0; i < keyframes.size(); ++i)
@@ -290,7 +299,7 @@ TEST_CASE("each upload's state is kept by hash: uploading with its bytes, upload
         CHECK(state.kind == azl::UploadState::Kind::Uploading);
         CHECK(state.size == size);
         CHECK(state.source == source.string());
-        CHECK(state.pid == getpid());
+        CHECK(state.pid == azl::currentProcessId());
     }
     CHECK(seen[0].bytes == 0);
     CHECK(seen[2].bytes == 12000);
@@ -319,15 +328,14 @@ TEST_CASE("an upload whose process is gone reads as failed; other processes' sta
     const fs::path file = dir.path / "states.json";
     const std::string a(64, 'a');
     const std::string b(64, 'b');
-    const pid_t gone = fork();
-    if (gone == 0)
-        _exit(0);
-    waitpid(gone, nullptr, 0);
+    azl::Process ended = *azl::spawnProcess({.program = NOCTURNE_PLATFORM_CHILD, .args = {"exit", "0"}});
+    ended.wait();
+    const int gone = ended.pid();
 
     azl::UploadStates writer(file);
     azl::UploadStates other(file);
     writer.set(a, {.kind = azl::UploadState::Kind::Uploading, .bytes = 5, .size = 10, .pid = gone});
-    other.set(b, {.kind = azl::UploadState::Kind::Uploading, .bytes = 1, .size = 10, .pid = getpid()});
+    other.set(b, {.kind = azl::UploadState::Kind::Uploading, .bytes = 1, .size = 10, .pid = azl::currentProcessId()});
 
     azl::UploadStates reader(file);
     REQUIRE(reader.all().size() == 2);
@@ -346,7 +354,7 @@ TEST_CASE("ctl media upload sends a file up by hash; media status shows each cli
 {
     TempDir home;
     FakeS3 s3;
-    const fs::path support = home.path / "Library/Application Support/Nocturne";
+    const fs::path support = supportUnder(home.path);
     const std::string local =
         azl::MediaLibrary(support / "MediaLibrary").add(copyMedia("count_100.mp4", home.path / "count_100.mp4")).hash;
 

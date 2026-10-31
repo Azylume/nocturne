@@ -1,6 +1,7 @@
 #include "engine/render_thread.hpp"
 #include "fake_s3.hpp"
 #include "net/websocket.hpp"
+#include "platform/process.hpp"
 #include "sync/node_sync.hpp"
 #include "sync/udp_clock.hpp"
 #include "test_client.hpp"
@@ -100,7 +101,7 @@ juce::Colour previewColour(const juce::Image& image, double x, double y)
     return image.getPixelAt(int(x * image.getWidth()), int(y * image.getHeight()));
 }
 
-bool near(juce::Colour a, juce::Colour b, int tolerance = 16)
+bool alike(juce::Colour a, juce::Colour b, int tolerance = 16)
 {
     return std::abs(a.getRed() - b.getRed()) <= tolerance && std::abs(a.getGreen() - b.getGreen()) <= tolerance &&
            std::abs(a.getBlue() - b.getBlue()) <= tolerance;
@@ -113,7 +114,7 @@ bool sameAsEngine(EngineMachine& machine, const juce::Image& preview)
         return false;
     const azl::Image screen = machine.harness.readScreen();
     for (double x : {0.25, 0.75})
-        if (!near(engineColour(screen, x, 0.75), previewColour(preview, x, 0.75)))
+        if (!alike(engineColour(screen, x, 0.75), previewColour(preview, x, 0.75)))
             return false;
     return true;
 }
@@ -335,7 +336,7 @@ bool badgeHas(azl::ui::BrowserPane& browser, juce::Rectangle<int> tile, juce::Co
     const auto badge = azl::ui::BrowserPane::uploadBadge(tile).reduced(1);
     for (int y = badge.getY(); y < badge.getBottom(); ++y)
         for (int x = badge.getX(); x < badge.getRight(); ++x)
-            if (near(image.getPixelAt(x, y), colour, 8))
+            if (alike(image.getPixelAt(x, y), colour, 8))
                 return true;
     return false;
 }
@@ -374,7 +375,7 @@ TEST_CASE("the Files tab's upload badge: local only, uploading with its progress
     CHECK_FALSE(tip(elsewhere).startsWith("Only on this machine"));
 
     azl::UploadStates writer(uploads);
-    writer.set(local, {.kind = Kind::Uploading, .bytes = 25, .size = 100, .pid = getpid()});
+    writer.set(local, {.kind = Kind::Uploading, .bytes = 25, .size = 100, .pid = azl::currentProcessId()});
     CHECK(pumpUntil([&] { return session->media().upload(local) == Upload::Uploading; }, 5.0));
     CHECK(tip(local) == "Uploading to the bucket: 25%");
     CHECK(badgeHas(browser, tile(local), p.accent));

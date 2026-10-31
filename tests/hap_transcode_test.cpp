@@ -5,9 +5,14 @@
 #include "media/media_library.hpp"
 #include "upload/media_upload.hpp"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#endif
 
 #include <fstream>
 
@@ -19,24 +24,26 @@ fs::path hapEncodeTool()
     return path ? path : NOCTURNE_HAP_ENCODE;
 }
 
+azl::NativeHandle openForReading(const fs::path& file)
+{
+#ifdef _WIN32
+    return CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+#else
+    return ::open(file.c_str(), O_RDONLY);
+#endif
+}
+
 // Runs the tool with stdin from `input`; returns its exit status.
 int runWithInput(const std::vector<std::string>& args, const fs::path& input)
 {
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, input.c_str(), O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-    std::vector<char*> argv;
-    for (const std::string& arg : args)
-        argv.push_back(const_cast<char*>(arg.c_str()));
-    argv.push_back(nullptr);
-    pid_t pid = 0;
-    const int spawned = posix_spawn(&pid, argv[0], &actions, nullptr, argv.data(), nullptr);
-    posix_spawn_file_actions_destroy(&actions);
-    REQUIRE(spawned == 0);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    azl::SpawnOptions options{.program = args[0], .args = {args.begin() + 1, args.end()}};
+    options.input = azl::Stdio::to(openForReading(input));
+    options.error = azl::Stdio::null();
+    std::string error;
+    std::optional<azl::Process> tool = azl::spawnProcess(options, &error);
+    azl::closeHandle(options.input.handle);
+    REQUIRE_MESSAGE(tool, error);
+    return tool->wait();
 }
 
 } // namespace

@@ -278,6 +278,12 @@ if(APPLE)
   )
 else()
   find_package(FFMPEG REQUIRED)
+  # Opening and closing FFmpeg's demuxers (src/media/ffmpeg_util.hpp), for the media, recording and return video code.
+  add_library(nocturne_ffmpeg STATIC src/media/ffmpeg_util.cpp)
+  target_include_directories(nocturne_ffmpeg PUBLIC src ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(nocturne_ffmpeg PUBLIC ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(nocturne_ffmpeg PUBLIC ${FFMPEG_LIBRARIES})
+  target_link_libraries(nocturne_media PUBLIC nocturne_ffmpeg)
   target_sources(nocturne_media PRIVATE
     src/media/hap_movie_ffmpeg.cpp
     src/media/stills_ffmpeg.cpp
@@ -390,9 +396,7 @@ if(NOT APPLE)
   target_sources(nocturne_record PRIVATE src/output/movie_encoder_ffmpeg.cpp)
   target_sources(nocturne_return_video PRIVATE src/output/h264_encoder_ffmpeg.cpp src/output/h264_decoder_ffmpeg.cpp)
   foreach(target nocturne_record nocturne_return_video)
-    target_include_directories(${target} PUBLIC ${FFMPEG_INCLUDE_DIRS})
-    target_link_directories(${target} PUBLIC ${FFMPEG_LIBRARY_DIRS})
-    target_link_libraries(${target} PUBLIC ${FFMPEG_LIBRARIES})
+    target_link_libraries(${target} PUBLIC nocturne_ffmpeg)
   endforeach()
 endif()
 
@@ -492,6 +496,28 @@ target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
 add_library(nocturne_sync STATIC src/sync/node_sync.cpp)
 target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
 
+# The engine's cases through the harness, the protocol and its services: they build on every platform.
+target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp tests/protocol_test.cpp
+  tests/media_test.cpp tests/effects_test.cpp tests/transport_test.cpp tests/layers_test.cpp
+  tests/jump_reverse_test.cpp tests/trigger_test.cpp tests/screens_test.cpp tests/autopilot_test.cpp tests/column_autopilot_test.cpp
+  tests/transition_test.cpp tests/audio_service_test.cpp tests/supervisor_test.cpp
+  tests/modulation_test.cpp tests/composition_test.cpp tests/import_test.cpp tests/output_import_test.cpp
+  tests/clip_effects_test.cpp tests/classic_test.cpp tests/classic_stripper_test.cpp tests/deck_layers_test.cpp
+  tests/mapping_test.cpp tests/cue_test.cpp tests/text_test.cpp tests/preview_test.cpp tests/sync_test.cpp
+  tests/generator_test.cpp tests/prototype_gaps_test.cpp tests/continuity_test.cpp
+  tests/resilience_test.cpp tests/still_test.cpp tests/colour_test.cpp tests/engine_config_test.cpp
+  tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
+  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.cpp tests/palette_steps_test.cpp
+  tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
+  tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
+  tests/hap_playback_test.cpp
+  tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp tests/keep_local_test.cpp)
+target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
+add_dependencies(nocturne_tests nocturne-hap-encode nocturne-ctl)
+target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync
+  nocturne_import nocturne_upload nocturne_djlink nocturne_venues nocturne_fetch nocturne_desk)
+
 # The JUCE UI. On Apple it also links targets defined below this line (local previews, the harness).
 add_subdirectory(src/ui)
 
@@ -502,13 +528,6 @@ if(NOT APPLE)
     tests/return_video_encode_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
     nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues nocturne_record nocturne_return_video)
-  # The engine's cases through the harness that build here so far; Apple's list below has them all.
-  target_sources(nocturne_tests PRIVATE tests/golden.cpp tests/harness_test.cpp tests/layers_test.cpp
-    tests/screens_test.cpp tests/transition_test.cpp tests/output_import_test.cpp tests/clip_effects_test.cpp
-    tests/classic_test.cpp tests/text_test.cpp tests/generator_test.cpp tests/upscale_test.cpp tests/isf_user_test.cpp
-    tests/hap_golden_test.cpp tests/effects_test.cpp tests/isf_engine_test.cpp tests/mapping_test.cpp)
-  target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-  target_link_libraries(nocturne_tests PRIVATE nocturne_harness nocturne_import)
   if(WIN32)
     add_library(nocturne_win_displays STATIC src/platform/win_displays.cpp)
     target_link_libraries(nocturne_win_displays PUBLIC nocturne_gpu nocturne_platform)
@@ -523,7 +542,7 @@ if(NOT APPLE)
     target_link_options(nocturne PRIVATE "LINKER:/STACK:8388608")
     target_link_options(nocturne_tests PRIVATE "LINKER:/STACK:8388608")
     target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp tests/win_outputs_test.cpp tests/golden_png_win.cpp)
-    target_link_libraries(nocturne_tests PRIVATE nocturne_win_displays)
+    target_link_libraries(nocturne_tests PRIVATE nocturne_win_displays psapi)
     target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_ENGINE="$<TARGET_FILE:nocturne>")
     add_dependencies(nocturne_tests nocturne)
   endif()
@@ -587,29 +606,13 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/Nocturne.app.signed"
   VERBATIM)
 add_custom_target(app ALL DEPENDS "${CMAKE_BINARY_DIR}/Nocturne.app.signed")
 
-target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp tests/protocol_test.cpp
-  tests/media_test.cpp tests/effects_test.cpp tests/transport_test.cpp tests/layers_test.cpp
-  tests/jump_reverse_test.cpp tests/trigger_test.cpp tests/screens_test.cpp tests/autopilot_test.cpp tests/column_autopilot_test.cpp
-  tests/transition_test.cpp tests/audio_service_test.cpp tests/supervisor_test.cpp
-  tests/modulation_test.cpp tests/composition_test.cpp tests/import_test.cpp tests/output_import_test.cpp
-  tests/clip_effects_test.cpp tests/classic_test.cpp tests/classic_stripper_test.cpp tests/deck_layers_test.cpp
-  tests/mapping_test.cpp tests/cue_test.cpp tests/text_test.cpp tests/preview_test.cpp tests/sync_test.cpp
-  tests/generator_test.cpp tests/prototype_gaps_test.cpp tests/continuity_test.cpp
-  tests/record_test.mm tests/resilience_test.cpp tests/still_test.cpp tests/colour_test.cpp tests/engine_config_test.cpp
-  tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
-  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
-  tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
-  tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
-  tests/hap_playback_test.cpp
-  tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
-target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
-add_dependencies(nocturne_tests app nocturne-hap-encode)
-target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
-  "-framework CoreFoundation")
+# The engine cases that use Metal, AppKit or WebKit directly, and macOS's bundle update (Windows has none yet:
+# tests/bundle_update_test.cpp).
+target_sources(nocturne_tests PRIVATE tests/record_test.mm tests/desk_page_test.mm tests/update_steps_test.cpp)
+add_dependencies(nocturne_tests app)
+target_link_libraries(nocturne_tests PRIVATE "-framework CoreGraphics" "-framework ImageIO" "-framework CoreFoundation"
+  "-framework WebKit")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
-target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
-target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
 # The protocol, pairing and clock cases again, against the plain-socket WebSocket and UDP clock other platforms use
 # instead of Network.framework. The product keeps nocturne_net and nocturne_udp_clock.

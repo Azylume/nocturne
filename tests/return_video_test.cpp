@@ -3,7 +3,9 @@
 #include "output/return_video.hpp"
 #include "test_client.hpp"
 
+#ifdef __APPLE__
 #include <VideoToolbox/VideoToolbox.h>
+#endif
 
 #include <atomic>
 #include <cmath>
@@ -15,9 +17,12 @@ namespace rv = azl::return_video;
 using Clock = std::chrono::steady_clock;
 
 // Whether this machine's hardware H.264 encoder takes the size: the Intel Mac mini's refuses less than 640 pixels of
-// width, and the software encoder takes over.
+// width, and the software encoder takes over. Off Apple, whether FFmpeg opens a hardware encoder for it.
 bool hardwareEncodes(int width, int height)
 {
+#ifndef __APPLE__
+    return azl::H264Encoder(uint32_t(width), uint32_t(height), 30.0, 400).hardware().value_or(false);
+#else
     const void* keys[] = {kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder};
     const void* values[] = {kCFBooleanTrue};
     CFDictionaryRef spec = CFDictionaryCreate(nullptr, keys, values, 1, &kCFTypeDictionaryKeyCallBacks,
@@ -31,6 +36,7 @@ bool hardwareEncodes(int width, int height)
         CFRelease(session);
     }
     return made;
+#endif
 }
 
 azl::Composition twoOutputs(azl::ClipRef clip = {})

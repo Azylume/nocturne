@@ -1,92 +1,14 @@
 #include "desk/desk_server.hpp"
+#include "desk_rig.hpp"
 #include "document/cue_edits.hpp"
-#include "harness/engine_harness.hpp"
-#include "http_get.hpp"
+#include "kill_process.hpp"
 #include "net/lan.hpp"
-#include "net/websocket.hpp"
-#include "test_client.hpp"
 #include "test_paths.hpp"
-#include "venues/gig.hpp"
-
-#import <AppKit/AppKit.h>
-#import <WebKit/WebKit.h>
-
-#include <poll.h>
-#include <signal.h>
-#include <spawn.h>
-#include <sys/wait.h>
 
 #include <chrono>
 #include <thread>
 
-extern char** environ;
-
 namespace {
-
-constexpr int64_t kHour = 3600;
-constexpr azl::EngineConfig kSize{.width = 320, .height = 180};
-
-int64_t utc(const char* date, int hour, int minute = 0)
-{
-    return *azl::dateDays(date) * 86400 + hour * kHour + minute * 60;
-}
-
-int cest(int64_t) { return int(2 * kHour); }
-
-azl::Gig night()
-{
-    return {"mini", "2026-10-16", 22 * 60, 5 * 60,
-            {{"Opener", 23 * 60, 1}, {"Headliner", 3 * 60, 2}, {"Closer", 4 * 60, 1}, {"Ghost", 4 * 60 + 30, 9}}};
-}
-
-// Two decks and tonight's Gig, its last slot on a deck the composition does not have.
-azl::Composition withNight()
-{
-    azl::Composition c = azl::defaultComposition();
-    c.decks.push_back({2, "Peak", {{11, "P 1"}}});
-    c.gigs = {azl::gigWindow(night())};
-    c.cues = azl::lineupCues(night());
-    for (size_t i = 0; i < c.cues.size(); ++i)
-        c.cues[i].id = i + 1;
-    return c;
-}
-
-Message deskStatus(azl::DocumentServer& server, bool loopback)
-{
-    std::mutex mutex;
-    std::vector<Message> inbox;
-    const azl::ClientId id = server.connect(
-        [&](const Message& m) {
-            std::lock_guard lock(mutex);
-            inbox.push_back(m);
-        },
-        loopback);
-    server.receive(id, {{"type", "hello"}, {"watch", false}});
-    server.receive(id, {{"type", "desk"}, {"op", "status"}});
-    server.disconnect(id);
-    std::lock_guard lock(mutex);
-    REQUIRE(inbox.size() == 1);
-    return inbox[0];
-}
-
-// A harness engine on an ephemeral port with the desk server in front of it, on loopback.
-struct Desk {
-    explicit Desk(azl::Composition composition = withNight()) : harness(kSize, 15.0, {}, std::move(composition))
-    {
-        harness.setWallClock(double(utc("2026-10-17", 0, 30)), cest);
-    }
-
-    Message state()
-    {
-        const HttpReply reply = httpGet(server.port(), "/state");
-        REQUIRE(reply.status == 200);
-        return Message::parse(reply.body);
-    }
-
-    azl::EngineHarness harness;
-    azl::WebSocketServer engine{harness.document(), 0};
-    azl::DeskServer server{{.port = 0, .enginePort = engine.port(), .loopbackOnly = true}};
-};
 
 void switchDeck(azl::DocumentServer& server, uint64_t deck)
 {
@@ -105,48 +27,6 @@ std::vector<std::string> flags(const Message& lineup, const char* flag)
         if (slot[flag] == true)
             named.push_back(slot["dj"]);
     return named;
-}
-
-// Runs the main run loop until `done` or the timeout.
-bool spinUntil(const std::function<bool()>& done, double seconds = 15.0)
-{
-    const auto until = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
-    while (std::chrono::steady_clock::now() < until) {
-        @autoreleasepool {
-            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                     beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
-        }
-        if (done())
-            return true;
-    }
-    return false;
-}
-
-std::string evaluate(WKWebView* view, NSString* script)
-{
-    auto answer = std::make_shared<std::pair<bool, std::string>>();
-    [view evaluateJavaScript:script
-           completionHandler:^(id value, NSError*) {
-               if ([value isKindOfClass:[NSString class]])
-                   answer->second = [(NSString*)value UTF8String];
-               else if ([value isKindOfClass:[NSNumber class]])
-                   answer->second = [[(NSNumber*)value stringValue] UTF8String];
-               answer->first = true;
-           }];
-    spinUntil([&] { return answer->first; }, 5.0);
-    return answer->second;
-}
-
-// A web view in no window, so nothing shows on the screen.
-WKWebView* hiddenPage(uint16_t port)
-{
-    [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
-    WKWebView* view = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 390, 844)
-                                         configuration:[[WKWebViewConfiguration alloc] init]];
-    NSString* url = [NSString stringWithFormat:@"http://127.0.0.1:%u/", unsigned(port)];
-    [view loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
-    return view;
 }
 
 } // namespace
@@ -315,62 +195,33 @@ TEST_CASE("desk: an engine that closes the desk's connection gets a new one on t
     }
 }
 
-TEST_CASE("desk: the page draws a button per slot and marks the live one, in a web view no window shows")
-{
-    Desk desk;
-    WKWebView* view = hiddenPage(desk.server.port());
-    REQUIRE(spinUntil([&] { return evaluate(view, @"document.querySelectorAll('#lineup .slot').length") == "4"; }));
-    CHECK(evaluate(view, @"document.querySelector('.slot.live .dj').textContent") == "Opener");
-    CHECK(evaluate(view, @"document.querySelector('.slot.next .dj').textContent") == "Headliner");
-    CHECK(evaluate(view, @"document.querySelector('.slot.missing .meta').textContent").find("deck missing") !=
-          std::string::npos);
-    CHECK(evaluate(view, @"document.getElementById('status').textContent").starts_with("Next: Headliner at 03:00"));
-    CHECK(evaluate(view, @"String(document.body.classList.contains('offline'))") == "false");
-    const bool windowless = view.window == nil;
-    CHECK(windowless);
-
-    Desk none(azl::defaultComposition());
-    WKWebView* empty = hiddenPage(none.server.port());
-    REQUIRE(spinUntil([&] { return evaluate(empty, @"String(document.body.classList.contains('empty'))") == "true"; }));
-    CHECK(evaluate(empty, @"document.querySelectorAll('#lineup .slot').length") == "0");
-    CHECK(evaluate(empty, @"document.getElementById('liveDeck').textContent").starts_with("Live: "));
-}
-
 TEST_CASE("desk: killing the desk process leaves the engine's frames running")
 {
     azl::EngineHarness harness(kSize, 60.0, {}, withNight());
     azl::WebSocketServer engine(harness.document(), 0);
-    const std::string binary = bundleBinary("nocturne-desk").string();
-    const std::string enginePort = std::to_string(engine.port());
-    std::vector<std::string> args = {binary, "--port", "0", "--loopback-only", "--engine-port", enginePort};
-    std::vector<char*> argv;
-    for (std::string& a : args)
-        argv.push_back(a.data());
-    argv.push_back(nullptr);
-    int out[2];
-    REQUIRE(::pipe(out) == 0);
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, out[1], 1);
-    pid_t pid = 0;
-    REQUIRE(posix_spawn(&pid, binary.c_str(), &actions, nullptr, argv.data(), environ) == 0);
-    posix_spawn_file_actions_destroy(&actions);
-    ::close(out[1]);
+    const std::optional<azl::PipeEnds> out = azl::makePipe();
+    REQUIRE(out);
+    azl::SpawnOptions options{.program = bundleBinary("nocturne-desk"),
+                              .args = {"--port", "0", "--loopback-only", "--engine-port", std::to_string(engine.port())}};
+    options.output = azl::Stdio::to(out->write);
+    std::string error;
+    std::optional<azl::Process> desk = azl::spawnProcess(options, &error);
+    azl::closeHandle(out->write);
+    REQUIRE_MESSAGE(desk, error);
 
     std::string printed;
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (printed.find("listening on 127.0.0.1:") == std::string::npos ||
            printed.find('\n', printed.find("listening on 127.0.0.1:")) == std::string::npos) {
         REQUIRE(std::chrono::steady_clock::now() < until);
-        pollfd fd{out[0], POLLIN, 0};
-        if (::poll(&fd, 1, 100) > 0) {
-            char buffer[256];
-            const ssize_t n = ::read(out[0], buffer, sizeof buffer);
-            REQUIRE(n > 0);
-            printed.append(buffer, size_t(n));
-        }
+        char buffer[256];
+        const long n = azl::readAvailable(out->read, buffer, sizeof buffer);
+        REQUIRE(n >= 0);
+        if (n == 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        printed.append(buffer, size_t(n));
     }
-    ::close(out[0]);
+    azl::closeHandle(out->read);
     const uint16_t port = uint16_t(std::atoi(printed.c_str() + printed.find("127.0.0.1:") + 10));
     CHECK(httpGet(port, "/state").status == 200);
 
@@ -378,14 +229,13 @@ TEST_CASE("desk: killing the desk process leaves the engine's frames running")
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     harness.stats().maxGapMicros = 0;
     const uint64_t before = harness.stats().rendered;
-    REQUIRE(::kill(pid, SIGKILL) == 0);
-    int status = 0;
-    ::waitpid(pid, &status, 0);
+    killProcess(desk->pid());
+    desk->wait();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const uint64_t after = harness.stats().rendered;
     const uint64_t gap = harness.stats().maxGapMicros;
     harness.stopLive();
-    CHECK(WIFSIGNALED(status));
+    CHECK(desk->describeExit() == kKilled);
     CHECK(after - before >= 15);
     CHECK(gap < 250000);
     CHECK(httpGet(port, "/state").status == 0);
