@@ -120,8 +120,8 @@ for admin rights (User Account Control): the installer writes to Program Files a
   `Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private` (`Get-NetConnectionProfile` lists the
   names).
 - Optional, unticked by default: **Start the engine under its supervisor at every logon**, for a show machine. It
-  adds the scheduled task `Nocturne`; the supervisor then runs in a console window after each logon. To change it
-  later, as admin:
+  adds the scheduled task `Nocturne`; the supervisor then runs after each logon, with no window. To change it later,
+  as admin:
 
   ```powershell
   powershell -ExecutionPolicy Bypass -File "C:\Program Files\Nocturne\autostart.ps1" install

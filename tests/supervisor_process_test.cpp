@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -87,7 +88,7 @@ constexpr const char* kKilled = "killed by SIGKILL";
 // names one.
 class Supervised {
 public:
-    explicit Supervised(const std::vector<std::string>& extra = {})
+    explicit Supervised(const std::vector<std::string>& extra = {}, azl::Stdio stdio = azl::Stdio::null())
     {
         std::vector<std::string> args = {"--engine", NOCTURNE_FAKE_ENGINE, "--state", state().string(), "--logs",
                                          (root.path / "logs").string(), "--desk", "off"};
@@ -95,9 +96,9 @@ public:
         std::string error;
         supervisor_ = azl::spawnProcess({.program = NOCTURNE_SUPERVISOR,
                                          .args = args,
-                                         .input = azl::Stdio::null(),
-                                         .output = azl::Stdio::null(),
-                                         .error = azl::Stdio::null()},
+                                         .input = stdio,
+                                         .output = stdio,
+                                         .error = stdio},
                                         &error);
         REQUIRE_MESSAGE(supervisor_, error);
         REQUIRE_MESSAGE(waitForRunning(1), log());
@@ -262,3 +263,61 @@ TEST_CASE("supervisor: the venue desk runs beside the engine; killed, it comes b
     CHECK(supervised.engine() == engine);
     CHECK(count(supervised.log(), "engine started") == 1);
 }
+
+#ifdef _WIN32
+namespace {
+
+WORD subsystem(const fs::path& binary)
+{
+    const std::string image = readFile(binary);
+    LONG offset = 0;
+    REQUIRE(image.size() > 0x40);
+    std::memcpy(&offset, image.data() + 0x3C, sizeof offset);
+    IMAGE_NT_HEADERS64 headers{};
+    REQUIRE(image.size() >= size_t(offset) + sizeof headers);
+    std::memcpy(&headers, image.data() + offset, sizeof headers);
+    return headers.OptionalHeader.Subsystem;
+}
+
+// What `program --help` prints, read through a pipe as the supervisor reads the engine's and the desk's output.
+std::string helpThroughPipe(const char* program)
+{
+    const std::optional<azl::PipeEnds> pipe = azl::makePipe();
+    REQUIRE(pipe);
+    std::string error;
+    std::optional<azl::Process> child = azl::spawnProcess(
+        {.program = program, .args = {"--help"}, .input = azl::Stdio::null(), .output = azl::Stdio::to(pipe->write)},
+        &error);
+    azl::closeHandle(pipe->write);
+    REQUIRE_MESSAGE(child, error);
+    std::string out;
+    char buffer[4096];
+    for (long n; (n = azl::readHandle(pipe->read, buffer, sizeof buffer)) > 0;)
+        out.append(buffer, size_t(n));
+    azl::closeHandle(pipe->read);
+    CHECK(child->wait() == 0);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("supervisor: on Windows the supervisor and the desk open no console window, and their output reaches a pipe")
+{
+    for (const char* program : {NOCTURNE_SUPERVISOR, NOCTURNE_DESK}) {
+        INFO(program);
+        CHECK(subsystem(program) == IMAGE_SUBSYSTEM_WINDOWS_GUI);
+        CHECK(contains(helpThroughPipe(program), "usage: nocturne-"));
+    }
+}
+
+TEST_CASE("supervisor: on Windows it runs and stops with no standard handles, as the autostart task starts it")
+{
+    // An invalid handle leaves the child's standard handle unset.
+    Supervised supervised({"--desk", NOCTURNE_DESK, "--desk-port", "0", "--desk-loopback"},
+                          azl::Stdio::to(INVALID_HANDLE_VALUE));
+    INFO(supervised.log());
+    REQUIRE(eventually([&] { return contains(supervised.log(), "desk started"); }, 10.0));
+    CHECK(supervised.stop() == 0);
+    CHECK(contains(supervised.log(), "supervisor stopped"));
+}
+#endif
