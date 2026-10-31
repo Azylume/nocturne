@@ -53,7 +53,7 @@ nlohmann::json load(const std::filesystem::path& file)
         return none;
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.contains("presets") || !j["presets"].is_object()) {
-        std::fprintf(stderr, "presets: ignoring unreadable %s\n", file.c_str());
+        std::fprintf(stderr, "presets: ignoring unreadable %s\n", file.string().c_str());
         return none;
     }
     return {{"presets", j["presets"]}, {"defaults", objectAt(j, "defaults")}, {"chains", objectAt(j, "chains")}};

@@ -162,7 +162,7 @@ void StateSaver::save(const std::shared_ptr<const Composition>& composition, con
         }
         std::lock_guard lock(mutex_);
         if (std::exchange(failing_, false))
-            std::fprintf(stderr, "state: saved again to %s\n", path_.c_str());
+            std::fprintf(stderr, "state: saved again to %s\n", path_.string().c_str());
         ++saves_;
     } catch (const std::exception& e) {
         std::lock_guard lock(mutex_);
