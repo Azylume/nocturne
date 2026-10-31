@@ -29,6 +29,7 @@ elseif(WIN32)
     clock_win.cpp
     credentials_win.cpp
     crypto_win.cpp
+    exit_trace_win.cpp
     main_loop_win.cpp
     preview_channel_win.cpp
     process_win.cpp
@@ -61,7 +62,7 @@ set(platform_tests
   ${repo_root}/tests/platform_thread_test.cpp
 )
 if(WIN32)
-  list(APPEND platform_tests ${repo_root}/tests/win_displays_test.cpp)
+  list(APPEND platform_tests ${repo_root}/tests/win_displays_test.cpp ${repo_root}/tests/exit_trace_test.cpp)
 endif()
 
 if(NOT platform_standalone)

@@ -163,16 +163,22 @@ int signalFor(DWORD exception)
     }
 }
 
+// The handlers installed before ours, which run after them.
+LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
+void (*previousAbort)(int) = SIG_DFL;
+
 // Runs on the crashing thread; the process then dies of the exception as it would have.
 LONG WINAPI onCrash(EXCEPTION_POINTERS* info)
 {
     recordCrash(signalFor(info->ExceptionRecord->ExceptionCode));
-    return EXCEPTION_CONTINUE_SEARCH;
+    return previousFilter ? previousFilter(info) : EXCEPTION_CONTINUE_SEARCH;
 }
 
 void onAbort(int signal)
 {
     recordCrash(signal);
+    if (previousAbort != SIG_DFL && previousAbort != SIG_IGN && previousAbort != SIG_ERR)
+        previousAbort(signal);
 }
 #else
 void onCrash(int signal, siginfo_t* info, void*)
@@ -271,8 +277,12 @@ void installCrashHandlers()
 #ifdef _WIN32
     // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    SetUnhandledExceptionFilter(onCrash);
-    std::signal(SIGABRT, onAbort);
+    const LPTOP_LEVEL_EXCEPTION_FILTER filter = SetUnhandledExceptionFilter(onCrash);
+    if (filter != onCrash)
+        previousFilter = filter;
+    const auto abortHandler = std::signal(SIGABRT, onAbort);
+    if (abortHandler != onAbort)
+        previousAbort = abortHandler;
 #else
     struct sigaction action{};
     action.sa_sigaction = onCrash;

@@ -3,6 +3,7 @@
 #include "app/main_thread.hpp"
 #include "app/safe_mode.hpp"
 #include "audio/audio_input.hpp"
+#include "platform/exit_trace.hpp"
 #include "platform/main_loop.hpp"
 #include "platform/process.hpp"
 #include "platform/profile.hpp"
@@ -163,7 +164,9 @@ ProcessUse processUse()
 
 } // namespace azl::app
 
-int main()
+namespace {
+
+int engineProcess()
 {
     AZL_THREAD_NAME("main");
     // Before any thread starts, so a stop asked for at any time is seen.
@@ -181,4 +184,14 @@ int main()
         std::fprintf(stderr, "nocturne: %s\n", e.what());
         return 1;
     }
+}
+
+} // namespace
+
+int main()
+{
+    azl::traceExits();
+    const int code = engineProcess();
+    azl::exitingNormally();
+    return code;
 }
