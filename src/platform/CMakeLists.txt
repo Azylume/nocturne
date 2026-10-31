@@ -17,16 +17,19 @@ if(APPLE)
     clock_apple.cpp
     credentials_apple.cpp
     crypto_apple.cpp
+    preview_channel_apple.cpp
     process_apple.cpp
     thread_priority_apple.cpp
     work_queue_apple.cpp
   )
+  target_link_libraries(nocturne_platform PUBLIC "-framework IOSurface" "-framework CoreFoundation")
 elseif(WIN32)
   target_sources(nocturne_platform PRIVATE
     app_paths_win.cpp
     clock_win.cpp
     credentials_win.cpp
     crypto_win.cpp
+    preview_channel_win.cpp
     process_win.cpp
     thermal_win.cpp
     thread_priority_win.cpp
@@ -47,6 +50,7 @@ set(platform_tests
   ${repo_root}/tests/platform_credentials_test.cpp
   ${repo_root}/tests/platform_crypto_test.cpp
   ${repo_root}/tests/platform_paths_test.cpp
+  ${repo_root}/tests/platform_preview_test.cpp
   ${repo_root}/tests/platform_process_test.cpp
   ${repo_root}/tests/platform_queue_test.cpp
   ${repo_root}/tests/platform_thermal_test.cpp

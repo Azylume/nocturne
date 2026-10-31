@@ -1,7 +1,9 @@
 // The child tests/platform_test.cpp starts through spawnProcess: one small job per run, the same on every platform.
+#include "platform/preview_channel.hpp"
 #include "platform/process.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -58,6 +60,20 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::seconds(30));
         return 0;
     }
-    std::fprintf(stderr, "usage: nocturne_platform_child exit N | print ARGS | env NAME | beat | stdin | stop | fault | sleep\n");
+    if (job == "preview" && argc > 2) {
+        const auto reader = azl::PreviewChannelReader::open(std::strtoull(argv[2], nullptr, 10));
+        azl::PreviewChannelReader::Picture picture;
+        if (!reader || !reader->read(picture))
+            return 3;
+        unsigned long long sum = 0;
+        for (uint8_t b : picture.bgra)
+            sum += b;
+        std::printf("%ux%u frame %llu sum %llu", picture.width, picture.height,
+                    static_cast<unsigned long long>(*picture.frame), sum);
+        return 0;
+    }
+    std::fprintf(stderr,
+                 "usage: nocturne_platform_child exit N | print ARGS | env NAME | beat | stdin | stop | fault | sleep | "
+                 "preview ID\n");
     return 2;
 }

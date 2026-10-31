@@ -3,7 +3,7 @@
 #include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "media/stills.hpp"
-#include "protocol/preview_surface.hpp"
+#include "platform/preview_channel_apple.hpp"
 
 #include <IOSurface/IOSurface.h>
 
@@ -45,37 +45,6 @@ std::string sourceKind(const std::string& source)
 std::string stripKey(const std::string& hash, uint32_t width, uint32_t height)
 {
     return hash + "@" + std::to_string(width) + "x" + std::to_string(height);
-}
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-// Global, so the UI process finds it by id. The deprecated flag still works for unsandboxed processes; passing a mach
-// port instead needs a channel the protocol does not have.
-IOSurfaceRef globalSurface(uint32_t width, uint32_t height)
-{
-    CFMutableDictionaryRef props =
-        CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    auto number = [&](CFStringRef key, int value) {
-        CFNumberRef n = CFNumberCreate(nullptr, kCFNumberIntType, &value);
-        CFDictionarySetValue(props, key, n);
-        CFRelease(n);
-    };
-    number(kIOSurfaceWidth, int(width));
-    number(kIOSurfaceHeight, int(height));
-    number(kIOSurfaceBytesPerElement, 4);
-    number(kIOSurfacePixelFormat, int('BGRA'));
-    CFDictionarySetValue(props, kIOSurfaceIsGlobal, kCFBooleanTrue);
-    IOSurfaceRef surface = IOSurfaceCreate(props);
-    CFRelease(props);
-    return surface;
-}
-#pragma clang diagnostic pop
-
-void markSurface(IOSurfaceRef surface, int64_t frame)
-{
-    CFNumberRef value = CFNumberCreate(nullptr, kCFNumberSInt64Type, &frame);
-    IOSurfaceSetValue(surface, previewFrameKey(), value);
-    CFRelease(value);
 }
 
 void copyInto(IOSurfaceRef surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height)
@@ -258,7 +227,7 @@ PreviewService::Target PreviewService::makeTarget(const std::string& source, con
                 target.textures.push_back(NS::TransferPtr(device->newTexture(desc)));
             continue;
         }
-        IOSurfaceRef surface = globalSurface(watch.width, watch.height);
+        IOSurfaceRef surface = createPreviewSurface(watch.width, watch.height);
         if (!surface)
             break;
         target.surfaces.emplace_back(surface, CFRelease);
@@ -437,7 +406,7 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             continue;
         MTL::Texture* texture = target.textures[target.next].get();
         if (watch.surface)
-            markSurface(target.surfaces[target.next].get(), -1);
+            markPreviewSurface(target.surfaces[target.next].get(), -1);
         painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
         if (texture->storageMode() == MTL::StorageModeManaged) {
             MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
@@ -473,7 +442,7 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
                             connected;
                 target->announced = true;
             }
-            markSurface(target->surfaces[target->next].get(), int64_t(frame->index));
+            markPreviewSurface(target->surfaces[target->next].get(), int64_t(frame->index));
             message["surface"] = target->next;
         } else {
             const size_t bytesPerRow = size_t(watch.width) * 4;
@@ -524,9 +493,9 @@ bool PreviewService::serveClip(ClientId client, Watch& watch, Target& target,
             target.announced = true;
         }
         IOSurfaceRef surface = target.surfaces[target.next].get();
-        markSurface(surface, -1);
+        markPreviewSurface(surface, -1);
         copyInto(surface, picture, strip.width, strip.height);
-        markSurface(surface, int64_t(target.sent));
+        markPreviewSurface(surface, int64_t(target.sent));
         message["surface"] = target.next;
         target.next = (target.next + 1) % target.surfaces.size();
     } else {
