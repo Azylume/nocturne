@@ -6,6 +6,7 @@
 #include "gpu/gpu.hpp"
 
 #include <cstdint>
+#include <shared_mutex>
 
 namespace azl::gpu::vulkan {
 
@@ -28,8 +29,13 @@ void waitSemaphore(CommandBuffer& cmd, VkSemaphore semaphore, VkPipelineStageFla
 void signalSemaphore(CommandBuffer& cmd, VkSemaphore semaphore);
 // VK_KHR_present_id and VK_KHR_present_wait are enabled: a swapchain can tag presents and wait for them on screen.
 bool presentWait(const Device& device);
-// vkQueuePresentKHR on the queue, serialised with its submissions. The output's present thread.
+// vkQueuePresentKHR on the queue, serialised with its submissions, holding presentationMutex shared. The output's
+// present thread.
 VkResult present(const Queue& queue, const VkPresentInfoKHR& info);
+// Held shared by each acquire and present on the device, and exclusively while a surface or swapchain is made or
+// destroyed: the NVIDIA driver faults in one output's present while another output's swapchain is made. Outputs still
+// present side by side. Never held across a wait for the screen.
+std::shared_mutex& presentationMutex(const Device& device);
 
 #if defined(_WIN32)
 // A surface for a Win32 window; VK_NULL_HANDLE when it cannot be made.

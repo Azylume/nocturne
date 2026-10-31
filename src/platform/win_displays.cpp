@@ -111,6 +111,7 @@ public:
         tearDown();
         for (VkSemaphore s : acquired_)
             vkDestroySemaphore(vk_, s, nullptr);
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
         vkDestroySurfaceKHR(gpu::vulkan::instance(device_), surface_, nullptr);
     }
 
@@ -146,7 +147,11 @@ public:
         if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
-        const VkResult result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        VkResult result = VK_SUCCESS;
+        {
+            std::shared_lock presenting(gpu::vulkan::presentationMutex(device_));
+            result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        }
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -314,6 +319,15 @@ private:
 
     void build(VkSwapchainKHR old = VK_NULL_HANDLE)
     {
+        makeSwapchain(old);
+        stopWaiting_ = false;
+        if (waitForPresent_)
+            waiter_ = std::thread([this] { waitForPresents(); });
+    }
+
+    void makeSwapchain(VkSwapchainKHR old)
+    {
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
         VkSurfaceCapabilitiesKHR caps{};
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu::vulkan::physicalDevice(device_), surface_, &caps);
         VkExtent2D extent = caps.currentExtent;
@@ -349,9 +363,12 @@ private:
                 gpu::vulkan::wrapSwapchainImage(device_, image, info.imageFormat, extent.width, extent.height));
             rendered_.push_back(makeSemaphore());
         }
-        stopWaiting_ = false;
-        if (waitForPresent_)
-            waiter_ = std::thread([this] { waitForPresents(); });
+    }
+
+    void destroySwapchain(VkSwapchainKHR swapchain)
+    {
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
+        vkDestroySwapchainKHR(vk_, swapchain, nullptr);
     }
 
     // Waits until the GPU is done with every image this surface handed out, so they can go.
@@ -399,7 +416,7 @@ private:
         for (VkSemaphore s : rendered_)
             vkDestroySemaphore(vk_, s, nullptr);
         rendered_.clear();
-        vkDestroySwapchainKHR(vk_, swapchain_, nullptr);
+        destroySwapchain(swapchain_);
         swapchain_ = VK_NULL_HANDLE;
     }
 
@@ -420,7 +437,7 @@ private:
         } catch (const std::exception& e) {
             std::fprintf(stderr, "%s\n", e.what());
         }
-        vkDestroySwapchainKHR(vk_, old, nullptr);
+        destroySwapchain(old);
         stale_ = false;
         return swapchain_ != VK_NULL_HANDLE;
     }
