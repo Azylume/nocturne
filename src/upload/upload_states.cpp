@@ -2,11 +2,10 @@
 
 #include "document/composition_file.hpp"
 #include "media/media_library.hpp"
+#include "platform/process.hpp"
 
 #include <nlohmann/json.hpp>
 
-#include <cerrno>
-#include <csignal>
 #include <cstdio>
 #include <fstream>
 
@@ -37,7 +36,7 @@ std::optional<UploadState::Kind> kindFromName(const std::string& name)
 
 UploadState resolved(UploadState state)
 {
-    if (state.kind == UploadState::Kind::Uploading && state.pid > 0 && kill(state.pid, 0) != 0 && errno == ESRCH) {
+    if (state.kind == UploadState::Kind::Uploading && state.pid > 0 && !processRunning(state.pid)) {
         state.kind = UploadState::Kind::Failed;
         state.error = kInterrupted;
     }

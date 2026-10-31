@@ -32,7 +32,11 @@ std::string utcStamp()
 {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &now);
+#else
     gmtime_r(&now, &tm);
+#endif
     char text[17];
     std::strftime(text, sizeof text, "%Y%m%dT%H%M%SZ", &tm);
     return text;
