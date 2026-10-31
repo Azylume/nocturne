@@ -2,10 +2,9 @@
 
 #include "engine/engine.hpp"
 #include "media/media_library.hpp"
+#include "platform/work_queue.hpp"
 #include "protocol/document_server.hpp"
 #include "sync/udp_clock.hpp"
-
-#include <dispatch/dispatch.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -81,7 +80,7 @@ private:
     std::string name_;
     uint16_t clockPort_;
     bool fresh_;
-    dispatch_queue_t files_;
+    WorkQueue files_;
     mutable std::mutex mutex_;
     std::condition_variable stop_;
     bool stopped_ = false;
@@ -153,7 +152,7 @@ private:
     Locate locate_;
     ConnectClock connectClock_;
     bool fetch_;
-    dispatch_queue_t files_;
+    WorkQueue files_;
     mutable std::mutex mutex_;
     std::condition_variable wake_;
     bool stopped_ = false;

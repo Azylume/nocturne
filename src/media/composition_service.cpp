@@ -19,12 +19,6 @@ namespace {
 
 constexpr size_t kRecent = 20;
 
-struct Request {
-    CompositionService* service;
-    Message message;
-    DocumentServer::Sink reply;
-};
-
 fs::path pathField(const Message& message, const char* key)
 {
     std::string path = message.value(key, "");
@@ -109,23 +103,19 @@ void addJsonFiles(const fs::path& folder, std::vector<fs::path>& files)
 CompositionService::CompositionService(DocumentServer& document, MediaLibrary& library, AttachedDisplays displays,
                                        ShowFolders folders, std::function<void()> beforeLoad)
     : document_(document), library_(library), displays_(std::move(displays)), folders_(std::move(folders)),
-      beforeLoad_(std::move(beforeLoad)), queue_(dispatch_queue_create("nocturne.composition", DISPATCH_QUEUE_SERIAL))
+      beforeLoad_(std::move(beforeLoad)), queue_("nocturne.composition")
 {
     std::error_code ec;
     fs::create_directories(folders_.shows, ec);
     document_.handle("composition", [this](const Message& message, DocumentServer::Sink reply) {
-        dispatch_async_f(queue_, new Request{this, message, std::move(reply)}, [](void* context) {
-            std::unique_ptr<Request> request(static_cast<Request*>(context));
-            request->service->handle(request->message, request->reply);
-        });
+        queue_.async([this, message, reply = std::move(reply)] { handle(message, reply); });
     });
 }
 
 CompositionService::~CompositionService()
 {
     document_.handle("composition", nullptr);
-    dispatch_sync_f(queue_, nullptr, [](void*) {});
-    dispatch_release(queue_);
+    queue_.flush();
 }
 
 void CompositionService::handle(const Message& message, const DocumentServer::Sink& reply)

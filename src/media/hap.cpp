@@ -1,6 +1,7 @@
 #include "media/hap.hpp"
 
 #include "media/snappy.hpp"
+#include "platform/work_queue.hpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wall"
@@ -10,49 +11,17 @@
 #include "../../third_party/stb/stb_dxt.h"
 #pragma clang diagnostic pop
 
-#ifdef __APPLE__
-#include <dispatch/dispatch.h>
-#endif
-
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
-#include <thread>
 #include <vector>
 
 namespace azl {
 
 namespace {
-
-// Who waits for the work: playback for a decode, nobody in particular for an encode.
-enum class Urgency { Decode, Encode };
-
-// Calls body(i) for every i below count, spread over the cores, and returns when every call has returned.
-template <class Body>
-void parallelFor(size_t count, Urgency urgency, Body& body)
-{
-#ifdef __APPLE__
-    Body* run = &body;
-    const dispatch_qos_class_t qos = urgency == Urgency::Decode ? QOS_CLASS_USER_INITIATED : QOS_CLASS_UTILITY;
-    dispatch_apply(count, dispatch_get_global_queue(qos, 0), ^(size_t i) { (*run)(i); });
-#else
-    std::atomic<size_t> next{0};
-    auto work = [&] {
-        for (size_t i = next++; i < count; i = next++)
-            body(i);
-    };
-    const size_t threads = std::min<size_t>(count, std::max(1u, std::thread::hardware_concurrency()));
-    std::vector<std::thread> helpers(threads > 0 ? threads - 1 : 0);
-    for (std::thread& helper : helpers)
-        helper = std::thread(work);
-    work();
-    for (std::thread& helper : helpers)
-        helper.join();
-#endif
-}
 
 constexpr uint32_t fourcc(const char (&code)[5])
 {
@@ -196,7 +165,7 @@ std::string decodeChunked(const Section& s, size_t expected, std::vector<uint8_t
     if (chunks.size() == 1) {
         decode(0);
     } else {
-        parallelFor(chunks.size(), Urgency::Decode, decode);
+        parallelFor(chunks.size(), ThreadRole::Decode, decode);
     }
     return failed ? "a chunk's Snappy data is malformed" : "";
 }
@@ -364,7 +333,7 @@ std::vector<uint8_t> encodeTexture(const uint8_t* rgba, int width, int height, H
             }
         }
     };
-    parallelFor(size_t(bh), Urgency::Encode, encodeRow);
+    parallelFor(size_t(bh), ThreadRole::Background, encodeRow);
     return out;
 }
 
