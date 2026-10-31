@@ -2,7 +2,6 @@
 
 #include "engine/frame_ring.hpp"
 #include "engine/isf_compiler.hpp"
-#include "engine/metal_util.hpp"
 #include "engine/shader_cross.hpp"
 #include "engine/thread_priority.hpp"
 #include "platform/profile.hpp"
@@ -61,7 +60,8 @@ T orThrow(T made, const std::string& error)
     return made;
 }
 
-constexpr Blending kFixedFunction[] = {Blending::Normal, Blending::Add, Blending::Screen, Blending::Multiply};
+constexpr gpu::Blending kFixedFunction[] = {gpu::Blending::Normal, gpu::Blending::Add, gpu::Blending::Screen,
+                                            gpu::Blending::Multiply};
 
 } // namespace
 
@@ -135,6 +135,11 @@ void derive(const PlannedPass& pass, std::vector<float>& values, const std::vect
         }
         offset += effect.params.size();
     }
+}
+
+bool archivesWork(std::string_view deviceName)
+{
+    return deviceName.find("Paravirtual") == std::string_view::npos;
 }
 
 std::string passMsl(const PlannedPass& pass)
@@ -387,7 +392,7 @@ void ChainCompiler::run()
 std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
 {
     AZL_ZONE("compile chain");
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    gpu::Scope scope;
     std::shared_ptr<CompiledChain> chain;
     try {
         if (crash::skipped("effect", job.key))
@@ -405,7 +410,6 @@ std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
         chain = std::make_shared<CompiledChain>();
         if (!effects.empty() && effects.front()->generator) {
             chain->generator = compilePasses(SourceKind::Generator, effects);
-            pool->release();
             return chain;
         }
         if (job.kind == ChainKind::Group)
@@ -422,7 +426,6 @@ std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
         chain.reset();
         fail(job.types, e.what());
     }
-    pool->release();
     return chain;
 }
 
@@ -467,7 +470,7 @@ std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pas
     const std::string vertex = mslFunction("fullscreen");
     std::vector<gpu::RenderPipeline> states;
     size_t archived = 0;
-    auto make = [&](const std::string& fragment, Blending blending) {
+    auto make = [&](const std::string& fragment, gpu::Blending blending) {
         bool hit = false;
         auto state = orThrow(device_.makeRenderPipeline({module, vertex, mslFunction(fragment), format, blending},
                                                         archive_, &hit, &error),
@@ -476,11 +479,11 @@ std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pas
         return state;
     };
     if (!pass.intoComposition)
-        states.push_back(make(names.front(), Blending::None));
+        states.push_back(make(names.front(), gpu::Blending::None));
     for (size_t i = 0; pass.intoComposition && i + 1 < names.size(); i += 2) {
-        for (Blending blending : kFixedFunction)
+        for (gpu::Blending blending : kFixedFunction)
             states.push_back(make(names[i], blending));
-        states.push_back(make(names[i + 1], Blending::None));
+        states.push_back(make(names[i + 1], gpu::Blending::None));
     }
     const auto micros = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());

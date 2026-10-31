@@ -218,6 +218,10 @@ inline void RenderPass::setTexture(uint32_t slot, const Texture& texture)
 {
     pass_->setFragmentTexture(texture.native(), slot);
 }
+inline void RenderPass::setTexture(uint32_t slot, const Texture* texture)
+{
+    pass_->setFragmentTexture(gpu::native(texture), slot);
+}
 inline void RenderPass::setBytes(uint32_t index, const void* data, size_t size)
 {
     pass_->setFragmentBytes(data, size, index);

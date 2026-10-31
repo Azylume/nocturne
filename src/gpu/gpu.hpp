@@ -268,6 +268,8 @@ public:
     explicit operator bool() const;
     void setPipeline(const RenderPipeline& pipeline);
     void setTexture(uint32_t slot, const Texture& texture);
+    // Null binds no texture.
+    void setTexture(uint32_t slot, const Texture* texture);
     // Fragment-stage constants at `index`, copied at the call.
     void setBytes(uint32_t index, const void* data, size_t size);
     void setVertexBytes(uint32_t index, const void* data, size_t size);
