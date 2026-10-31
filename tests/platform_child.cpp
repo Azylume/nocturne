@@ -7,6 +7,10 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 int main(int argc, char** argv)
 {
     const std::string job = argc > 1 ? argv[1] : "";
@@ -35,10 +39,25 @@ int main(int argc, char** argv)
         std::printf("%zu", bytes);
         return 0;
     }
+    if (job == "stop") {
+        if (!azl::watchStopRequests())
+            return 5;
+        std::printf("watching\n");
+        std::fflush(stdout);
+        return azl::waitForStop(30.0) ? 0 : 4;
+    }
+    if (job == "fault") {
+#ifdef _WIN32
+        SetErrorMode(SEM_NOGPFAULTERRORBOX);
+#endif
+        int* volatile nowhere = nullptr;
+        *nowhere = 1;
+        return 0;
+    }
     if (job == "sleep") {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         return 0;
     }
-    std::fprintf(stderr, "usage: nocturne_platform_child exit N | print ARGS | env NAME | beat | stdin | sleep\n");
+    std::fprintf(stderr, "usage: nocturne_platform_child exit N | print ARGS | env NAME | beat | stdin | stop | fault | sleep\n");
     return 2;
 }

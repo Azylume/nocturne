@@ -3,7 +3,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cwchar>
 #include <cwctype>
@@ -101,6 +103,36 @@ std::wstring environmentFor(const SpawnOptions& options)
     return out + L'\0';
 }
 
+HANDLE stopEvent = nullptr;
+
+// The event a process that watches for stop requests waits on; Process::terminate() sets it.
+std::wstring stopEventName(DWORD pid)
+{
+    return L"Local\\NocturneStop-" + std::to_wstring(pid);
+}
+
+BOOL WINAPI onConsoleStop(DWORD)
+{
+    SetEvent(stopEvent);
+    return TRUE;
+}
+
+// Waits up to `milliseconds` for the stop event; sleeps them when this process does not watch for one.
+bool stopAsked(DWORD milliseconds)
+{
+    if (!stopEvent) {
+        Sleep(milliseconds);
+        return false;
+    }
+    return WaitForSingleObject(stopEvent, milliseconds) == WAIT_OBJECT_0;
+}
+
+bool readableNow(std::optional<NativeHandle> handle)
+{
+    DWORD waiting = 0;
+    return handle && (!PeekNamedPipe(*handle, nullptr, 0, nullptr, &waiting, nullptr) || waiting > 0);
+}
+
 // Every child that is not detached joins this job, which ends them all when this process ends, however it ends.
 HANDLE childrenJob()
 {
@@ -188,6 +220,17 @@ long writeHandle(NativeHandle handle, const void* data, size_t size)
 {
     DWORD n = 0;
     return WriteFile(handle, data, DWORD(size), &n, nullptr) ? long(n) : -1;
+}
+
+long readAvailable(NativeHandle handle, void* buffer, size_t size)
+{
+    DWORD waiting = 0;
+    if (!PeekNamedPipe(handle, nullptr, 0, nullptr, &waiting, nullptr))
+        return -1;
+    if (waiting == 0)
+        return 0;
+    const long n = readHandle(handle, buffer, std::min<size_t>(size, waiting));
+    return n > 0 ? n : -1;
 }
 
 void closeHandle(NativeHandle handle)
@@ -294,9 +337,29 @@ int Process::wait()
     return poll().value_or(-1);
 }
 
+std::string Process::describeExit() const
+{
+    if (!exit_)
+        return {};
+    const uint32_t code = uint32_t(*exit_);
+    if (code < 0xC0000000u)
+        return "exited with status " + std::to_string(*exit_);
+    char text[48];
+    std::snprintf(text, sizeof text, "crashed with exception 0x%08X", unsigned(code));
+    return text;
+}
+
 void Process::terminate()
 {
-    kill();
+    if (poll() || !handle_)
+        return;
+    const HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, stopEventName(DWORD(pid_)).c_str());
+    if (!event) {
+        kill();
+        return;
+    }
+    SetEvent(event);
+    CloseHandle(event);
 }
 
 void Process::kill()
@@ -311,6 +374,35 @@ std::optional<NativeHandle> inheritedHeartbeat()
     if (!value)
         return std::nullopt;
     return reinterpret_cast<NativeHandle>(uintptr_t(std::strtoull(value, nullptr, 10)));
+}
+
+int currentProcessId()
+{
+    return int(GetCurrentProcessId());
+}
+
+bool watchStopRequests()
+{
+    stopEvent = CreateEventW(nullptr, TRUE, FALSE, stopEventName(GetCurrentProcessId()).c_str());
+    if (!stopEvent)
+        return false;
+    SetConsoleCtrlHandler(onConsoleStop, TRUE);
+    return true;
+}
+
+bool waitForStop(double seconds, std::optional<NativeHandle> readable)
+{
+    using Clock = std::chrono::steady_clock;
+    const auto until = Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
+    // An anonymous pipe cannot be waited on: it is looked at every 10 ms instead.
+    while (!readableNow(readable)) {
+        const long long left = std::chrono::duration_cast<std::chrono::milliseconds>(until - Clock::now()).count();
+        if (stopAsked(DWORD(std::max(0LL, readable ? std::min(left, 10LL) : left))))
+            return true;
+        if (left <= 0)
+            return false;
+    }
+    return stopAsked(0);
 }
 
 } // namespace azl

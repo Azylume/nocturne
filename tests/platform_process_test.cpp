@@ -144,3 +144,63 @@ TEST_CASE("platform: a program is found on PATH, and a missing one reports why i
                                   &error));
     CHECK_FALSE(error.empty());
 }
+
+TEST_CASE("platform: a child's end is described for a log")
+{
+    std::optional<azl::Process> exits = azl::spawnProcess({.program = NOCTURNE_PLATFORM_CHILD, .args = {"exit", "7"}});
+    REQUIRE(exits);
+    CHECK(exits->describeExit().empty());
+    exits->wait();
+    CHECK(exits->describeExit() == "exited with status 7");
+
+    std::optional<azl::Process> faults =
+        azl::spawnProcess({.program = NOCTURNE_PLATFORM_CHILD, .args = {"fault"}, .error = azl::Stdio::null()});
+    REQUIRE(faults);
+    faults->wait();
+#ifdef _WIN32
+    CHECK(faults->describeExit() == "crashed with exception 0xC0000005");
+#else
+    CHECK((faults->describeExit() == "killed by SIGSEGV" || faults->describeExit() == "killed by SIGBUS"));
+#endif
+
+    std::optional<azl::Process> killed = azl::spawnProcess({.program = NOCTURNE_PLATFORM_CHILD, .args = {"sleep"}});
+    REQUIRE(killed);
+    killed->kill();
+    killed->wait();
+#ifdef _WIN32
+    CHECK(killed->describeExit() == "exited with status 1");
+#else
+    CHECK(killed->describeExit() == "killed by SIGKILL");
+#endif
+}
+
+TEST_CASE("platform: a child that watches for stop requests quits on its own when asked to")
+{
+    const std::optional<azl::PipeEnds> pipe = azl::makePipe();
+    REQUIRE(pipe);
+    std::optional<azl::Process> child = azl::spawnProcess(
+        {.program = NOCTURNE_PLATFORM_CHILD, .args = {"stop"}, .output = azl::Stdio::to(pipe->write)});
+    azl::closeHandle(pipe->write);
+    REQUIRE(child);
+    char line[9] = {};
+    CHECK(azl::readHandle(pipe->read, line, 8) == 8);
+    CHECK(std::string(line) == "watching");
+    child->terminate();
+    CHECK(child->wait() == 0);
+    azl::closeHandle(pipe->read);
+}
+
+TEST_CASE("platform: a pipe is read without waiting, and its end is told apart from no data yet")
+{
+    const std::optional<azl::PipeEnds> pipe = azl::makePipe();
+    REQUIRE(pipe);
+    char buffer[8];
+    CHECK(azl::readAvailable(pipe->read, buffer, sizeof buffer) == 0);
+    CHECK_FALSE(azl::waitForStop(0.05, pipe->read));
+    REQUIRE(azl::writeHandle(pipe->write, "ab", 2) == 2);
+    CHECK_FALSE(azl::waitForStop(5.0, pipe->read));
+    CHECK(azl::readAvailable(pipe->read, buffer, sizeof buffer) == 2);
+    azl::closeHandle(pipe->write);
+    CHECK(azl::readAvailable(pipe->read, buffer, sizeof buffer) == -1);
+    azl::closeHandle(pipe->read);
+}
