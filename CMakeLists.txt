@@ -330,6 +330,10 @@ target_link_libraries(nocturne_desk PUBLIC nocturne_net)
 add_executable(nocturne-desk src/app/desk.cpp)
 target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
 
+# The UI's engine launcher, apart from the UI so it builds and is tested where the UI does not build yet.
+add_library(nocturne_engine_launcher STATIC src/ui/client/engine_launcher.cpp)
+target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
+
 # The engine stand-in tests/supervisor_process_test.cpp runs under nocturne-supervisor.
 add_executable(nocturne_fake_engine tests/fake_engine.cpp)
 target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
@@ -363,9 +367,9 @@ target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/ui/engine_launcher_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http)
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_engine_launcher)
   return()
 endif()
 

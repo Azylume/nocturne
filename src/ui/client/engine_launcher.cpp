@@ -1,23 +1,14 @@
 #include "ui/client/engine_launcher.hpp"
 
+#include "net/socket_compat.hpp"
+#include "platform/app_paths.hpp"
 #include "platform/process.hpp"
 
-#include <arpa/inet.h>
-#include <cerrno>
-#include <csignal>
-#include <cstdint>
-#include <fcntl.h>
-#include <mach-o/dyld.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <chrono>
-#include <cstring>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <thread>
-#include <vector>
 
 namespace azl::ui {
 
@@ -25,49 +16,31 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// The directory of the running executable (.../Contents/MacOS), so the UI finds the engine beside it in the one
-// bundle, not in the build directory.
-fs::path executableDir()
-{
-    uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    std::vector<char> buffer(size);
-    if (_NSGetExecutablePath(buffer.data(), &size) != 0)
-        return {};
-    std::error_code ec;
-    fs::path resolved = fs::weakly_canonical(fs::path(buffer.data()), ec);
-    if (ec)
-        resolved = fs::path(buffer.data());
-    return resolved.parent_path();
-}
-
 // True when something accepts a TCP connection on 127.0.0.1:port within a short window: an engine is already up.
 bool portAnswers(uint16_t port)
 {
-    int sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0)
+    startSockets();
+    const Socket sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == kNoSocket)
         return false;
-    const int flags = ::fcntl(sock, F_GETFL, 0);
-    ::fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    setNonBlocking(sock);
+    in_addr loopback{};
+    loopback.s_addr = htonl(INADDR_LOOPBACK);
+    const sockaddr_in addr = ipv4Endpoint(loopback, port);
 
     bool answers = false;
-    if (::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
+    if (::connect(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0) {
         answers = true;
-    } else if (errno == EINPROGRESS) {
+    } else if (wouldBlock(socketError())) {
         pollfd pfd{sock, POLLOUT, 0};
-        if (::poll(&pfd, 1, 300) > 0) {
+        if (pollSockets(&pfd, 1, 300) > 0 && (pfd.revents & POLLOUT)) {
             int err = 0;
             socklen_t len = sizeof(err);
-            if (::getsockopt(sock, SOL_SOCKET, SO_ERROR, &err, &len) == 0 && err == 0)
+            if (::getsockopt(sock, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &len) == 0 && err == 0)
                 answers = true;
         }
     }
-    ::close(sock);
+    closeSocket(sock);
     return answers;
 }
 
@@ -132,16 +105,17 @@ void EngineLauncher::shutdown()
     ownedPid_ = 0;
 }
 
-EngineLauncher::Hooks defaultEngineHooks(uint16_t port)
+EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
 {
+    if (engine.empty())
+        engine = siblingExecutable("nocturne");
     auto started = std::make_shared<StartedEngine>();
     EngineLauncher::Hooks hooks;
     hooks.reachable = [port] { return portAnswers(port); };
     hooks.now = [] {
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     };
-    hooks.spawn = [port, started]() -> pid_t {
-        const fs::path engine = executableDir() / "nocturne";
+    hooks.spawn = [port, started, engine]() -> int {
         std::error_code ec;
         if (!fs::exists(engine, ec))
             return 0; // Not a single-bundle build (e.g. a dev build with separate bundles); do not spawn.
@@ -164,15 +138,15 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port)
         started->forget(); // Any previous engine's pipe is done with.
         started->process = std::move(process);
         started->heartbeat = pipe->read;
-        return pid_t(started->process->pid());
+        return started->process->pid();
     };
-    hooks.alive = [started](pid_t pid) {
+    hooks.alive = [started](int pid) {
         if (!started->process || started->process->pid() != pid || !started->process->poll())
             return true;
         started->forget(); // The engine exited; let its heartbeat pipe go.
         return false;
     };
-    hooks.stop = [started](pid_t pid) {
+    hooks.stop = [started](int pid) {
         if (!started->process || started->process->pid() != pid)
             return;
         started->process->terminate();

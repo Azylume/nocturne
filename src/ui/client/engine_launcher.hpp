@@ -2,10 +2,9 @@
 
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <string>
-
-#include <sys/types.h>
 
 namespace azl::ui {
 
@@ -23,11 +22,11 @@ public:
         // True when an engine already answers on the local control port.
         std::function<bool()> reachable;
         // Starts the engine; returns its pid, or 0 when it could not start one.
-        std::function<pid_t()> spawn;
+        std::function<int()> spawn;
         // True while the engine with this pid is still running; reaps it (and frees its resources) when it has exited.
-        std::function<bool(pid_t)> alive;
+        std::function<bool(int)> alive;
         // Stops the running engine this launcher started.
-        std::function<void(pid_t)> stop;
+        std::function<void(int)> stop;
         // Seconds from a steady clock, for the restart window.
         std::function<double()> now;
     };
@@ -56,14 +55,15 @@ private:
     static constexpr double kWindowSeconds = 60.0;
 
     Hooks hooks_;
-    pid_t ownedPid_ = 0;
+    int ownedPid_ = 0;
     std::deque<double> restarts_;
     std::string failure_;
 };
 
-// The hooks the real app uses: probe 127.0.0.1:port; spawn the `nocturne` beside the running executable with
-// --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine quits); reap or
-// stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI looks.
-EngineLauncher::Hooks defaultEngineHooks(uint16_t port);
+// The hooks the real app uses: probe 127.0.0.1:port; spawn `engine` (by default the `nocturne` beside the running
+// executable) with --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine
+// quits); reap or stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI
+// looks.
+EngineLauncher::Hooks defaultEngineHooks(uint16_t port, std::filesystem::path engine = {});
 
 }
