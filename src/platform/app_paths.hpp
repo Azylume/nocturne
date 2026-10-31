@@ -12,6 +12,9 @@ std::filesystem::path appDataFolder();
 // The supervisor's logs: ~/Library/Logs/Nocturne on Apple, %LOCALAPPDATA%\Nocturne\Logs on Windows. Not created.
 std::filesystem::path appLogsFolder();
 
+// The user's home folder: HOME, and on Windows USERPROFILE when HOME is not set. Empty when neither is.
+std::filesystem::path homeFolder();
+
 // The user's videos: ~/Movies on Apple, the Videos known folder on Windows. Not created.
 std::filesystem::path videosFolder();
 

@@ -3,7 +3,9 @@
 #include "techno_loop.hpp"
 #include "test_client.hpp"
 
+#ifdef __APPLE__
 #include <CoreAudio/CoreAudio.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -138,6 +140,8 @@ TEST_CASE("the audio log appends the analysis and settings changes as JSON lines
     }
 }
 
+#ifdef __APPLE__
+// A private aggregate device, which only CoreAudio can make, stands in for a microphone.
 TEST_CASE("every client gets the device list again when an audio device is added or removed")
 {
     azl::AudioAnalysis analysis([] { return azl::engineTime(); });
@@ -170,6 +174,7 @@ TEST_CASE("every client gets the device list again when an audio device is added
     CHECK(pushed(a)["devices"].is_array());
     CHECK(pushed(b)["op"] == "devices");
 }
+#endif
 
 TEST_CASE("input device settings: gain and channels come back per device on select, hot-plug and restart")
 {

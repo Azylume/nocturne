@@ -1,9 +1,6 @@
 #include "media/hap.hpp"
-#include "media/snappy.hpp"
-
-#ifdef __APPLE__
 #include "media/picture_upload.hpp"
-#endif
+#include "media/snappy.hpp"
 
 #include <doctest.h>
 
@@ -122,7 +119,6 @@ TEST_CASE("a malformed HAP frame says what is wrong instead of decoding")
     CHECK(azl::decodeHapFrame(zeros.data(), zeros.size(), width, height, images) != "");
 }
 
-#ifdef __APPLE__
 TEST_CASE("a decoded HAP image uploads into a BC texture block for block")
 {
     const azl::gpu::Device device = azl::gpu::Device::systemDefault();
@@ -149,4 +145,3 @@ TEST_CASE("a decoded HAP image uploads into a BC texture block for block")
     azl::HapImage wrongSize{azl::HapTexture::BC1, std::vector<uint8_t>(8)};
     CHECK(!azl::uploadHapImage(device, wrongSize, width, height));
 }
-#endif

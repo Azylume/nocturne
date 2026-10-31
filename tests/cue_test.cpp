@@ -442,13 +442,7 @@ TEST_CASE("nocturne-ctl switches a Cue off and on and sets its repeat")
     Client client(harness.document());
     const uint64_t cue = apply(client, azl::AddCue{std::nullopt, {.section = Section::Drop}})["cue"]["id"];
     azl::WebSocketServer server(harness.document(), 0);
-    auto ctl = [&](const std::string& args) {
-        const fs::path binary = ctlPath();
-        const std::string command =
-            "'" + binary.string() + "' --port " + std::to_string(server.port()) + " " + args + " >/dev/null 2>&1";
-        const int status = std::system(command.c_str());
-        return WEXITSTATUS(status);
-    };
+    auto ctl = [&](const std::string& args) { return runNocturneCtl(server.port(), args).code; };
     const std::string id = std::to_string(cue);
     CHECK(ctl("cue off " + id) == 0);
     CHECK(ctl("cue every " + id + " 16") == 0);

@@ -322,6 +322,39 @@ std::string setting(const nlohmann::json& file, const char* key, const std::stri
     return value && *value ? value : file.value(key, "");
 }
 
+#ifdef _WIN32
+// Where to keep the secret instead.
+std::string secretHelp(const std::string& service, const std::string& account, const std::string& env)
+{
+    return "add it to the Windows Credential Manager with `cmdkey /generic:" + service + " /user:" + account +
+           " /pass`, or set " + env + "_SECRET_ACCESS_KEY";
+}
+
+// Windows gives a file no owner-only permission bits to check, so a secret in one is never used.
+std::optional<std::string> fileSecretRefusal(const fs::path& path, const std::string& service,
+                                             const std::string& account, const std::string& env)
+{
+    return path.string() + " holds the R2 secret but Windows cannot keep it private there: " +
+           secretHelp(service, account, env);
+}
+#else
+std::string secretHelp(const std::string& service, const std::string& account, const std::string& env)
+{
+    return "add it to the login keychain with `security add-generic-password -s " + service + " -a " + account +
+           " -w`, or set " + env + "_SECRET_ACCESS_KEY";
+}
+
+std::optional<std::string> fileSecretRefusal(const fs::path& path, const std::string&, const std::string&,
+                                             const std::string&)
+{
+    const auto shared = fs::perms::group_all | fs::perms::others_all;
+    if ((fs::status(path).permissions() & shared) == fs::perms::none)
+        return std::nullopt;
+    return path.string() + " holds the R2 secret but others can read it: chmod 600 it, or keep the secret in the " +
+           "keychain";
+}
+#endif
+
 std::string credentialsRefused(const S3Config& config, const S3Error& error)
 {
     return "R2 refused the credentials for bucket " + config.bucket + " at " + config.endpoint + " (" +
@@ -369,18 +402,15 @@ S3Config loadR2Config(const fs::path& path, const std::string& keychainService, 
         return config;
     }
     if (file.contains("secret_access_key")) {
-        const auto shared = fs::perms::group_all | fs::perms::others_all;
-        if ((fs::status(path).permissions() & shared) != fs::perms::none)
-            throw std::runtime_error(path.string() + " holds the R2 secret but others can read it: chmod 600 it, or " +
-                                     "keep the secret in the keychain");
+        if (const std::optional<std::string> refusal =
+                fileSecretRefusal(path, keychainService, config.accessKeyId, env))
+            throw std::runtime_error(*refusal);
         config.secretAccessKey = file.value("secret_access_key", "");
         return config;
     }
     config.secretAccessKey = readCredential(keychainService, config.accessKeyId).value_or("");
     if (config.secretAccessKey.empty())
-        throw std::runtime_error("no R2 secret access key: add it to the login keychain with `security "
-                                 "add-generic-password -s " + keychainService + " -a " + config.accessKeyId +
-                                 " -w`, or set " + env + "_SECRET_ACCESS_KEY");
+        throw std::runtime_error("no R2 secret access key: " + secretHelp(keychainService, config.accessKeyId, env));
     return config;
 }
 

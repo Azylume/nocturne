@@ -1,11 +1,16 @@
 #include "document/cue_edits.hpp"
 #include "document/lineup.hpp"
+#include "file_access.hpp"
 #include "harness/engine_harness.hpp"
+#include "platform/process.hpp"
 #include "test_client.hpp"
 #include "venues/gig.hpp"
 
-#include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -50,10 +55,10 @@ void switchDeck(azl::DocumentServer& server, uint64_t deck, const char* by)
 // Captures what the process prints while it lives.
 class Stdout {
 public:
-    Stdout() : saved_(dup(STDOUT_FILENO))
+    Stdout() : saved_(duplicate(kStdout))
     {
         std::fflush(stdout);
-        FILE* f = std::freopen(path_.c_str(), "w", stdout);
+        FILE* f = std::freopen(path_.string().c_str(), "w", stdout);
         REQUIRE(f);
     }
     std::string text()
@@ -67,14 +72,29 @@ public:
     ~Stdout()
     {
         std::fflush(stdout);
-        dup2(saved_, STDOUT_FILENO);
-        close(saved_);
+        restore(saved_, kStdout);
         fs::remove(path_);
     }
 
 private:
+#ifdef _WIN32
+    static int duplicate(int fd) { return _dup(fd); }
+    static void restore(int saved, int fd)
+    {
+        _dup2(saved, fd);
+        _close(saved);
+    }
+#else
+    static int duplicate(int fd) { return dup(fd); }
+    static void restore(int saved, int fd)
+    {
+        dup2(saved, fd);
+        close(saved);
+    }
+#endif
+    static constexpr int kStdout = 1;
     int saved_;
-    fs::path path_ = fs::temp_directory_path() / ("nocturne-stdout-" + std::to_string(getpid()) + ".txt");
+    fs::path path_ = fs::temp_directory_path() / ("nocturne-stdout-" + std::to_string(azl::currentProcessId()) + ".txt");
 };
 
 } // namespace
@@ -245,7 +265,7 @@ TEST_CASE("switches: an unwritable folder is logged once and the deck still swit
         director.send({{"type", "record"}, {"op", "set"}, {"path", (locked / "night.mov").string()}});
         director.next();
     }
-    REQUIRE(chmod(locked.c_str(), 0500) == 0);
+    REQUIRE(folderWritable(locked, false));
     std::string printed;
     {
         Stdout out;
@@ -256,7 +276,7 @@ TEST_CASE("switches: an unwritable folder is logged once and the deck still swit
         h.switchLog().waitIdle();
         printed = out.text();
     }
-    chmod(locked.c_str(), 0700);
+    folderWritable(locked, true);
     CHECK_FALSE(fs::exists(locked / "Sets"));
     size_t count = 0;
     for (size_t at = printed.find("switches: cannot write"); at != std::string::npos;

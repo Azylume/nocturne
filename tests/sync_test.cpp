@@ -1,10 +1,9 @@
 #include "engine/render_thread.hpp"
+#include "platform/process.hpp"
 #include "net/websocket.hpp"
 #include "sync/discovery.hpp"
 #include "sync/node_sync.hpp"
 #include "test_client.hpp"
-
-#include <unistd.h>
 
 #include <atomic>
 #include <cmath>
@@ -193,7 +192,7 @@ TEST_CASE("UDP clock pings over loopback find the other clock's offset")
 
 TEST_CASE("Bonjour finds an engine and sees its role change")
 {
-    const std::string name = "nocturne-test-" + std::to_string(getpid());
+    const std::string name = "nocturne-test-" + std::to_string(azl::currentProcessId());
     azl::Advertiser advertiser(name, 45123, {{"role", "main"}});
     azl::Browser browser;
     auto role = [&]() -> std::string {

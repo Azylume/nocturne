@@ -1,5 +1,6 @@
 // nocturne-supervisor around the fake engine (tests/fake_engine.cpp), on every platform: restarts, hangs, crash
 // counting, safe mode, the skip list and stopping, with no GPU or display. supervisor_test.cpp runs the real engine.
+#include "kill_process.hpp"
 #include "temp_folder.hpp"
 
 #include "document/composition_file.hpp"
@@ -18,12 +19,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <csignal>
-#endif
 
 namespace {
 
@@ -62,26 +57,6 @@ bool contains(const std::string& text, const std::string& part)
 {
     return text.find(part) != std::string::npos;
 }
-
-// Ends a process from outside, as a user or the system would.
-void killProcess(int pid)
-{
-#ifdef _WIN32
-    const HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, DWORD(pid));
-    REQUIRE(process);
-    TerminateProcess(process, 1);
-    CloseHandle(process);
-#else
-    REQUIRE(::kill(pid, SIGKILL) == 0);
-#endif
-}
-
-// How the supervisor logs a process that killProcess ended.
-#ifdef _WIN32
-constexpr const char* kKilled = "exited with status 1";
-#else
-constexpr const char* kKilled = "killed by SIGKILL";
-#endif
 
 // nocturne-supervisor running the fake engine, its state and logs in a folder of their own, no desk unless `extra`
 // names one.

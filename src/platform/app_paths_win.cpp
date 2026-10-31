@@ -22,6 +22,19 @@ std::filesystem::path localAppData()
 
 } // namespace
 
+std::filesystem::path homeFolder()
+{
+    for (const wchar_t* name : {L"HOME", L"USERPROFILE"}) {
+        const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
+        if (size == 0)
+            continue;
+        std::wstring value(size, L'\0');
+        value.resize(GetEnvironmentVariableW(name, value.data(), size));
+        return value;
+    }
+    return {};
+}
+
 std::filesystem::path appDataFolder()
 {
     return localAppData() / "Nocturne";

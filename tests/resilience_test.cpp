@@ -1,4 +1,5 @@
 #include "clips.hpp"
+#include "file_access.hpp"
 
 #include "audio/audio_analysis.hpp"
 #include "document/modulation_edits.hpp"
@@ -8,12 +9,15 @@
 #include "supervisor/state_saver.hpp"
 #include "techno_loop.hpp"
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "net/socket_compat.hpp"
+
+#ifdef _WIN32
+#include "vhdx_disk.hpp"
+
+#include <psapi.h>
+#else
 #include <malloc/malloc.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -209,21 +213,48 @@ TEST_CASE("a removed media drive: its clips hold their last frame as missing fil
     CHECK(libraryStatus(client, onDrive) == "ok");
 }
 
+namespace {
+
+#ifdef _WIN32
+using MediaDrive = VhdxDisk;
+#else
+// A disk image mounted on a folder with hdiutil, which can be force-detached and attached again.
+struct MediaDrive {
+    explicit MediaDrive(int megabytes)
+    {
+        image = dir.path / "show.dmg";
+        mount = dir.path / "Show";
+        fs::create_directories(mount);
+        REQUIRE(std::system(("hdiutil create -quiet -ov -size " + std::to_string(megabytes) +
+                             "m -fs HFS+ -volname Show '" + image.string() + "'")
+                                .c_str()) == 0);
+        REQUIRE(attach());
+    }
+    ~MediaDrive() { detach(); }
+
+    bool detach() { return std::system(("hdiutil detach -quiet -force '" + mount.string() + "'").c_str()) == 0; }
+    bool attach()
+    {
+        return std::system(
+                   ("hdiutil attach -quiet -nobrowse -mountpoint '" + mount.string() + "' '" + image.string() + "'")
+                       .c_str()) == 0;
+    }
+
+    TempDir dir;
+    fs::path image;
+    fs::path mount;
+};
+#endif
+
+} // namespace
+
 TEST_CASE("a media drive force-detached while it plays, then attached again at the same place, plays again")
 {
     TempDir root;
-    const fs::path source = root.path / "source";
-    const fs::path image = root.path / "show.dmg";
-    const fs::path drive = root.path / "Show";
-    copyMedia("count_240.mp4", source / "long.mp4");
-    copyMedia("count_709_tv.mp4", source / "next.mp4");
-    fs::create_directories(drive);
-    const std::string attach = "hdiutil attach -quiet -nobrowse -mountpoint '" + drive.string() + "' '" +
-                               image.string() + "'";
-    const std::string detach = "hdiutil detach -quiet -force '" + drive.string() + "'";
-    REQUIRE(std::system(("hdiutil create -quiet -ov -size 8m -fs HFS+ -volname Show -srcfolder '" + source.string() +
-                         "' '" + image.string() + "'").c_str()) == 0);
-    REQUIRE(std::system(attach.c_str()) == 0);
+    MediaDrive show(32);
+    const fs::path drive = show.mount;
+    copyMedia("count_240.mp4", drive / "long.mp4");
+    copyMedia("count_709_tv.mp4", drive / "next.mp4");
 
     {
         azl::EngineHarness harness(kSize, 60.0, {}, twoLayers());
@@ -238,7 +269,7 @@ TEST_CASE("a media drive force-detached while it plays, then attached again at t
         harness.step(20);
         CHECK(shown(harness, 1) == 9);
 
-        REQUIRE(std::system(detach.c_str()) == 0);
+        REQUIRE(show.detach());
         // A clip this small is read whole at once; the loop needs the file again.
         harness.step(480);
         CHECK(clipError(client, hash)["layer"] == 1);
@@ -247,7 +278,7 @@ TEST_CASE("a media drive force-detached while it plays, then attached again at t
         harness.step(30);
         CHECK(shown(harness, 1) == held);
 
-        REQUIRE(std::system(attach.c_str()) == 0);
+        REQUIRE(show.attach());
         CHECK(eventually(
             [&] {
                 harness.step(2);
@@ -256,7 +287,6 @@ TEST_CASE("a media drive force-detached while it plays, then attached again at t
             10.0));
         CHECK(libraryStatus(client, hash) == "ok");
     }
-    std::system(detach.c_str());
 }
 
 TEST_CASE("an unplugged audio device releases audio modulation smoothly to neutral; it modulates again on return")
@@ -392,43 +422,43 @@ class HungClient {
 public:
     explicit HungClient(uint16_t port)
     {
+        azl::startSockets();
         fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_port = htons(port);
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        REQUIRE(::connect(fd_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
-        const int small = 4096;
-        ::setsockopt(fd_, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small));
+        in_addr loopback{};
+        loopback.s_addr = htonl(INADDR_LOOPBACK);
+        const sockaddr_in address = azl::ipv4Endpoint(loopback, port);
+        REQUIRE(::connect(fd_, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == 0);
+        const int buffer = 4096;
+        ::setsockopt(fd_, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char*>(&buffer), sizeof(buffer));
         const std::string upgrade = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                                     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
-        REQUIRE(::write(fd_, upgrade.data(), upgrade.size()) == ssize_t(upgrade.size()));
+        REQUIRE(azl::sendAll(fd_, upgrade.data(), upgrade.size()));
         char reply[512];
-        REQUIRE(::read(fd_, reply, sizeof(reply)) > 0);
+        REQUIRE(azl::receiveSome(fd_, reply, sizeof(reply)) > 0);
         REQUIRE(std::string(reply, 12) == "HTTP/1.1 101");
         // A masked text frame: {"type":"hello"} after the handshake makes it a full client.
         const std::string hello = R"({"type":"hello"})";
         std::string frame{char(0x81), char(0x80 | hello.size()), 0, 0, 0, 0};
         frame += hello;
-        REQUIRE(::write(fd_, frame.data(), frame.size()) == ssize_t(frame.size()));
+        REQUIRE(azl::sendAll(fd_, frame.data(), frame.size()));
     }
 
     // Gone without a close frame: the kernel resets the connection.
     void crash()
     {
         linger hard{1, 0};
-        ::setsockopt(fd_, SOL_SOCKET, SO_LINGER, &hard, sizeof(hard));
-        ::close(std::exchange(fd_, -1));
+        ::setsockopt(fd_, SOL_SOCKET, SO_LINGER, reinterpret_cast<const char*>(&hard), sizeof(hard));
+        azl::closeSocket(std::exchange(fd_, azl::kNoSocket));
     }
 
     ~HungClient()
     {
-        if (fd_ >= 0)
-            ::close(fd_);
+        if (fd_ != azl::kNoSocket)
+            azl::closeSocket(fd_);
     }
 
 private:
-    int fd_ = -1;
+    azl::Socket fd_ = azl::kNoSocket;
 };
 
 } // namespace
@@ -560,7 +590,7 @@ TEST_CASE("a full disk stops state saves with one notice; the show goes on and s
     TempDir dir;
     const fs::path state = dir.path / "state";
     fs::create_directories(state);
-    fs::permissions(state, fs::perms::owner_read | fs::perms::owner_exec);
+    REQUIRE(folderWritable(state, false));
     azl::EngineHarness harness({.width = 320, .height = 180});
     Client client(harness.document());
     azl::StateSaver saver(state / "composition.json", [] { return std::nullopt; });
@@ -578,7 +608,7 @@ TEST_CASE("a full disk stops state saves with one notice; the show goes on and s
     CHECK(fs::is_empty(state));
     CHECK(harness.stats().rendered == 40);
 
-    fs::permissions(state, fs::perms::owner_all);
+    REQUIRE(folderWritable(state, true));
     CHECK(eventually([&] { return saver.saves() >= 1; }, 3.0));
     CHECK(azl::loadCompositionFile(state / "composition.json")->composition.layers.size() == 1);
 }
@@ -711,9 +741,16 @@ TEST_CASE("a thousand clip switches leave memory and asset readers where they we
     const std::string a = library.add(copyMedia("count_240.mp4", media.path / "a.mp4")).hash;
     const std::string b = library.add(copyMedia("count_100.mp4", media.path / "b.mp4")).hash;
     auto inUse = [] {
+#ifdef _WIN32
+        PROCESS_MEMORY_COUNTERS_EX counters{.cb = sizeof(PROCESS_MEMORY_COUNTERS_EX)};
+        GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                             sizeof counters);
+        return double(counters.PrivateUsage) / 1048576.0;
+#else
         malloc_statistics_t stats{};
         malloc_zone_statistics(nullptr, &stats);
         return double(stats.size_in_use) / 1048576.0;
+#endif
     };
     const int64_t readers = azl::liveAssetReaders();
     azl::ClipDecoders decoders(device, &library, size_t(64) << 20, size_t(64) << 20);

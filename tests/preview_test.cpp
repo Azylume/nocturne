@@ -1,11 +1,9 @@
 #include "effects/effect_registry.hpp"
 #include "engine/gpu_profile.hpp"
 #include "net/websocket.hpp"
-#include "protocol/preview_surface.hpp"
+#include "platform/preview_channel.hpp"
 #include "test_client.hpp"
 #include "test_paths.hpp"
-
-#include <IOSurface/IOSurface.h>
 
 #include <cstdio>
 #include <future>
@@ -21,6 +19,19 @@ Message nextOfType(Client& client, const std::string& type, const std::string& o
         if (m.value("type", "") == type && m.value("op", "") == op)
             return m;
     }
+}
+
+// The picture a preview frame shows, read from the shared memory its "surfaces" message names; none while it is
+// being painted again.
+std::optional<azl::PreviewChannelReader::Picture> sharedPicture(const Message& surfaces, const Message& frame)
+{
+    const auto reader =
+        azl::PreviewChannelReader::open(surfaces["surfaces"][frame["surface"].get<size_t>()].get<uint64_t>());
+    REQUIRE(reader);
+    azl::PreviewChannelReader::Picture picture;
+    if (!reader->read(picture))
+        return std::nullopt;
+    return picture;
 }
 
 // The change the edit caused, past the pictures the client's watch sends meanwhile.
@@ -108,32 +119,22 @@ TEST_CASE("a local client reads preview pictures straight from shared IOSurfaces
     const Message frame = nextOfType(client, "preview", "frame");
     CHECK_FALSE(frame.contains("jpeg"));
 
-    IOSurfaceRef surface = IOSurfaceLookup(surfaces["surfaces"][frame["surface"].get<size_t>()].get<IOSurfaceID>());
-    REQUIRE(surface);
-    CFTypeRef marked = IOSurfaceCopyValue(surface, azl::previewFrameKey());
-    REQUIRE(marked);
-    int64_t markedFrame = -1;
-    CFNumberGetValue(static_cast<CFNumberRef>(marked), kCFNumberSInt64Type, &markedFrame);
-    CFRelease(marked);
-    CHECK(markedFrame == frame["frame"].get<int64_t>());
-    CHECK(IOSurfaceGetWidth(surface) == 160);
-    CHECK(IOSurfaceGetHeight(surface) == 90);
+    const std::optional<azl::PreviewChannelReader::Picture> picture = sharedPicture(surfaces, frame);
+    REQUIRE(picture);
+    CHECK(picture->frame == frame["frame"].get<uint64_t>());
+    CHECK(picture->width == 160);
+    CHECK(picture->height == 90);
     // The same picture as the screen at a smaller size: compare the mean colour (BGRA there, RGBA here).
-    IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
-    const auto* base = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    double small[3] = {}, full[3] = {};
-    for (size_t y = 0; y < 90; ++y)
-        for (size_t x = 0; x < 160; ++x)
-            for (int c = 0; c < 3; ++c)
-                small[c] += base[y * IOSurfaceGetBytesPerRow(surface) + x * 4 + (2 - c)] / (160.0 * 90.0);
+    double preview[3] = {}, full[3] = {};
+    for (size_t i = 0; i < picture->bgra.size(); i += 4)
+        for (int c = 0; c < 3; ++c)
+            preview[c] += picture->bgra[i + (2 - c)] / (160.0 * 90.0);
     for (size_t i = 0; i < screen.rgba.size(); i += 4)
         for (int c = 0; c < 3; ++c)
             full[c] += screen.rgba[i + c] / double(screen.width * screen.height);
     CHECK(full[0] + full[1] + full[2] > 30.0);
     for (int c = 0; c < 3; ++c)
-        CHECK(std::abs(small[c] - full[c]) < 12.0);
-    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
-    CFRelease(surface);
+        CHECK(std::abs(preview[c] - full[c]) < 12.0);
 
     client.send(watch({}, "surface"));
 }
@@ -180,9 +181,9 @@ TEST_CASE("without counter sampling the preview timer falls back to the command 
         NoCounters() { azl::GpuProfile::forceNoCounterSampling(true); }
         ~NoCounters() { azl::GpuProfile::forceNoCounterSampling(false); }
     } noCounters;
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    CHECK_FALSE(azl::GpuProfile(azl::gpu::Device::retain(device.get())).enabled());
-    CHECK(std::string(azl::GpuProfile(azl::gpu::Device::retain(device.get()), 1, true).mode()) == "command buffer");
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
+    CHECK_FALSE(azl::GpuProfile(device).enabled());
+    CHECK(std::string(azl::GpuProfile(device, 1, true).mode()) == "command buffer");
 
     azl::EngineHarness harness({.width = 960, .height = 540});
     Client client(harness.document());
@@ -280,15 +281,12 @@ TEST_CASE("a local client reads moving clip previews from shared IOSurfaces")
     for (int i = 0; i < 400 && pictures.size() < 3; ++i) {
         const Message frame = nextOfType(client, "preview", "frame");
         CHECK_FALSE(frame.contains("jpeg"));
-        IOSurfaceRef surface = IOSurfaceLookup(surfaces["surfaces"][frame["surface"].get<size_t>()].get<IOSurfaceID>());
-        REQUIRE(surface);
-        CHECK(IOSurfaceGetWidth(surface) == 160);
-        IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
-        const auto* base = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(surface));
+        const std::optional<azl::PreviewChannelReader::Picture> picture = sharedPicture(surfaces, frame);
+        if (!picture)
+            continue;
+        CHECK(picture->width == 160);
         // The top half shows the frame index as bits.
-        pictures.insert(std::vector<uint8_t>(base, base + IOSurfaceGetBytesPerRow(surface) * 40));
-        IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
-        CFRelease(surface);
+        pictures.insert(std::vector<uint8_t>(picture->bgra.begin(), picture->bgra.begin() + 160 * 4 * 40));
     }
     CHECK(pictures.size() >= 3);
 
@@ -504,22 +502,17 @@ struct Channels {
     int blue = 0;
 };
 
-// The brightest red, green and blue in the next clip preview picture read from its IOSurface.
+// The brightest red, green and blue in the next clip preview picture read from its shared memory.
 Channels nextPicture(Client& client, const Message& surfaces)
 {
-    const Message frame = nextOfType(client, "preview", "frame");
-    IOSurfaceRef surface = IOSurfaceLookup(surfaces["surfaces"][frame["surface"].get<size_t>()].get<IOSurfaceID>());
-    REQUIRE(surface);
-    IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
-    const auto* base = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(surface));
+    std::optional<azl::PreviewChannelReader::Picture> picture;
+    while (!picture)
+        picture = sharedPicture(surfaces, nextOfType(client, "preview", "frame"));
     Channels max;
-    for (size_t y = 0; y < IOSurfaceGetHeight(surface); ++y)
-        for (size_t x = 0; x < IOSurfaceGetWidth(surface); ++x) {
-            const uint8_t* p = base + y * IOSurfaceGetBytesPerRow(surface) + x * 4;
-            max = {std::max(max.red, int(p[2])), std::max(max.green, int(p[1])), std::max(max.blue, int(p[0]))};
-        }
-    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
-    CFRelease(surface);
+    for (size_t i = 0; i < picture->bgra.size(); i += 4) {
+        const uint8_t* p = &picture->bgra[i];
+        max = {std::max(max.red, int(p[2])), std::max(max.green, int(p[1])), std::max(max.blue, int(p[0]))};
+    }
     return max;
 }
 
@@ -666,17 +659,8 @@ namespace {
 
 std::pair<int, std::string> runCtl(uint16_t port, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(port) + " " + args + " 2>&1";
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return {-1, out};
-    char buffer[4096];
-    while (fgets(buffer, sizeof buffer, pipe))
-        out += buffer;
-    const int status = pclose(pipe);
-    return {WEXITSTATUS(status), out};
+    const CtlOutput run = runNocturneCtl(port, args);
+    return {run.code, run.output};
 }
 
 template <typename Done>

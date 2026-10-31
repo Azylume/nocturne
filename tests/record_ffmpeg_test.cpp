@@ -2,6 +2,7 @@
 // FFmpeg encoder, fed the pictures the GPU's Y'CbCr pass will hand it.
 #include "ffmpeg_movies.hpp"
 #include "test_files.hpp"
+#include "vhdx_disk.hpp"
 
 #include "output/movie_encoder_ffmpeg.hpp"
 
@@ -223,33 +224,6 @@ std::vector<float> chunkOf(double rate, bool loud)
     return chunk;
 }
 
-// A small NTFS volume in a VHDX mounted on a folder, so the disk really fills up. Needs an elevated process.
-struct SmallDisk {
-    explicit SmallDisk(int megabytes)
-    {
-        image = dir.path / "disk.vhdx";
-        mount = dir.path / "mount";
-        fs::create_directories(mount);
-        REQUIRE(diskpart("create vdisk file=\"" + image.string() + "\" maximum=" + std::to_string(megabytes) +
-                         " type=expandable\nselect vdisk file=\"" + image.string() +
-                         "\"\nattach vdisk\ncreate partition primary\nformat fs=ntfs quick label=azlrec\n"
-                         "assign mount=\"" + mount.string() + "\"\n"));
-    }
-    ~SmallDisk() { diskpart("select vdisk file=\"" + image.string() + "\"\ndetach vdisk\n"); }
-
-    bool diskpart(const std::string& script)
-    {
-        const fs::path file = dir.path / "diskpart.txt";
-        std::ofstream(file) << script;
-        return std::system(("diskpart /s \"" + file.string() + "\" > \"" + (dir.path / "diskpart.log").string() +
-                            "\"").c_str()) == 0;
-    }
-
-    TempDir dir;
-    fs::path image;
-    fs::path mount;
-};
-
 // The volume's real free space, checked as often as the Mac's full-disk case does.
 Options onSmallDisk(Options options)
 {
@@ -431,7 +405,8 @@ TEST_CASE("off Apple, the recording's audio track is AAC at 48 kHz in sync with 
 
 TEST_CASE("off Apple, a full disk stops the recording cleanly")
 {
-    SmallDisk disk(24);
+    // A small volume, so the disk really fills up.
+    VhdxDisk disk(24);
 
     SUBCASE("below the reserve, the movie is finished and kept")
     {

@@ -4,13 +4,17 @@
 #include "test_client.hpp"
 #include "test_paths.hpp"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
+
 #include <fstream>
 #include <set>
-#include <spawn.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-
-extern char** environ;
 
 namespace {
 
@@ -325,11 +329,19 @@ TEST_CASE("a clip path naming a device, a FIFO or a link to one loads as missing
 {
     TempDir dir;
     Authored authored(dir.path / "media");
-    const fs::path fifo = dir.path / "fifo";
+#ifdef _WIN32
+    const std::string device = "\\\\.\\NUL";
+    const std::string fifo = "\\\\.\\pipe\\nocturne-fifo-" + std::to_string(azl::currentProcessId());
+    const HANDLE pipe = CreateNamedPipeA(fifo.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 0, 0, 0, nullptr);
+    REQUIRE(pipe != INVALID_HANDLE_VALUE);
+#else
+    const std::string device = "/dev/zero";
+    const std::string fifo = (dir.path / "fifo").string();
     REQUIRE(mkfifo(fifo.c_str(), 0600) == 0);
-    fs::create_symlink("/dev/zero", dir.path / "media/zero.mp4");
+#endif
+    fs::create_symlink(device, dir.path / "media/zero.mp4");
     Client client(authored.harness.document());
-    for (const std::string& path : {std::string("/dev/zero"), fifo.string(), std::string("zero.mp4")}) {
+    for (const std::string& path : {device, fifo, std::string("zero.mp4")}) {
         Message file = readJson(dir.path / "media/show.json");
         file["composition"]["layers"][0]["clips"]["3"] = {
             {"hash", std::string(64, 'e')}, {"name", "special"}, {"path", path}, {"size", 0}};
@@ -338,6 +350,9 @@ TEST_CASE("a clip path naming a device, a FIFO or a link to one loads as missing
         CHECK_MESSAGE(mentions(reply, "special: missing"), path);
         CHECK_FALSE(snapshot(client)["layers"][0]["clips"].contains("3"));
     }
+#ifdef _WIN32
+    CloseHandle(pipe);
+#endif
 }
 
 TEST_CASE("Bloom and Classic Bloom drop out of a show with every macro target, modulator and Cue step on them")
@@ -535,24 +550,13 @@ fs::path enginePath()
 // Runs the engine for a moment on `file` with `state`, as the supervisor would start it, and returns its output.
 std::string runEngine(const fs::path& dir, const fs::path& file)
 {
-    std::vector<std::string> args = {enginePath().string(), "--offscreen", "--size", "320x180", "--audio-input",
-                                     "off", "--port", "7491", "--seconds", "1.5", "--library", (dir / "library").string(),
-                                     "--state", (dir / "state").string(), "--composition", file.string()};
-    std::vector<char*> argv;
-    for (std::string& a : args)
-        argv.push_back(a.data());
-    argv.push_back(nullptr);
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addopen(&actions, 1, (dir / "out.txt").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    pid_t pid = 0;
-    REQUIRE(posix_spawn(&pid, argv[0], &actions, nullptr, argv.data(), environ) == 0);
-    posix_spawn_file_actions_destroy(&actions);
-    int status = 0;
-    ::waitpid(pid, &status, 0);
-    CHECK(WIFEXITED(status));
-    std::ifstream in(dir / "out.txt");
-    return std::string(std::istreambuf_iterator<char>(in), {});
+    const CtlOutput run = runProgram(
+        {.program = enginePath(),
+         .args = {"--offscreen", "--size", "320x180", "--audio-input", "off", "--port", "7491", "--seconds", "1.5",
+                  "--library", (dir / "library").string(), "--state", (dir / "state").string(), "--composition",
+                  file.string()}});
+    CHECK(run.code >= 0);
+    return run.output;
 }
 
 void writeShow(const fs::path& file, double bpm)

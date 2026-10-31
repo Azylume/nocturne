@@ -1,6 +1,7 @@
 #include "output/record_service.hpp"
 
 #include "document/composition_file.hpp"
+#include "platform/app_paths.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -255,8 +256,8 @@ Message RecordService::folders(const Message& message)
             path = Recorder::movieFile(settings_.path).parent_path();
     }
     if (path.empty()) {
-        const char* home = std::getenv("HOME");
-        path = home ? home : "/";
+        const std::filesystem::path home = homeFolder();
+        path = home.empty() ? std::filesystem::path("/") : home;
     }
     Message reply = listFolders(path, volumes);
     reply["type"] = "record";

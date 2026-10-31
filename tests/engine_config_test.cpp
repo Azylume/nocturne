@@ -51,9 +51,9 @@ TEST_CASE("engine config: no flags give the defaults")
     CHECK(c.frameGuard);
     CHECK_FALSE(c.fsrUpscale);
     CHECK(c.audioGain == "auto");
-    CHECK(c.library.ends_with("Nocturne/MediaLibrary"));
-    CHECK(c.presets.ends_with("Nocturne/Presets.json"));
-    CHECK(c.macroSets.ends_with("Nocturne/MacroSets.json"));
+    CHECK(fs::path(c.library).generic_string().ends_with("Nocturne/MediaLibrary"));
+    CHECK(fs::path(c.presets).generic_string().ends_with("Nocturne/Presets.json"));
+    CHECK(fs::path(c.macroSets).generic_string().ends_with("Nocturne/MacroSets.json"));
     CHECK_FALSE(c.offscreen);
     CHECK_FALSE(c.realtimeFrames);
     CHECK_FALSE(c.opaqueOutputs);

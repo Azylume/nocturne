@@ -4,8 +4,6 @@
 
 #include <doctest.h>
 
-#include <sys/wait.h>
-
 #include <functional>
 
 namespace {
@@ -17,17 +15,8 @@ struct Run {
 
 Run ctl(uint16_t port, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(port) + " " + args + " 2>&1";
-    Run run;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        run.out += buffer;
-    const int wait = pclose(pipe);
-    run.status = WEXITSTATUS(wait);
-    return run;
+    const CtlOutput run = runNocturneCtl(port, args);
+    return {run.output, run.code};
 }
 
 const std::vector<azl::Point> kSquare{{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};

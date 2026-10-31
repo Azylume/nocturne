@@ -48,7 +48,7 @@ azl::TailscaleSettings withKey()
     return settings;
 }
 
-void writeFile(const fs::path& path, const std::string& text, fs::perms perms)
+[[maybe_unused]] void writeFile(const fs::path& path, const std::string& text, fs::perms perms)
 {
     std::ofstream(path) << text;
     fs::permissions(path, perms);
@@ -129,6 +129,8 @@ TEST_CASE("the venue list is fetched with the key as a bearer token and says pla
     CHECK(api.requests.size() == asked);
 }
 
+// Windows has no owner-only permission bits to check: tests/venues_key_test.cpp is its twin.
+#ifndef _WIN32
 TEST_CASE("the API key comes from a file only others cannot read, else the keychain or the environment")
 {
     TempDir dir;
@@ -166,6 +168,7 @@ TEST_CASE("the API key comes from a file only others cannot read, else the keych
     writeFile(file, "{tag:", fs::perms(0600));
     CHECK(contains(azl::loadTailscaleSettings(file, none).keyProblem, "cannot be read"));
 }
+#endif
 
 TEST_CASE("Bonjour and typed venues join Tailscale's, one entry per engine; Node Sync followers are left out")
 {

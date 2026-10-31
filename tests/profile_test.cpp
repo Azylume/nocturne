@@ -4,7 +4,10 @@
 
 #include <doctest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -13,6 +16,21 @@
 
 namespace {
 
+#ifdef _WIN32
+// Mentions of Tracy in the engine binary: a Windows executable carries no symbol names, but Tracy's client brings
+// strings of its own (TRACY_PORT and others).
+int tracySymbols()
+{
+    std::ifstream in(bundleBinary("nocturne"), std::ios::binary);
+    REQUIRE(in);
+    std::string bytes((std::istreambuf_iterator<char>(in)), {});
+    std::transform(bytes.begin(), bytes.end(), bytes.begin(), [](char c) { return char(std::tolower(uint8_t(c))); });
+    int count = 0;
+    for (size_t at = bytes.find("tracy"); at != std::string::npos; at = bytes.find("tracy", at + 1))
+        ++count;
+    return count;
+}
+#else
 // Symbols of the engine binary, both architectures, whose name mentions Tracy.
 int tracySymbols()
 {
@@ -24,6 +42,7 @@ int tracySymbols()
     pclose(pipe);
     return count;
 }
+#endif
 
 } // namespace
 

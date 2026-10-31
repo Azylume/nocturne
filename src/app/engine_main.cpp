@@ -29,6 +29,7 @@
 #include "media/library_service.hpp"
 #include "net/pairing.hpp"
 #include "net/websocket.hpp"
+#include "platform/app_paths.hpp"
 #include "output/output_service.hpp"
 #include "output/outputs.hpp"
 #include "output/return_video_service.hpp"
@@ -619,10 +620,8 @@ struct StartingFile {
 
 azl::ShowFolders showFolders(const EngineConfig& opt)
 {
-    const char* env = std::getenv("HOME");
-    if (!env)
-        env = std::getenv("USERPROFILE");
-    const std::filesystem::path home = env ? env : "/";
+    const std::filesystem::path found = azl::homeFolder();
+    const std::filesystem::path home = found.empty() ? std::filesystem::path("/") : found;
     azl::ShowFolders folders{home / "Nocturne/shows", {home / "Nocturne/shows", home}};
     if (!opt.mediaRoot.empty())
         folders.roots.push_back(std::filesystem::absolute(opt.mediaRoot));
