@@ -5,6 +5,14 @@
 
 #ifdef __APPLE__
 #include <CoreAudio/CoreAudio.h>
+#elif defined(_WIN32)
+#include <windows.h>
+
+#include <audioclient.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
+
+using Microsoft::WRL::ComPtr;
 #endif
 
 #include <algorithm>
@@ -173,6 +181,108 @@ TEST_CASE("every client gets the device list again when an audio device is added
     REQUIRE(AudioHardwareDestroyAggregateDevice(device) == noErr);
     CHECK(pushed(a)["devices"].is_array());
     CHECK(pushed(b)["op"] == "devices");
+}
+#elif defined(_WIN32)
+namespace {
+
+// The interface Sound settings enables and disables endpoints with. Windows does not document it; its layout has been
+// the same since Windows 7.
+struct __declspec(uuid("f8679f50-850a-41cf-9c72-430f290290c8")) IPolicyConfig : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetMixFormat(PCWSTR, WAVEFORMATEX**) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetDeviceFormat(PCWSTR, INT, WAVEFORMATEX**) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ResetDeviceFormat(PCWSTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetDeviceFormat(PCWSTR, WAVEFORMATEX*, WAVEFORMATEX*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetProcessingPeriod(PCWSTR, INT, PINT64, PINT64) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetProcessingPeriod(PCWSTR, PINT64) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetShareMode(PCWSTR, void*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetShareMode(PCWSTR, void*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetPropertyValue(PCWSTR, const PROPERTYKEY&, PROPVARIANT*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetPropertyValue(PCWSTR, const PROPERTYKEY&, PROPVARIANT*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetDefaultEndpoint(PCWSTR, ERole) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetEndpointVisibility(PCWSTR, INT) = 0;
+};
+constexpr CLSID kPolicyConfigClient = {0x870af99c, 0x171d, 0x4f9e, {0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9}};
+
+// The id of the first capture endpoint disabled in Sound settings (Stereo Mix, say); empty when there is none.
+std::string disabledCaptureEndpoint()
+{
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDeviceCollection> endpoints;
+    ComPtr<IMMDevice> endpoint;
+    UINT count = 0;
+    LPWSTR id = nullptr;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
+        FAILED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_DISABLED, &endpoints)) ||
+        FAILED(endpoints->GetCount(&count)) || count == 0 || FAILED(endpoints->Item(0, &endpoint)) ||
+        FAILED(endpoint->GetId(&id)))
+        return {};
+    // Endpoint ids are ASCII.
+    const std::string result(id, id + wcslen(id));
+    CoTaskMemFree(id);
+    return result;
+}
+
+// Enables a disabled endpoint as Sound settings does, which Windows reports as a device arriving, and disables it
+// again when it goes, so the machine is left as it was.
+class Enabled {
+public:
+    explicit Enabled(const std::string& id) : id_(id.begin(), id.end())
+    {
+        REQUIRE(SUCCEEDED(CoCreateInstance(kPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policy_))));
+        REQUIRE(SUCCEEDED(policy_->SetEndpointVisibility(id_.c_str(), TRUE)));
+    }
+    ~Enabled() { disable(); }
+    void disable()
+    {
+        if (policy_)
+            CHECK(SUCCEEDED(policy_->SetEndpointVisibility(id_.c_str(), FALSE)));
+        policy_.Reset();
+    }
+
+private:
+    std::wstring id_;
+    ComPtr<IPolicyConfig> policy_;
+};
+
+} // namespace
+
+// Enabling a disabled capture endpoint and disabling it again stands in for a microphone plugged in and pulled out:
+// Windows raises the same device state notification for both.
+TEST_CASE("every client gets the device list again when an audio device is added or removed")
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const std::string endpoint = disabledCaptureEndpoint();
+    if (endpoint.empty()) {
+        MESSAGE("skipped: needs a capture endpoint disabled in Sound settings");
+        CoUninitialize();
+        return;
+    }
+    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
+    azl::AudioInput input(analysis);
+    azl::DocumentServer document{azl::defaultComposition(), [](auto) {}};
+    azl::AudioService service(document, analysis, &input, azl::engineTime);
+    Client a(document);
+    Client b(document);
+    const auto listed = [&endpoint](const Message& devices) {
+        return std::any_of(devices.begin(), devices.end(), [&](const Message& d) { return d["uid"] == endpoint; });
+    };
+    // One change can raise more than one notification, so wait for the list that shows it.
+    const auto pushed = [&listed](Client& client, bool present) {
+        for (Message m = client.next();; m = client.next())
+            if (m["op"] == "devices" && listed(m["devices"]) == present)
+                return m;
+    };
+    {
+        Enabled enabled(endpoint);
+        const Message added = pushed(a, true);
+        CHECK(added["type"] == "audio");
+        CHECK(pushed(b, true) == added);
+
+        enabled.disable();
+        CHECK(pushed(a, false)["devices"].is_array());
+        CHECK(pushed(b, false)["op"] == "devices");
+    }
+    CoUninitialize();
 }
 #endif
 
