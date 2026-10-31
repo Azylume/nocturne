@@ -123,7 +123,7 @@ PreviewService::PreviewService(DocumentServer& document, Engine& engine)
       engine_(engine),
       queue_(engine.gpuDevice().makeQueue()),
       gpu_(engine.device(), "previews", ""),
-      painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
+      painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("previews");
           run();
@@ -444,7 +444,7 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             const gpu::Texture& texture = target.textures[target.next];
             if (watch.surface)
                 markSurface(target.surfaces[target.next].get(), -1);
-            painter_.encode(cmd.native(), frame.get(), ScreenView{screen}, texture.native());
+            painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
             if (watch.surface)
                 cmd.synchronize(texture);
             else

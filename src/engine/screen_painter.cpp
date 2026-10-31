@@ -1,13 +1,14 @@
 #include "engine/screen_painter.hpp"
 
 #include "effects/shader_layout.hpp"
-#include "engine/metal_util.hpp"
 #include "engine/shader_cross.hpp"
+#include "gpu/glsl.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <stdexcept>
 #include <vector>
 
 namespace azl {
@@ -61,9 +62,12 @@ layout(location = 0) out vec4 fragColour;
 #endif
 
 #ifdef ENTRY_slice
+// Two triangles over the unit square, as a strip of its corners would draw them.
+const uint kCorners[6] = uint[](0u, 1u, 2u, 2u, 1u, 3u);
+
 // The homography gives w != 1, so the rasterizer interpolates q perspective-correctly.
 void main() {
-    uint vid = uint(gl_VertexIndex), iid = uint(gl_InstanceIndex);
+    uint vid = kCorners[gl_VertexIndex], iid = uint(gl_InstanceIndex);
     vec2 q = vec2(float(vid & 1u), float(vid >> 1));
     gl_Position = project(slices[iid], q);
     outQ = q;
@@ -339,8 +343,8 @@ void main() {
 #endif
 )";
 
-constexpr MTL::PixelFormat kCardFormat = MTL::PixelFormatRGBA8Unorm;
-constexpr MTL::PixelFormat kMaskFormat = MTL::PixelFormatR8Unorm;
+constexpr gpu::Format kCardFormat = gpu::Format::RGBA8;
+constexpr gpu::Format kMaskFormat = gpu::Format::R8;
 constexpr uint32_t kCells = 20;
 constexpr size_t kAlign = 256;
 constexpr size_t kCardLine = 32;
@@ -514,9 +518,9 @@ struct ScreenPainter::Draw {
     uint64_t input = 0;
     uint32_t uniform = 0;
     // Null for a plain quad.
-    MTL::Buffer* mesh = nullptr;
+    const gpu::Buffer* mesh = nullptr;
     uint32_t meshIndices = 0;
-    MTL::Texture* mask = nullptr;
+    const gpu::Texture* mask = nullptr;
     // No colour, soft edge or masks.
     bool plain = false;
     // The composition picture with no soft edge or masks: opaque wherever it draws.
@@ -529,8 +533,8 @@ struct ScreenPainter::Prepared {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<Draw> draws;
-    MTL::Texture* screenMask = nullptr;
-    NS::SharedPtr<MTL::Buffer> buffer;
+    const gpu::Texture* screenMask = nullptr;
+    gpu::Buffer buffer;
     size_t pointsOffset = 0;
     size_t masksOffset = 0;
 };
@@ -566,7 +570,7 @@ std::optional<std::array<float, 8>> sliceHomography(const std::array<double, 8>&
                                 float(g), float(h)};
 }
 
-ScreenPainter::ScreenPainter(MTL::Device* device, MTL::PixelFormat targetFormat, std::array<uint32_t, 2> composition,
+ScreenPainter::ScreenPainter(const gpu::Device& device, gpu::Format targetFormat, std::array<uint32_t, 2> composition,
                              bool frameBits, bool opaqueSlices)
     : device_(device), composition_(composition)
 {
@@ -574,92 +578,100 @@ ScreenPainter::ScreenPainter(MTL::Device* device, MTL::PixelFormat targetFormat,
         kPaintSource, {"paintPlain", "paint", "maskCoverage", "guide", "cornerTarget", "card", "frameBits"});
     for (const char* vertex : {"slice", "warpedSlice"})
         entries.push_back({vertex, ShaderStage::Vertex, withEntry(kPaintSource, vertex)});
-    auto library = makeLibrary(device, mslSource(entries).c_str());
-    slices_[0] = slicePipelines(device, library.get(), "paintPlain", targetFormat, true);
-    fullSlices_[0] = slicePipelines(device, library.get(), "paint", targetFormat, true);
+    std::string error;
+    const gpu::ShaderModule module = device_.makeShaderModule(gpu::compileGlsl(entries), &error);
+    if (!module)
+        throw std::runtime_error(error);
+    slices_[0] = slicePipelines(module, "paintPlain", targetFormat, true);
+    fullSlices_[0] = slicePipelines(module, "paint", targetFormat, true);
     if (opaqueSlices) {
-        slices_[1] = slicePipelines(device, library.get(), "paintPlain", targetFormat, false);
-        fullSlices_[1] = slicePipelines(device, library.get(), "paint", targetFormat, false);
+        slices_[1] = slicePipelines(module, "paintPlain", targetFormat, false);
+        fullSlices_[1] = slicePipelines(module, "paint", targetFormat, false);
     }
-    auto make = [&](const char* vertex, const char* fragment, MTL::PixelFormat format) {
-        return makePipeline(device, library.get(), mslFunction(vertex).c_str(), mslFunction(fragment).c_str(), format);
-    };
-    guides_ = make("slice", "guide", targetFormat);
-    warpedGuides_ = make("warpedSlice", "guide", targetFormat);
-    maskCoverage_ = make("fullscreen", "maskCoverage", kMaskFormat);
-    target_ = make("fullscreen", "cornerTarget", targetFormat);
-    card_ = make("fullscreen", "card", kCardFormat);
-    identify_ = make("fullscreen", "card", targetFormat);
+    guides_ = pipeline(module, "slice", "guide", targetFormat);
+    warpedGuides_ = pipeline(module, "warpedSlice", "guide", targetFormat);
+    maskCoverage_ = pipeline(module, "fullscreen", "maskCoverage", kMaskFormat);
+    target_ = pipeline(module, "fullscreen", "cornerTarget", targetFormat);
+    card_ = pipeline(module, "fullscreen", "card", kCardFormat);
+    identify_ = pipeline(module, "fullscreen", "card", targetFormat);
     if (frameBits)
-        frameBits_ = make("fullscreen", "frameBits", targetFormat);
+        frameBits_ = pipeline(module, "fullscreen", "frameBits", targetFormat);
     noMask_ = texture(kMaskFormat, 1, 1);
 }
 
 ScreenPainter::~ScreenPainter() = default;
 
-ScreenPainter::SlicePipelines ScreenPainter::slicePipelines(MTL::Device* device, MTL::Library* library,
-                                                            const char* fragment, MTL::PixelFormat format,
-                                                            bool blend) const
+gpu::RenderPipeline ScreenPainter::pipeline(const gpu::ShaderModule& module, const char* vertex, const char* fragment,
+                                            gpu::Format format, gpu::Blending blending) const
 {
-    const Blending blending = blend ? Blending::Normal : Blending::None;
-    const std::string name = mslFunction(fragment);
-    return {makePipeline(device, library, mslFunction("slice").c_str(), name.c_str(), format, blending),
-            makePipeline(device, library, mslFunction("warpedSlice").c_str(), name.c_str(), format, blending)};
+    std::string error;
+    gpu::RenderPipeline made = device_.makeRenderPipeline(
+        {module, gpu::entryPoint(vertex), gpu::entryPoint(fragment), format, blending}, {}, nullptr, &error);
+    if (!made)
+        throw std::runtime_error(error);
+    return made;
 }
 
-void ScreenPainter::encode(MTL::CommandBuffer* cmd, const Frame* frame, const ScreenView& view, MTL::Texture* target)
+ScreenPainter::SlicePipelines ScreenPainter::slicePipelines(const gpu::ShaderModule& module, const char* fragment,
+                                                            gpu::Format format, bool blend) const
+{
+    const gpu::Blending blending = blend ? gpu::Blending::Normal : gpu::Blending::None;
+    return {pipeline(module, "slice", fragment, format, blending),
+            pipeline(module, "warpedSlice", fragment, format, blending)};
+}
+
+void ScreenPainter::encode(gpu::CommandBuffer& cmd, const Frame* frame, const ScreenView& view,
+                           const gpu::Texture& target)
 {
     AZL_ZONE("paint screen");
-    prepare(cmd, view.screen, uint32_t(target->width()), uint32_t(target->height()));
-    MTL::Texture* card = view.screen.testCard ? this->card(cmd, view.screen) : nullptr;
+    prepare(cmd, view.screen, target.width(), target.height());
+    const gpu::Texture* card = view.screen.testCard ? this->card(cmd, view.screen) : nullptr;
 
-    auto* pass = MTL::RenderPassDescriptor::renderPassDescriptor();
-    auto* color = pass->colorAttachments()->object(0);
-    color->setTexture(target);
-    color->setLoadAction(MTL::LoadActionClear);
-    color->setClearColor(MTL::ClearColor(0, 0, 0, 1));
-    color->setStoreAction(MTL::StoreActionStore);
-
-    AZL_GPU_ZONE(gpu_, pass, "screen");
-    auto* enc = cmd->renderCommandEncoder(pass);
+    gpu::RenderPass pass = begin(cmd, {&target, gpu::Load::Clear, {0, 0, 0, 1}}, "screen");
     if (frame || card)
-        encodeSlices(enc, frame, card);
+        encodeSlices(pass, frame, card);
     if (!view.guides.empty())
-        encodeGuides(enc, view.guides);
+        encodeGuides(pass, view.guides);
     if (view.target)
-        encodeTarget(enc, *view.target, target);
+        encodeTarget(pass, *view.target, target);
     if (view.identify > std::chrono::steady_clock::now())
-        encodeIdentify(enc, view.screen, target);
+        encodeIdentify(pass, view.screen, target);
     if (frameBits_ && frame)
-        encodeFrameBits(enc, frame->index, target);
-    enc->endEncoding();
+        encodeFrameBits(pass, frame->index, target);
+    pass.end();
+}
+
+gpu::RenderPass ScreenPainter::begin(gpu::CommandBuffer& cmd, const gpu::RenderTarget& target,
+                                     [[maybe_unused]] const char* name) const
+{
+    const gpu::RenderPassSetup setup = cmd.setup(target);
+    AZL_GPU_ZONE(gpu_, setup.native(), name);
+    return cmd.begin(setup);
 }
 
 // The card at the output's own size, its text as large as the longest line allows.
-void ScreenPainter::encodeIdentify(MTL::RenderCommandEncoder* enc, const Screen& screen, MTL::Texture* target) const
+void ScreenPainter::encodeIdentify(gpu::RenderPass& pass, const Screen& screen, const gpu::Texture& target) const
 {
-    const auto w = uint32_t(target->width()), h = uint32_t(target->height());
+    const uint32_t w = target.width(), h = target.height();
     const size_t longest = std::max<size_t>(std::min(std::max(screen.name.size(), outputLabel(screen).size()), kCardLine), 1);
     const CardUniform u = cardUniform(screen, w, h, std::max(std::min(h / 30, uint32_t(w * 9 / 10 / (longest * 6))), 1u));
-    enc->setRenderPipelineState(identify_.get());
-    enc->setFragmentBytes(&u, sizeof(u), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    pass.setPipeline(identify_);
+    pass.setBytes(0, &u, sizeof(u));
+    pass.draw(3);
 }
 
-NS::SharedPtr<MTL::Texture> ScreenPainter::texture(MTL::PixelFormat format, uint32_t width, uint32_t height) const
+gpu::Texture ScreenPainter::texture(gpu::Format format, uint32_t width, uint32_t height) const
 {
-    auto desc = NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(format, width, height, false));
-    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    desc->setStorageMode(MTL::StorageModePrivate);
-    return NS::TransferPtr(device_->newTexture(desc.get()));
+    return device_.makeTexture(
+        {format, width, height, 1, gpu::Usage::Sampled | gpu::Usage::RenderTarget, gpu::Memory::Device});
 }
 
 // Two triangles per cell of the warp grid's 20x20 cells per patch, shared by every warp of that many patches.
-MTL::Buffer* ScreenPainter::meshIndices(std::array<int, 2> patches)
+const gpu::Buffer& ScreenPainter::meshIndices(std::array<int, 2> patches)
 {
-    auto& mesh = meshes_[patches];
+    gpu::Buffer& mesh = meshes_[patches];
     if (mesh)
-        return mesh.get();
+        return mesh;
     const uint32_t columns = uint32_t(patches[0]) * kCells, rows = uint32_t(patches[1]) * kCells;
     std::vector<uint32_t> indices;
     indices.reserve(size_t(columns) * rows * 6);
@@ -668,32 +680,27 @@ MTL::Buffer* ScreenPainter::meshIndices(std::array<int, 2> patches)
             const uint32_t i = y * (columns + 1) + x, below = i + columns + 1;
             indices.insert(indices.end(), {i, i + 1, below, below, i + 1, below + 1});
         }
-    mesh = NS::TransferPtr(
-        device_->newBuffer(indices.data(), indices.size() * sizeof(uint32_t), MTL::ResourceStorageModeShared));
-    return mesh.get();
+    mesh = device_.makeBuffer(indices.size() * sizeof(uint32_t), gpu::Memory::Shared);
+    std::memcpy(mesh.contents(), indices.data(), indices.size() * sizeof(uint32_t));
+    return mesh;
 }
 
 // Rasterises masks (at `at` among the masks, `count` of them) into a coverage texture: 0 where they hide.
-void ScreenPainter::renderMasks(MTL::CommandBuffer* cmd, MTL::Texture* coverage, uint32_t at, uint32_t count) const
+void ScreenPainter::renderMasks(gpu::CommandBuffer& cmd, const gpu::Texture& coverage, uint32_t at,
+                                uint32_t count) const
 {
-    auto* pass = MTL::RenderPassDescriptor::renderPassDescriptor();
-    auto* color = pass->colorAttachments()->object(0);
-    color->setTexture(coverage);
-    color->setLoadAction(MTL::LoadActionDontCare);
-    color->setStoreAction(MTL::StoreActionStore);
-    AZL_GPU_ZONE(gpu_, pass, "screen mask");
-    auto* enc = cmd->renderCommandEncoder(pass);
-    enc->setRenderPipelineState(maskCoverage_.get());
-    enc->setFragmentBuffer(prepared_->buffer.get(), prepared_->masksOffset, 0);
+    gpu::RenderPass pass = begin(cmd, {&coverage, gpu::Load::DontCare}, "screen mask");
+    pass.setPipeline(maskCoverage_);
+    pass.setBuffer(0, prepared_->buffer, prepared_->masksOffset);
     const uint32_t where[2] = {at, count};
-    enc->setFragmentBytes(where, sizeof(where), 1);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
-    enc->endEncoding();
+    pass.setBytes(1, where, sizeof(where));
+    pass.draw(3);
+    pass.end();
 }
 
 // One buffer holds every slice's uniforms, the warps' control points and the masks' points, and masks are rasterised
 // into coverage textures: only when the screen or the target's size changes.
-void ScreenPainter::prepare(MTL::CommandBuffer* cmd, const Screen& screen, uint32_t width, uint32_t height)
+void ScreenPainter::prepare(gpu::CommandBuffer& cmd, const Screen& screen, uint32_t width, uint32_t height)
 {
     if (prepared_ && prepared_->width == width && prepared_->height == height && prepared_->screen == screen)
         return;
@@ -744,7 +751,7 @@ void ScreenPainter::prepare(MTL::CommandBuffer* cmd, const Screen& screen, uint3
                 points.push_back(float(point[0]));
                 points.push_back(float(point[1]));
             }
-            draw.mesh = meshIndices(slice.warp.patches);
+            draw.mesh = &meshIndices(slice.warp.patches);
             draw.meshIndices = u.warp[1] * u.warp[2] * kCells * kCells * 6;
         }
         if (!slice.masks.empty()) {
@@ -762,8 +769,8 @@ void ScreenPainter::prepare(MTL::CommandBuffer* cmd, const Screen& screen, uint3
     p->pointsOffset = uniformBytes;
     p->masksOffset = uniformBytes + pointBytes;
     const size_t total = p->masksOffset + std::max<size_t>(masks.size() * sizeof(int32_t), 16);
-    p->buffer = NS::TransferPtr(device_->newBuffer(total, MTL::ResourceStorageModeShared));
-    auto* bytes = static_cast<uint8_t*>(p->buffer->contents());
+    p->buffer = device_.makeBuffer(total, gpu::Memory::Shared);
+    auto* bytes = static_cast<uint8_t*>(p->buffer.contents());
     std::memcpy(bytes, uniforms.data(), uniforms.size() * sizeof(SliceUniform));
     std::memcpy(bytes + p->pointsOffset, points.data(), points.size() * sizeof(float));
     std::memcpy(bytes + p->masksOffset, masks.data(), masks.size() * sizeof(int32_t));
@@ -776,24 +783,24 @@ void ScreenPainter::prepare(MTL::CommandBuffer* cmd, const Screen& screen, uint3
             continue;
         if (sliceMaskTextures_.size() <= next)
             sliceMaskTextures_.push_back(texture(kMaskFormat, composition_[0], composition_[1]));
-        draw.mask = sliceMaskTextures_[next].get();
-        renderMasks(cmd, draw.mask, sliceMasks[next][0], sliceMasks[next][1]);
+        draw.mask = &sliceMaskTextures_[next];
+        renderMasks(cmd, *draw.mask, sliceMasks[next][0], sliceMasks[next][1]);
         ++next;
     }
     if (!screen.masks.empty()) {
-        if (!screenMaskTexture_ || screenMaskTexture_->width() != width || screenMaskTexture_->height() != height)
+        if (!screenMaskTexture_ || screenMaskTexture_.width() != width || screenMaskTexture_.height() != height)
             screenMaskTexture_ = texture(kMaskFormat, width, height);
-        prepared_->screenMask = screenMaskTexture_.get();
-        renderMasks(cmd, prepared_->screenMask, screenMasksAt, uint32_t(screen.masks.size()));
+        prepared_->screenMask = &screenMaskTexture_;
+        renderMasks(cmd, screenMaskTexture_, screenMasksAt, uint32_t(screen.masks.size()));
     }
 }
 
 // Rendered again only when what it shows changes.
-MTL::Texture* ScreenPainter::card(MTL::CommandBuffer* cmd, const Screen& screen)
+const gpu::Texture* ScreenPainter::card(gpu::CommandBuffer& cmd, const Screen& screen)
 {
     const std::string key = std::to_string(screen.id % 6) + "\n" + screen.name + "\n" + outputLabel(screen);
     if (cardTexture_ && key == cardKey_)
-        return cardTexture_.get();
+        return &cardTexture_;
     if (!cardTexture_)
         cardTexture_ = texture(kCardFormat, composition_[0], composition_[1]);
     cardKey_ = key;
@@ -801,95 +808,86 @@ MTL::Texture* ScreenPainter::card(MTL::CommandBuffer* cmd, const Screen& screen)
     const uint32_t h = composition_[1];
     const CardUniform u = cardUniform(screen, composition_[0], h, std::max(h / 120, 1u));
 
-    auto* pass = MTL::RenderPassDescriptor::renderPassDescriptor();
-    auto* color = pass->colorAttachments()->object(0);
-    color->setTexture(cardTexture_.get());
-    color->setLoadAction(MTL::LoadActionDontCare);
-    color->setStoreAction(MTL::StoreActionStore);
-    AZL_GPU_ZONE(gpu_, pass, "test card");
-    auto* enc = cmd->renderCommandEncoder(pass);
-    enc->setRenderPipelineState(card_.get());
-    enc->setFragmentBytes(&u, sizeof(u), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
-    enc->endEncoding();
-    return cardTexture_.get();
+    gpu::RenderPass pass = begin(cmd, {&cardTexture_, gpu::Load::DontCare}, "test card");
+    pass.setPipeline(card_);
+    pass.setBytes(0, &u, sizeof(u));
+    pass.draw(3);
+    pass.end();
+    return &cardTexture_;
 }
 
-void ScreenPainter::drawSlice(MTL::RenderCommandEncoder* enc, const Draw& draw, MTL::RenderPipelineState* quad,
-                              MTL::RenderPipelineState* warped) const
+void ScreenPainter::drawSlice(gpu::RenderPass& pass, const Draw& draw, const gpu::RenderPipeline& quad,
+                              const gpu::RenderPipeline& warped) const
 {
     if (draw.mesh) {
-        enc->setRenderPipelineState(warped);
-        enc->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(draw.meshIndices), MTL::IndexTypeUInt32,
-                                   draw.mesh, NS::UInteger(0), NS::UInteger(1), NS::Integer(0),
-                                   NS::UInteger(draw.uniform));
+        pass.setPipeline(warped);
+        pass.drawIndexed(*draw.mesh, draw.meshIndices, 0, 1, draw.uniform);
         return;
     }
-    enc->setRenderPipelineState(quad);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangleStrip, NS::UInteger(0), NS::UInteger(4), NS::UInteger(1),
-                        NS::UInteger(draw.uniform));
+    pass.setPipeline(quad);
+    pass.draw(6, 1, draw.uniform);
 }
 
-void ScreenPainter::bindSliceBuffers(MTL::RenderCommandEncoder* enc) const
+void ScreenPainter::bindSliceBuffers(gpu::RenderPass& pass) const
 {
-    MTL::Buffer* buffer = prepared_->buffer.get();
-    enc->setVertexBuffer(buffer, 0, 0);
-    enc->setVertexBuffer(buffer, prepared_->pointsOffset, 1);
-    enc->setFragmentBuffer(buffer, 0, 0);
+    const gpu::Buffer& buffer = prepared_->buffer;
+    pass.setVertexBuffer(0, buffer, 0);
+    pass.setVertexBuffer(1, buffer, prepared_->pointsOffset);
+    pass.setBuffer(0, buffer, 0);
 }
 
 // Each slice is one draw that picks its own uniforms by instance.
-void ScreenPainter::encodeSlices(MTL::RenderCommandEncoder* enc, const Frame* frame, MTL::Texture* card) const
+void ScreenPainter::encodeSlices(gpu::RenderPass& pass, const Frame* frame, const gpu::Texture* card) const
 {
-    bindSliceBuffers(enc);
-    enc->setFragmentTexture(prepared_->screenMask ? prepared_->screenMask : noMask_.get(), 2);
+    bindSliceBuffers(pass);
+    pass.setTexture(2, prepared_->screenMask ? *prepared_->screenMask : noMask_);
     for (const Draw& draw : prepared_->draws) {
-        MTL::Texture* picture = card ? card : gpu::native(frame->picture(draw.input));
-        if (!picture)
+        const gpu::Texture* picture = card ? card : frame->picture(draw.input);
+        if (!picture || !*picture)
             continue;
-        enc->setFragmentTexture(picture, 0);
-        enc->setFragmentTexture(draw.mask ? draw.mask : noMask_.get(), 1);
+        pass.setTexture(0, *picture);
+        pass.setTexture(1, draw.mask ? *draw.mask : noMask_);
         const size_t opaque = draw.opaque && !card && slices_[1].quad;
         if (draw.plain) {
-            drawSlice(enc, draw, slices_[opaque].quad.get(), slices_[opaque].warped.get());
+            drawSlice(pass, draw, slices_[opaque].quad, slices_[opaque].warped);
             continue;
         }
-        enc->setFragmentBufferOffset(draw.uniform * sizeof(SliceUniform), 0);
-        drawSlice(enc, draw, fullSlices_[opaque].quad.get(), fullSlices_[opaque].warped.get());
+        pass.setBuffer(0, prepared_->buffer, draw.uniform * sizeof(SliceUniform));
+        drawSlice(pass, draw, fullSlices_[opaque].quad, fullSlices_[opaque].warped);
     }
 }
 
-void ScreenPainter::encodeGuides(MTL::RenderCommandEncoder* enc, const std::vector<Guide>& guides) const
+void ScreenPainter::encodeGuides(gpu::RenderPass& pass, const std::vector<Guide>& guides) const
 {
     std::vector<float> data{float(guides.size()), float(composition_[0]), float(composition_[1]), 0.0f};
     for (const Guide& g : guides)
         data.insert(data.end(), {g.vertical ? 1.0f : 0.0f, float(g.position), 0.0f, 0.0f});
-    bindSliceBuffers(enc);
-    enc->setFragmentBytes(data.data(), data.size() * sizeof(float), 2);
+    bindSliceBuffers(pass);
+    pass.setBytes(2, data.data(), data.size() * sizeof(float));
     for (const Draw& draw : prepared_->draws)
-        drawSlice(enc, draw, guides_.get(), warpedGuides_.get());
+        drawSlice(pass, draw, guides_, warpedGuides_);
 }
 
-void ScreenPainter::encodeTarget(MTL::RenderCommandEncoder* enc, const Point& point, MTL::Texture* texture) const
+void ScreenPainter::encodeTarget(gpu::RenderPass& pass, const Point& point, const gpu::Texture& texture) const
 {
-    const auto width = uint32_t(texture->width()), height = uint32_t(texture->height());
+    const uint32_t width = texture.width(), height = texture.height();
     const int32_t t[4] = {int32_t(std::lround(point[0] * width)), int32_t(std::lround(point[1] * height)),
                           int32_t(std::max(height / 40, 6u)), 0};
-    enc->setRenderPipelineState(target_.get());
-    enc->setFragmentBytes(t, sizeof(t), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    pass.setPipeline(target_);
+    pass.setBytes(0, t, sizeof(t));
+    pass.draw(3);
 }
 
 // Drawn last, over the bottom 1/60 of the output.
-void ScreenPainter::encodeFrameBits(MTL::RenderCommandEncoder* enc, uint64_t index, MTL::Texture* target) const
+void ScreenPainter::encodeFrameBits(gpu::RenderPass& pass, uint64_t index, const gpu::Texture& target) const
 {
-    const auto width = NS::UInteger(target->width());
-    const auto height = std::max<NS::UInteger>(target->height() / 60, 4);
-    const uint32_t bits[2] = {uint32_t(index), std::max(uint32_t(width) / kFrameBits, 1u)};
-    enc->setScissorRect(MTL::ScissorRect{0, target->height() - height, width, height});
-    enc->setRenderPipelineState(frameBits_.get());
-    enc->setFragmentBytes(bits, sizeof(bits), 0);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    const uint32_t width = target.width();
+    const uint32_t height = std::max<uint32_t>(target.height() / 60, 4);
+    const uint32_t bits[2] = {uint32_t(index), std::max(width / kFrameBits, 1u)};
+    pass.setScissor({0, target.height() - height, width, height});
+    pass.setPipeline(frameBits_);
+    pass.setBytes(0, bits, sizeof(bits));
+    pass.draw(3);
 }
 
 } // namespace azl

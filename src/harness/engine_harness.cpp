@@ -103,7 +103,7 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
                        [this](const MachineSettings& s) { applySettings(s, engine_, previewService_); },
                        [this] { return settingsUse(engine_, previewService_); }),
       // NOCTURNE_OPAQUE_OUTPUTS=1 reads every screen back as --opaque-outputs draws it, to check it changes nothing.
-      painter_(device_.native(), gpu::metalFormat(kReadbackFormat), {config.width, config.height},
+      painter_(device_, kReadbackFormat, {config.width, config.height},
                config.debugFrameBits, config.opaqueOutputs || std::getenv("NOCTURNE_OPAQUE_OUTPUTS")),
       queue_(device_.makeQueue()),
       machineService_(document_, engine_, displays_, &known_, [this] { return time(); }, [](auto work) { work(); },
@@ -314,7 +314,7 @@ Image EngineHarness::paint(const ScreenView& view)
 
     const FrameRef frame = engine_.latestFrame();
     gpu::CommandBuffer cmd = queue_.commandBuffer();
-    painter_.encode(cmd.native(), frame.get(), view, target.native());
+    painter_.encode(cmd, frame.get(), view, target);
     readback.encode(cmd);
     cmd.commit();
     cmd.waitUntilCompleted();

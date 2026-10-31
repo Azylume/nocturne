@@ -548,7 +548,7 @@ Recorder::Session::Session(Recorder& owner, Settings s, double fps, AudioPlan au
         converter->setGpuTimeline(gpu);
     }
     if (!whole) {
-        painter = std::make_unique<ScreenPainter>(engine.device(), gpu::metalFormat(kFrameFormat),
+        painter = std::make_unique<ScreenPainter>(engine.gpuDevice(), kFrameFormat,
                                                   std::array<uint32_t, 2>{compositionWidth, compositionHeight});
         painter->setGpuTimeline(gpu);
     }
@@ -741,7 +741,9 @@ void Recorder::Session::paint(MTL::CommandBuffer* cmd, const Frame& frame, const
         for (const Screen& s : composition.screens)
             if (s.id == *screen)
                 shown = s;
-    painter->encode(cmd, &frame, screenView(composition, shown, false, std::nullopt), target);
+    gpu::CommandBuffer painting = gpu::CommandBuffer::wrap(cmd);
+    painter->encode(painting, &frame, screenView(composition, shown, false, std::nullopt),
+                    gpu::Texture::retain(target));
 }
 
 void Recorder::Session::queued(CVPixelBufferRef buffer, double seconds, bool ok)

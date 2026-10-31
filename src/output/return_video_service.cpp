@@ -38,7 +38,7 @@ ReturnVideoService::ReturnVideoService(DocumentServer& document, Engine& engine)
     : document_(document),
       engine_(engine),
       queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
-      painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
+      painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("return video");
           run();
@@ -245,7 +245,9 @@ std::set<ClientId> ReturnVideoService::serve(const FrameRef& frame, const Compos
                 CVPixelBufferRelease(buffer);
             continue;
         }
-        painter_.encode(cmd, frame.get(), screenView(composition, *screen, false, std::nullopt), texture);
+        gpu::CommandBuffer painting = gpu::CommandBuffer::wrap(cmd);
+        painter_.encode(painting, frame.get(), screenView(composition, *screen, false, std::nullopt),
+                        gpu::Texture::retain(texture));
         if (texture->storageMode() == MTL::StorageModeManaged) {
             MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
             blit->synchronizeResource(texture);

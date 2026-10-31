@@ -446,7 +446,8 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
     azl::Frame frame{.texture = azl::gpu::Texture::retain(texture().get())};
     auto target = texture();
     const auto compileStart = std::chrono::steady_clock::now();
-    azl::ScreenPainter painter(device.get(), MTL::PixelFormatBGRA8Unorm, {1920, 1080});
+    const azl::gpu::Texture into = azl::gpu::Texture::retain(target.get());
+    azl::ScreenPainter painter(azl::gpu::Device::retain(device.get()), azl::gpu::Format::BGRA8, {1920, 1080});
     MESSAGE("painter pipelines compiled in "
             << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compileStart).count()
             << " ms");
@@ -495,8 +496,9 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
         double best = 1e9;
         for (int b = 0; b < kBatches + 2; ++b) {
             auto* cmd = queue->commandBuffer();
+            azl::gpu::CommandBuffer painting = azl::gpu::CommandBuffer::wrap(cmd);
             for (int i = 0; i < kPerBatch; ++i)
-                painter.encode(cmd, &frame, view, target.get());
+                painter.encode(painting, &frame, view, into);
             cmd->commit();
             cmd->waitUntilCompleted();
             if (b >= 2)
