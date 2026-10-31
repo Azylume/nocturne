@@ -919,6 +919,24 @@ void pushBytes(CommandObject* c, uint32_t binding, const void* data, size_t size
     c->dirty = true;
 }
 
+void bindBuffer(CommandObject* c, uint32_t binding, BufferObject* buffer, size_t offset)
+{
+    if (binding >= kTextures || offset >= buffer->size)
+        return;
+    c->buffers[binding] = {buffer->buffer, offset, buffer->size - offset};
+    c->dirty = true;
+    retain(c, buffer->shared_from_this());
+}
+
+void drawIndexed(CommandObject* c, BufferObject* indices, uint32_t count, size_t offset, uint32_t instances)
+{
+    if (c->dirty)
+        flush(c);
+    vkCmdBindIndexBuffer(c->cmd, indices->buffer, offset, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(c->cmd, count, instances, 0, 0, 0);
+    retain(c, indices->shared_from_this());
+}
+
 void bindPipeline(CommandObject* c, PipelineObject* p)
 {
     if (c->pipeline == p)
@@ -945,9 +963,12 @@ void flush(CommandObject* c)
         w.descriptorCount = 1;
         w.descriptorType = b.type;
         if (b.binding < kTextures) {
-            if (!c->buffers[b.binding].buffer)
+            VkDescriptorBufferInfo& info = c->buffers[b.binding];
+            if (!info.buffer)
                 continue;
-            w.pBufferInfo = &c->buffers[b.binding];
+            if (b.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+                info.range = std::min<VkDeviceSize>(info.range, c->device->properties.limits.maxUniformBufferRange);
+            w.pBufferInfo = &info;
         } else {
             const uint32_t slot = b.binding - kTextures;
             TextureObject* t = c->textures[slot];
@@ -996,6 +1017,12 @@ void endRendering(CommandObject* c)
 
 void dispatch(CommandObject* c, uint32_t width, uint32_t height)
 {
+    if (const PipelineObject* p = c->pipeline)
+        dispatchGroups(c, (width + p->localX - 1) / p->localX, (height + p->localY - 1) / p->localY);
+}
+
+void dispatchGroups(CommandObject* c, uint32_t groupsX, uint32_t groupsY)
+{
     PipelineObject* p = c->pipeline;
     if (!p)
         return;
@@ -1025,7 +1052,7 @@ void dispatch(CommandObject* c, uint32_t width, uint32_t height)
     }
     if (c->dirty)
         flush(c);
-    vkCmdDispatch(c->cmd, (width + p->localX - 1) / p->localX, (height + p->localY - 1) / p->localY, 1);
+    vkCmdDispatch(c->cmd, groupsX, groupsY, 1);
     c->dispatched = true;
 }
 
