@@ -10,12 +10,57 @@
 #include <thread>
 
 #ifdef _WIN32
+#include "platform/exit_trace.hpp"
+
+#include <io.h>
+#include <stdexcept>
 #include <windows.h>
+
+extern "C" int __cdecl _purecall();
+
+namespace {
+
+void fault()
+{
+    int* volatile nowhere = nullptr;
+    *nowhere = 1;
+}
+
+// Ends the process the way `how` names, with the exits traced.
+int endTraced(const std::string& how)
+{
+    SetErrorMode(SEM_NOGPFAULTERRORBOX);
+    azl::traceExits();
+    if (how == "fault")
+        fault();
+    else if (how == "fault-thread")
+        std::thread(fault).join();
+    else if (how == "throw-thread")
+        std::thread([] { throw std::runtime_error("lost in a thread"); }).join();
+    else if (how == "abort")
+        std::abort();
+    else if (how == "exit")
+        std::exit(5);
+    else if (how == "exit-process")
+        ExitProcess(6);
+    else if (how == "pure-call")
+        _purecall();
+    else if (how == "invalid-parameter")
+        _close(-1);
+    azl::exitingNormally();
+    return 0;
+}
+
+} // namespace
 #endif
 
 int main(int argc, char** argv)
 {
     const std::string job = argc > 1 ? argv[1] : "";
+#ifdef _WIN32
+    if (job == "trace" && argc > 2)
+        return endTraced(argv[2]);
+#endif
     if (job == "exit" && argc > 2)
         return std::atoi(argv[2]);
     if (job == "print") {
@@ -74,6 +119,6 @@ int main(int argc, char** argv)
     }
     std::fprintf(stderr,
                  "usage: nocturne_platform_child exit N | print ARGS | env NAME | beat | stdin | stop | fault | sleep | "
-                 "preview ID\n");
+                 "preview ID | trace HOW (Windows)\n");
     return 2;
 }

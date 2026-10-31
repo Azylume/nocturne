@@ -95,7 +95,12 @@ struct GpuTimeline {
 #define AZL_ZONE(name)
 #define AZL_FRAME_MARK
 #define AZL_FRAME_MARK_NAMED(name)
+#ifdef _WIN32
+#include "platform/thread_priority.hpp"
+#define AZL_THREAD_NAME(name) ::azl::setThreadName(name)
+#else
 #define AZL_THREAD_NAME(name)
+#endif
 #define AZL_GPU_ZONE(timeline, desc, name)
 #define AZL_GPU_COLLECT(timeline) static_cast<void>(timeline)
 

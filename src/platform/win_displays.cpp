@@ -33,6 +33,8 @@ constexpr const char* kVirtualPrefix = "window-";
 constexpr uint32_t kImages = 3;
 // A new window's first presents reach the screen a refresh or two later each while the compositor takes it over.
 constexpr double kWarmUpSeconds = 0.1;
+// The waiter thread gives the swapchain back this long before the present thread's next turn on it.
+constexpr std::chrono::microseconds kTurnMargin{1000};
 
 double steadySeconds(std::chrono::steady_clock::time_point at)
 {
@@ -109,6 +111,7 @@ public:
         tearDown();
         for (VkSemaphore s : acquired_)
             vkDestroySemaphore(vk_, s, nullptr);
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
         vkDestroySurfaceKHR(gpu::vulkan::instance(device_), surface_, nullptr);
     }
 
@@ -123,13 +126,17 @@ public:
             vsync_ = vblank.wait();
             lastVblank_ = vsync_.time_since_epoch().count();
             sleepUntil(vsync_ + period_ / 2);
-            if (warmUp > 0) {
-                --warmUp;
-                presentBlack();
-            } else {
-                onRefresh(vsync_);
+            {
+                std::lock_guard turn(swapchainMutex_);
+                if (warmUp > 0) {
+                    --warmUp;
+                    presentBlack();
+                } else {
+                    onRefresh(vsync_);
+                }
+                presentPending();
             }
-            presentPending();
+            endTurn();
         }
     }
 
@@ -140,7 +147,11 @@ public:
         if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
-        const VkResult result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        VkResult result = VK_SUCCESS;
+        {
+            std::shared_lock presenting(gpu::vulkan::presentationMutex(device_));
+            result = vkAcquireNextImageKHR(vk_, swapchain_, 0, acquired_[slot_], VK_NULL_HANDLE, &image);
+        }
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             stale_ = true;
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -238,6 +249,7 @@ private:
     void waitForPresents()
     {
         setThreadRole(ThreadRole::Frames);
+        setThreadName("present wait");
         std::chrono::steady_clock::time_point shown{};
         std::unique_lock lock(waitMutex_);
         for (;;) {
@@ -247,15 +259,53 @@ private:
             Waiting next = std::move(waiting_.front());
             waiting_.pop_front();
             lock.unlock();
-            VkResult result = VK_TIMEOUT;
-            while (result == VK_TIMEOUT && !stopWaiting_)
-                result = waitForPresent_(vk_, swapchain_, next.id, 50'000'000);
+            const VkResult result = waitUntilShown(next.id);
             if (result == VK_SUCCESS)
                 shown = std::max(shown, refreshBefore(std::chrono::steady_clock::now()));
             next.shown(result == VK_SUCCESS ? steadySeconds(shown) : 0.0);
             shownId_ = next.id;
             lock.lock();
         }
+    }
+
+    // Present thread, after its turn on the swapchain.
+    void endTurn()
+    {
+        {
+            std::lock_guard lock(waitMutex_);
+            ++turns_;
+        }
+        waitWake_.notify_all();
+    }
+
+    // Waiter thread. The swapchain is externally synchronized for vkWaitForPresentKHR, and the NVIDIA driver faults when
+    // a present wait overlaps a present. So the wait runs only between the present thread's turns, never starts while
+    // one runs, and times out kTurnMargin before the next one, so the present thread does not wait for it.
+    VkResult waitUntilShown(uint64_t id)
+    {
+        for (;;) {
+            const uint64_t turn = turns_;
+            VkResult result = VK_TIMEOUT;
+            if (std::unique_lock swapchain(swapchainMutex_, std::try_to_lock); swapchain) {
+                if (const int64_t timeout = nanosecondsBeforeNextTurn(); timeout > 0)
+                    result = waitForPresent_(vk_, swapchain_, id, uint64_t(timeout));
+            }
+            if (result != VK_TIMEOUT || stopWaiting_)
+                return result;
+            std::unique_lock lock(waitMutex_);
+            waitWake_.wait(lock, [&] { return stopWaiting_ || turns_ != turn; });
+        }
+    }
+
+    // Until kTurnMargin before the present thread's next turn, half a refresh after a vblank.
+    int64_t nanosecondsBeforeNextTurn() const
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point vblank{std::chrono::steady_clock::duration(lastVblank_.load())};
+        auto end = vblank + period_ / 2 - kTurnMargin;
+        if (end <= now)
+            end += period_ * ((now - end) / period_ + 1);
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(end - now).count();
     }
 
     // The refresh that showed a present whose wait returned at `woke`. The wait returns a little after that refresh,
@@ -269,6 +319,15 @@ private:
 
     void build(VkSwapchainKHR old = VK_NULL_HANDLE)
     {
+        makeSwapchain(old);
+        stopWaiting_ = false;
+        if (waitForPresent_)
+            waiter_ = std::thread([this] { waitForPresents(); });
+    }
+
+    void makeSwapchain(VkSwapchainKHR old)
+    {
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
         VkSurfaceCapabilitiesKHR caps{};
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu::vulkan::physicalDevice(device_), surface_, &caps);
         VkExtent2D extent = caps.currentExtent;
@@ -304,9 +363,12 @@ private:
                 gpu::vulkan::wrapSwapchainImage(device_, image, info.imageFormat, extent.width, extent.height));
             rendered_.push_back(makeSemaphore());
         }
-        stopWaiting_ = false;
-        if (waitForPresent_)
-            waiter_ = std::thread([this] { waitForPresents(); });
+    }
+
+    void destroySwapchain(VkSwapchainKHR swapchain)
+    {
+        std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
+        vkDestroySwapchainKHR(vk_, swapchain, nullptr);
     }
 
     // Waits until the GPU is done with every image this surface handed out, so they can go.
@@ -354,7 +416,7 @@ private:
         for (VkSemaphore s : rendered_)
             vkDestroySemaphore(vk_, s, nullptr);
         rendered_.clear();
-        vkDestroySwapchainKHR(vk_, swapchain_, nullptr);
+        destroySwapchain(swapchain_);
         swapchain_ = VK_NULL_HANDLE;
     }
 
@@ -375,7 +437,7 @@ private:
         } catch (const std::exception& e) {
             std::fprintf(stderr, "%s\n", e.what());
         }
-        vkDestroySwapchainKHR(vk_, old, nullptr);
+        destroySwapchain(old);
         stale_ = false;
         return swapchain_ != VK_NULL_HANDLE;
     }
@@ -408,6 +470,11 @@ private:
     // The last vblank, for the waiter thread.
     std::atomic<std::chrono::steady_clock::rep> lastVblank_{0};
 
+    // Held by the present thread for its turn on the swapchain each refresh, and by the waiter thread for a present wait
+    // that ends before the next turn.
+    std::mutex swapchainMutex_;
+    // The present thread's turns so far.
+    std::atomic<uint64_t> turns_{0};
     std::mutex waitMutex_;
     std::condition_variable waitWake_;
     std::deque<Waiting> waiting_;

@@ -153,6 +153,7 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     uint32_t family = 0;
     bool timestamps = false;
     bool presentWait = false;
+    std::shared_mutex presentationMutex;
     VkDeviceSize uniformAlign = 256;
     PFN_vkCmdPushDescriptorSetKHR pushDescriptorSet = nullptr;
     PFN_vkGetCalibratedTimestampsKHR calibratedTimestamps = nullptr;
@@ -1994,9 +1995,15 @@ bool presentWait(const Device& device)
 
 VkResult present(const Queue& queue, const VkPresentInfoKHR& info)
 {
+    std::shared_lock presenting(queue.native()->device->presentationMutex);
     vk::QueueSlot& slot = *queue.native()->slot;
     std::lock_guard lock(slot.mutex);
     return vkQueuePresentKHR(slot.queue, &info);
+}
+
+std::shared_mutex& presentationMutex(const Device& device)
+{
+    return device.native()->presentationMutex;
 }
 
 #if defined(_WIN32)
@@ -2006,6 +2013,7 @@ VkSurfaceKHR makeSurface(const Device& device, void* hinstance, void* hwnd)
     info.hinstance = static_cast<HINSTANCE>(hinstance);
     info.hwnd = static_cast<HWND>(hwnd);
     VkSurfaceKHR surface = VK_NULL_HANDLE;
+    std::lock_guard lock(device.native()->presentationMutex);
     if (vkCreateWin32SurfaceKHR(device.native()->instance, &info, nullptr, &surface) != VK_SUCCESS)
         return VK_NULL_HANDLE;
     return surface;
