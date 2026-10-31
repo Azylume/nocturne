@@ -541,7 +541,8 @@ if(NOT APPLE)
     # Engines and harnesses live on the main thread's stack: 8 MB on macOS, so the same here instead of 1 MB.
     target_link_options(nocturne PRIVATE "LINKER:/STACK:8388608")
     target_link_options(nocturne_tests PRIVATE "LINKER:/STACK:8388608")
-    target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp tests/win_outputs_test.cpp tests/golden_png_win.cpp)
+    target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp tests/win_outputs_test.cpp tests/golden_png_win.cpp
+      tests/desk_page_win_test.cpp)
     target_link_libraries(nocturne_tests PRIVATE nocturne_win_displays psapi)
     target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_ENGINE="$<TARGET_FILE:nocturne>")
     add_dependencies(nocturne_tests nocturne)
