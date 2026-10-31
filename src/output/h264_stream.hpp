@@ -2,7 +2,9 @@
 
 #include "output/return_video.hpp"
 
+#ifdef __APPLE__
 #include <CoreVideo/CoreVideo.h>
+#endif
 
 #include <cstdint>
 #include <memory>
@@ -11,6 +13,7 @@
 
 namespace azl {
 
+#ifdef __APPLE__
 // Encodes pictures to H.264 with VideoToolbox, on the machine's hardware encoder where it has one: real time, no frame
 // reordering, the bit rate capped, a key frame at least every return_video::kKeySeconds. Pictures are BGRA in the
 // encoder's own IOSurface-backed buffers, BT.709. One thread at a time.
@@ -32,8 +35,10 @@ private:
     std::unique_ptr<Session> session_;
     std::optional<bool> hardware_;
 };
+#endif
 
-// Decodes return video packets to BGRA pictures (rows of width * 4 bytes). One thread at a time.
+// Decodes return video packets to BGRA pictures (rows of width * 4 bytes): VideoToolbox on Apple, libavcodec
+// elsewhere. One thread at a time.
 class H264Decoder {
 public:
     struct Picture {
