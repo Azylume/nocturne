@@ -113,7 +113,8 @@ target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests $
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots" NOCTURNE_FAKE_ENGINE="$<TARGET_FILE:nocturne_fake_engine>")
 add_dependencies(nocturne_ui_tests nocturne_fake_engine)
-target_link_libraries(nocturne_ui_tests PRIVATE nocturne_ui_components nocturne_upload juce::juce_recommended_config_flags)
+target_link_libraries(nocturne_ui_tests PRIVATE nocturne_ui_components nocturne_upload
+  juce::juce_recommended_config_flags)
 if(APPLE)
   target_sources(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/ui/client_test.cpp
     ${CMAKE_SOURCE_DIR}/tests/ui/smoke_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/panels_test.cpp

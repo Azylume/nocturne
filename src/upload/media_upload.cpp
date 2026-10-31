@@ -108,7 +108,8 @@ Probe probe(const fs::path& file)
     Probe p;
     for (const std::string& line :
          lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0", file.string()}))) {
+                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0",
+                        file.string()}))) {
         const auto f = fields(line);
         if (f.size() == 1) {
             p.duration = std::atof(f[0].c_str());
@@ -165,7 +166,8 @@ std::vector<std::string> ffmpegCommand(const std::vector<std::string>& args, con
     std::vector<std::string> command = ffmpeg();
     command.push_back("-y");
     command.insert(command.end(), args.begin(), args.end());
-    command.insert(command.end(), {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target.string()});
+    command.insert(command.end(),
+                   {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target.string()});
     return command;
 }
 
