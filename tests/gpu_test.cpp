@@ -116,6 +116,59 @@ TEST_CASE("a render pass clears, draws through a pipeline and signals a fence th
     CHECK(pixels[7 * 4 + 2] == 0);
 }
 
+TEST_CASE("an indexed draw reads its points and colour from buffers at offsets")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    const char* const vertex = R"(#version 450
+layout(set = 0, binding = 1, std430) readonly buffer Points { vec2 points[]; };
+void main() { gl_Position = vec4(points[gl_VertexIndex], 0.0, 1.0); }
+)";
+    const char* const fragment = R"(#version 450
+layout(set = 0, binding = 0, std430) readonly buffer Colour { vec4 colour; };
+layout(location = 0) out vec4 color;
+void main() { color = colour; }
+)";
+    std::string error;
+    const std::vector<azl::ShaderEntry> entries{{"indexedVertex", azl::ShaderStage::Vertex, vertex},
+                                                {"indexedPaint", azl::ShaderStage::Fragment, fragment}};
+    const gpu::ShaderModule module = device.makeShaderModule({.msl = azl::mslSource(entries)}, &error);
+    REQUIRE_MESSAGE(module, error);
+    const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
+        {module, azl::mslFunction("indexedVertex"), azl::mslFunction("indexedPaint"), gpu::Format::BGRA8});
+    REQUIRE(pipeline);
+    // The left half of the target as two triangles, after 16 bytes the shader never reads.
+    const std::array<float, 12> points{9.0f, 9.0f, 9.0f, 9.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f};
+    const std::array<uint32_t, 8> indices{7, 7, 0, 1, 2, 0, 2, 3};
+    const std::array<float, 8> colours{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f};
+    const gpu::Buffer pointBuffer = device.makeBuffer(sizeof(points));
+    const gpu::Buffer indexBuffer = device.makeBuffer(sizeof(indices));
+    const gpu::Buffer colourBuffer = device.makeBuffer(sizeof(colours));
+    std::memcpy(pointBuffer.contents(), points.data(), sizeof(points));
+    std::memcpy(indexBuffer.contents(), indices.data(), sizeof(indices));
+    std::memcpy(colourBuffer.contents(), colours.data(), sizeof(colours));
+    const gpu::Texture target =
+        device.makeTexture({.width = 8, .height = 8, .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue.commandBuffer();
+        gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&target, gpu::Load::Clear});
+        pass.setPipeline(pipeline);
+        pass.setVertexBuffer(1, pointBuffer, 4 * sizeof(float));
+        pass.setBuffer(0, colourBuffer, 4 * sizeof(float));
+        pass.drawIndexed(indexBuffer, 6, 2 * sizeof(uint32_t));
+        pass.end();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+    }
+    const std::vector<uint8_t> pixels = readBack(device, queue, target);
+    // BGRA: green on the left, the clear's transparent black on the right.
+    CHECK(pixels[1] == 255);
+    CHECK(pixels[3] == 255);
+    CHECK(pixels[7 * 4 + 1] == 0);
+    CHECK(pixels[7 * 4 + 3] == 0);
+}
+
 TEST_CASE("a compute pass writes a storage texture")
 {
     const gpu::Device device = gpu::Device::systemDefault();
@@ -141,7 +194,8 @@ void main() { imageStore(target, ivec2(gl_GlobalInvocationID.xy), vec4(0.0, 1.0,
         gpu::ComputePass pass = cmd.beginCompute();
         pass.setPipeline(pipeline);
         pass.setTexture(0, target);
-        pass.dispatch(16, 16, 8, 8);
+        pass.dispatch(16, 8, 8, 8);
+        pass.dispatchGroups(2, 2, 8, 8);
         pass.end();
         cmd.commit();
         cmd.waitUntilCompleted();
