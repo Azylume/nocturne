@@ -1,6 +1,5 @@
 #include "engine/engine.hpp"
 
-#include "engine/metal_util.hpp"
 #include "engine/transport.hpp"
 
 #include <algorithm>
@@ -244,7 +243,7 @@ Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* 
     if (!previewTimer_->enabled())
         previewTimer_.reset();
     if (config_.fsrUpscale)
-        fsr_.emplace(device(), gpu::metalFormat(kFrameFormat));
+        fsr_.emplace(gpuDevice, kFrameFormat);
 }
 
 Engine::~Engine()
@@ -258,7 +257,7 @@ Engine::~Engine()
 void Engine::renderFrame(double seconds)
 {
     AZL_ZONE("render frame");
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    gpu::Scope scope;
     if (const int bound = maxInFlight_; bound > 0) {
         // Waits for a frame to leave the GPU rather than skipping this one: the GPU goes straight on to the next
         // frame, while only `bound` are ever queued ahead of the outputs' presents. A GPU stuck for a frame's time is
@@ -270,7 +269,6 @@ void Engine::renderFrame(double seconds)
                                         [&] { return inFlight_ < bound; })) {
                 // Still that many on the GPU after a frame's time: this frame is skipped, never queued over the bound.
                 stats_.skipped++;
-                pool->release();
                 return;
             }
         }
@@ -278,7 +276,6 @@ void Engine::renderFrame(double seconds)
     std::shared_ptr<Frame> frame = ring_->claim();
     if (!frame) {
         stats_.skipped++;
-        pool->release();
         return;
     }
     frameDt_ = lastFrameSeconds_ < 0.0 ? 1.0 / 60.0 : std::clamp(seconds - lastFrameSeconds_, 0.0, 0.25);
@@ -434,7 +431,6 @@ void Engine::renderFrame(double seconds)
     encoding.cmd.commit();
     AZL_FRAME_MARK;
     stats_.maxCpuMicros = std::max(stats_.maxCpuMicros.load(), microsSince(frame->started));
-    pool->release();
 }
 
 // A slice's picture of a layer ignores the layer's opacity, blend mode and solo, but not its bypass. An output-only
@@ -1097,7 +1093,7 @@ void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::
 
     if (frame.profile)
         frame.label = "stack | clear";
-    auto* enc = beginPass(frame, target, gpu::Load::Clear, clear);
+    gpu::RenderPass enc = beginPass(frame, target, gpu::Load::Clear, clear);
     const bool opaque = clear.a == 1.0;
     for (Draw& draw : draws) {
         if (!draw.composite)
@@ -1124,7 +1120,7 @@ bool Engine::addsOnly(const Draw& draw, bool opaque) const
 
 // Where a text layer's chain keeps black, its transparent surroundings add nothing, so it draws only over its picture's
 // rectangle, with a pixel to spare.
-std::optional<MTL::ScissorRect> Engine::textScissor(const Draw& draw, bool opaque) const
+std::optional<gpu::Scissor> Engine::textScissor(const Draw& draw, bool opaque) const
 {
     if (!draw.picture || !draw.picture->text || !addsOnly(draw, opaque) || !keepsBlack(draw))
         return std::nullopt;
@@ -1140,8 +1136,7 @@ std::optional<MTL::ScissorRect> Engine::textScissor(const Draw& draw, bool opaqu
         std::clamp(std::ceil(draw.text[9] + double(draw.picture->luma->height()) / step) + 1.0, 0.0, height);
     if (right <= left || bottom <= top)
         return std::nullopt;
-    return MTL::ScissorRect{NS::UInteger(left), NS::UInteger(top), NS::UInteger(right - left),
-                            NS::UInteger(bottom - top)};
+    return gpu::Scissor{uint32_t(left), uint32_t(top), uint32_t(right - left), uint32_t(bottom - top)};
 }
 
 // The last pass's parameter values this frame, into params_.
@@ -1202,8 +1197,8 @@ uint32_t Engine::blankStage(const Draw& draw, bool opaque) const
     return blank;
 }
 
-MTL::RenderCommandEncoder* Engine::composite(FrameEncoding& frame, const gpu::Texture* target,
-                                             MTL::RenderCommandEncoder* enc, const Draw& draw, bool opaque)
+gpu::RenderPass Engine::composite(FrameEncoding& frame, const gpu::Texture* target, gpu::RenderPass enc,
+                                  const Draw& draw, bool opaque)
 {
     const auto variant = blendVariant(draw.blend);
     const gpu::Texture* below = nullptr;
@@ -1221,12 +1216,12 @@ MTL::RenderCommandEncoder* Engine::composite(FrameEncoding& frame, const gpu::Te
     }
     const auto scissor = textScissor(draw, opaque);
     if (scissor)
-        enc->setScissorRect(*scissor);
+        enc.setScissor(*scissor);
     blankStage_ = blankStage(draw, opaque);
     encodeLast(enc, draw, variant, below, frame.seconds, draw.opacity);
     blankStage_ = 0;
     if (scissor)
-        enc->setScissorRect(MTL::ScissorRect{0, 0, target->width(), target->height()});
+        enc.setScissor({0, 0, target->width(), target->height()});
     frame.passes++;
     return enc;
 }
@@ -1268,7 +1263,7 @@ void Engine::encodeInputs(FrameEncoding& frame, Draw& draw)
                                          ? bake.texture
                                          : poolTexture(pool, ordinal * 2 + written++ % 2, format, sizeOf(draw));
         label(frame, draw, &pass);
-        auto* enc = beginPass(frame, target, gpu::Load::DontCare);
+        gpu::RenderPass enc = beginPass(frame, target, gpu::Load::DontCare);
         encodePass(enc, pass, 0, draw, draw.input, nullptr, frame.seconds, 1.0f);
         endPass(frame, enc);
         frame.fullResolutionTargets++;
@@ -1371,7 +1366,7 @@ void Engine::encodePicture(FrameEncoding& frame, const Draw& draw)
 {
     gpu::Texture picture = ring_->claimPicture();
     label(frame, draw, &draw.passes->back(), "picture");
-    auto* enc = beginPass(frame, &picture, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
+    gpu::RenderPass enc = beginPass(frame, &picture, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     if (draw.reduced)
         encodeUpscaled(enc, draw, BlendVariant::Normal, nullptr, frame.seconds, 1.0f, {config_.width, config_.height});
     else
@@ -1394,7 +1389,7 @@ void Engine::encodeFade(FrameEncoding& frame, Draw& draw)
     draw.mixed[0] = poolTexture(fades_, frame.fades, kFrameFormat, sizeOf(draw));
     label(frame, from, &from.passes->back(), from.picture ? nullptr : "clear");
     // The pass blends over the target, so where the picture is transparent (around a text) it keeps what is there.
-    auto* enc = beginPass(frame, draw.mixed[0], gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
+    gpu::RenderPass enc = beginPass(frame, draw.mixed[0], gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     if (from.picture)
         encodePass(enc, from.passes->back(), size_t(BlendVariant::Normal), from, from.input, nullptr, frame.seconds,
                    1.0f);
@@ -1411,7 +1406,7 @@ void Engine::encodeReduced(FrameEncoding& frame, Draw& draw)
     const size_t index = frame.reduced++;
     draw.reduced = poolTexture(reduced_, index, kFrameFormat, sizeOf(draw));
     label(frame, draw, &draw.passes->back(), "reduced");
-    auto* enc = beginPass(frame, draw.reduced, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
+    gpu::RenderPass enc = beginPass(frame, draw.reduced, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     encodeLast(enc, draw, BlendVariant::Normal, nullptr, frame.seconds, 1.0f);
     endPass(frame, enc);
     frame.passes++;
@@ -1421,12 +1416,12 @@ void Engine::encodeReduced(FrameEncoding& frame, Draw& draw)
     const gpu::Texture* scaled = poolTexture(easu_, 0, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "easu");
     enc = beginPass(frame, scaled, gpu::Load::DontCare);
-    fsr_->encodeEasu(enc, draw.reduced->native(), scaled->native());
+    fsr_->encodeEasu(enc, *draw.reduced, *scaled);
     endPass(frame, enc);
     draw.reduced = poolTexture(upscaled_, index, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "rcas");
     enc = beginPass(frame, draw.reduced, gpu::Load::DontCare);
-    fsr_->encodeRcas(enc, scaled->native());
+    fsr_->encodeRcas(enc, *scaled);
     endPass(frame, enc);
     frame.passes += 2;
 }
@@ -1461,7 +1456,7 @@ bool Engine::singlePass(const Draw& draw)
 }
 
 // A draw's last pass, or during a transition the pass that mixes its two pictures.
-void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+void Engine::encodeLast(gpu::RenderPass& enc, const Draw& draw, BlendVariant variant,
                         const gpu::Texture* below, float seconds, float opacity) const
 {
     if (draw.from.empty())
@@ -1478,10 +1473,10 @@ void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendV
         derive(from.passes->back().plan, fromParams_, rates_, header);
         if (fromParams_.empty())
             fromParams_.push_back(0.0f);
-        enc->setFragmentTexture(from.picture->luma, kFromLumaSlot);
-        enc->setFragmentTexture(from.picture->chroma, kFromChromaSlot);
-        enc->setFragmentBytes(&header, sizeof(header), 3);
-        enc->setFragmentBytes(fromParams_.data(), fromParams_.size() * sizeof(float), 4);
+        enc.native()->setFragmentTexture(from.picture->luma, kFromLumaSlot);
+        enc.native()->setFragmentTexture(from.picture->chroma, kFromChromaSlot);
+        enc.setBytes(3, &header, sizeof(header));
+        enc.setBytes(4, fromParams_.data(), fromParams_.size() * sizeof(float));
         return encodePass(enc, draw.passes->back(), kFadeSinglePipelines + size_t(variant), draw, draw.input, below,
                           seconds, opacity, &mix, nullptr);
     }
@@ -1489,7 +1484,7 @@ void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendV
                &mix, draw.mixed[0]);
 }
 
-void Engine::encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+void Engine::encodeUpscaled(gpu::RenderPass& enc, const Draw& draw, BlendVariant variant,
                             const gpu::Texture* below,
                             float seconds, float opacity, Size into) const
 {
@@ -1513,17 +1508,17 @@ void Engine::encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Dr
         endPass(frame, beginPass(frame, target.prev, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0}));
     frame.fullResolutionTargets += pass.plan.divisor == 1;
 
-    auto* enc = beginPass(frame, target.write, gpu::Load::DontCare);
+    gpu::RenderPass enc = beginPass(frame, target.write, gpu::Load::DontCare);
     if (target.prev)
-        enc->setFragmentTexture(target.prev->native(), kPrevSlot);
+        enc.setTexture(kPrevSlot, target.prev);
     for (size_t i = 0; i < side; ++i)
-        enc->setFragmentTexture(gpu::native(sides_.output(draw.layer, effect, i)), kSideSlot + i);
+        enc.setTexture(uint32_t(kSideSlot + i), sides_.output(draw.layer, effect, i));
     encodePass(enc, pass, 0, draw, draw.input, nullptr, frame.seconds, 1.0f);
     endPass(frame, enc);
 }
 
-MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
-                                             gpu::ClearColor clear) const
+gpu::RenderPass Engine::beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
+                                  gpu::ClearColor clear) const
 {
     gpu::RenderTarget into{target, load, clear};
     if (frame.profile)
@@ -1541,17 +1536,16 @@ MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, const gpu::Te
         profile_->sample(*frame.profile, pass, true);
     if (timesPreview(frame))
         previewTimer_->sample(*frame.previewTimes, pass, true);
-    return pass.native();
+    return pass;
 }
 
-void Engine::endPass(FrameEncoding& frame, MTL::RenderCommandEncoder* enc) const
+void Engine::endPass(FrameEncoding& frame, gpu::RenderPass enc) const
 {
-    gpu::RenderPass pass = gpu::RenderPass::wrap(enc);
     if (frame.profile)
-        profile_->sample(*frame.profile, pass, false);
+        profile_->sample(*frame.profile, enc, false);
     if (timesPreview(frame))
-        previewTimer_->sample(*frame.previewTimes, pass, false);
-    pass.end();
+        previewTimer_->sample(*frame.previewTimes, enc, false);
+    enc.end();
 }
 
 bool Engine::timesPreview(const FrameEncoding& frame)
@@ -1586,16 +1580,12 @@ void Engine::label(FrameEncoding& frame, const Draw& draw, const CompiledPass* p
 const gpu::Texture* Engine::copyBelow(FrameEncoding& frame, const gpu::Texture* target)
 {
     const gpu::Texture* below = poolTexture(below_, 0, kFrameFormat, {target->width(), target->height()});
-    auto* pass = MTL::BlitPassDescriptor::blitPassDescriptor();
-    AZL_GPU_ZONE(&gpu_, pass, "copy below");
-    auto* blit = frame.cmd.native()->blitCommandEncoder(pass);
-    blit->copyFromTexture(target->native(), below->native());
-    blit->endEncoding();
+    frame.cmd.copy(*target, *below);
     frame.passes++;
     return below;
 }
 
-void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
+void Engine::encodePass(gpu::RenderPass& enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
                         const gpu::Texture* input, const gpu::Texture* below, float seconds, float opacity,
                         const TransitionMix* mix, const gpu::Texture* from) const
 {
@@ -1603,32 +1593,31 @@ void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass
     if (pass.plan.intoComposition)
         header.blank = blankStage_;
     if (pass.plan.source == SourceKind::Yuv || pass.plan.source == SourceKind::YuvFade) {
-        enc->setFragmentTexture(draw.picture->luma, 0);
-        enc->setFragmentTexture(draw.picture->chroma, 1);
+        enc.native()->setFragmentTexture(draw.picture->luma, 0);
+        enc.native()->setFragmentTexture(draw.picture->chroma, 1);
     }
     if (pass.plan.source == SourceKind::YuvFade) {
         PassHeader from = header;
         std::memcpy(from.yuvToRgb, draw.fadeFrom->yuvToRgb.data(), sizeof(from.yuvToRgb));
         from.turns = draw.fadeFrom->headerTurns();
-        enc->setFragmentTexture(draw.fadeFrom->luma, kFadeLumaSlot);
-        enc->setFragmentTexture(draw.fadeFrom->chroma, kFadeChromaSlot);
-        enc->setFragmentBytes(&draw.mix, sizeof(draw.mix), 2);
-        enc->setFragmentBytes(&from, sizeof(from), 3);
+        enc.native()->setFragmentTexture(draw.fadeFrom->luma, kFadeLumaSlot);
+        enc.native()->setFragmentTexture(draw.fadeFrom->chroma, kFadeChromaSlot);
+        enc.setBytes(2, &draw.mix, sizeof(draw.mix));
+        enc.setBytes(3, &from, sizeof(from));
     }
     if (pass.plan.source == SourceKind::Text) {
         std::memcpy(header.yuvToRgb, draw.text.data(), sizeof(header.yuvToRgb));
-        enc->setFragmentTexture(draw.picture->luma, 0);
+        enc.native()->setFragmentTexture(draw.picture->luma, 0);
     }
     if (pass.plan.source == SourceKind::Texture || pass.plan.source == SourceKind::Group)
-        enc->setFragmentTexture(gpu::native(input), 0);
+        enc.setTexture(0, input);
     if (below)
-        enc->setFragmentTexture(below->native(), kBelowSlot);
+        enc.setTexture(kBelowSlot, below);
     const std::vector<size_t> combined = combinedStages(pass.plan);
     for (size_t j = 0; j < combined.size(); ++j) {
         const PlannedStage& stage = pass.plan.stages[combined[j]];
-        enc->setFragmentTexture(
-            gpu::native(sides_.output(draw.layer, effectId(*draw.effects, stage), stage.effect->sidePasses.size() - 1)),
-            kAuxSlot + j);
+        enc.setTexture(uint32_t(kAuxSlot + j),
+                       sides_.output(draw.layer, effectId(*draw.effects, stage), stage.effect->sidePasses.size() - 1));
     }
 
     paramsOf(pass.plan, *draw.effects, params_);
@@ -1639,15 +1628,15 @@ void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass
     derive(pass.plan, params_, rates_, header);
     if (params_.empty())
         params_.push_back(0.0f);
-    enc->setRenderPipelineState(pass.pipelines[pipeline].native());
-    enc->setFragmentBytes(&header, sizeof(header), 0);
-    enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
+    enc.setPipeline(pass.pipelines[pipeline]);
+    enc.setBytes(0, &header, sizeof(header));
+    enc.setBytes(1, params_.data(), params_.size() * sizeof(float));
     if (mix) {
         if (from)
-            enc->setFragmentTexture(from->native(), kFromSlot);
-        enc->setFragmentBytes(mix, sizeof(*mix), 2);
+            enc.setTexture(kFromSlot, from);
+        enc.setBytes(2, mix, sizeof(*mix));
     }
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    enc.draw(3);
 }
 
 const gpu::Texture* Engine::poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size)
