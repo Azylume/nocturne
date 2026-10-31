@@ -1,3 +1,5 @@
+#include "effects/shader_layout.hpp"
+#include "engine/shader_cross.hpp"
 #include "media/video_decoder.hpp"
 
 #import <Foundation/Foundation.h>
@@ -24,33 +26,45 @@ Per file: CPU ms per decoded frame (process user + system time), wall ms per fra
 1920x1080 RGBA8 target, and the file's read rate at its frame rate. Run with nothing else busy.
 )";
 
-constexpr const char* kShader = R"(
-#include <metal_stdlib>
-using namespace metal;
-struct Header { float4 yuv[3]; uint turns; };
-constexpr sampler lin(filter::linear, address::clamp_to_edge);
-struct VOut { float4 position [[position]]; float2 uv; };
-vertex VOut fullscreen(uint id [[vertex_id]]) {
-    float2 p = float2((id << 1) & 2, id & 2);
-    return {float4(p * float2(2, -2) + float2(-1, 1), 0, 1), p};
+constexpr const char* kShader = R"(#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+#ifdef ENTRY_fullscreen
+layout(location = 0) out vec2 uv;
+void main() {
+    vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
+    gl_Position = vec4(p * vec2(2, -2) + vec2(-1, 1), 0, 1);
+    uv = p;
 }
-float4 hapAt(texture2d<float> t0, texture2d<float> t1, float2 uv, uint format) {
-    float4 c = t0.sample(lin, uv);
-    if (format == 1u) return float4(c.rgb, 1.0);
+#endif
+
+#ifdef ENTRY_draw
+layout(set = 0, binding = 0, scalar) uniform Header { vec4 yuv[3]; uint turns; } h;
+layout(set = 1, binding = 0) uniform texture2D t0;
+layout(set = 1, binding = 1) uniform texture2D t1;
+layout(set = 2, binding = 0) uniform sampler lin;
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 colour;
+vec4 hapAt(vec2 uv, uint format) {
+    vec4 c = texture(sampler2D(t0, lin), uv);
+    if (format == 1u) return vec4(c.rgb, 1.0);
     if (format == 2u) return c;
     float scale = c.b * (255.0 / 8.0) + 1.0;
     float co = (c.r - 128.0 / 255.0) / scale;
     float cg = (c.g - 128.0 / 255.0) / scale;
-    float3 rgb = saturate(float3(c.a + co - cg, c.a + cg, c.a - co - cg));
-    return float4(rgb, format == 4u ? t1.sample(lin, uv).r : 1.0);
+    vec3 rgb = clamp(vec3(c.a + co - cg, c.a + cg, c.a - co - cg), 0.0, 1.0);
+    return vec4(rgb, format == 4u ? texture(sampler2D(t1, lin), uv).r : 1.0);
 }
-fragment float4 draw(VOut in [[stage_in]], texture2d<float> t0 [[texture(0)]], texture2d<float> t1 [[texture(1)]],
-                     constant Header& h [[buffer(0)]]) {
-    if (h.turns > 3u) return hapAt(t0, t1, in.uv, h.turns >> 2);
-    float3 yuv = float3(t0.sample(lin, in.uv).r, t1.sample(lin, in.uv).rg);
-    float3 rgb = float3(dot(h.yuv[0].xyz, yuv), dot(h.yuv[1].xyz, yuv), dot(h.yuv[2].xyz, yuv));
-    return float4(saturate(rgb + float3(h.yuv[0].w, h.yuv[1].w, h.yuv[2].w)), 1.0);
+void main() {
+    if (h.turns > 3u) {
+        colour = hapAt(uv, h.turns >> 2);
+        return;
+    }
+    vec3 yuv = vec3(texture(sampler2D(t0, lin), uv).r, texture(sampler2D(t1, lin), uv).rg);
+    vec3 rgb = vec3(dot(h.yuv[0].xyz, yuv), dot(h.yuv[1].xyz, yuv), dot(h.yuv[2].xyz, yuv));
+    colour = vec4(clamp(rgb + vec3(h.yuv[0].w, h.yuv[1].w, h.yuv[2].w), 0.0, 1.0), 1.0);
 }
+#endif
 )";
 
 struct Header {
@@ -160,13 +174,18 @@ int main(int argc, char** argv)
         if (files.empty())
             return std::fputs(kUsage, stderr), 2;
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        const azl::CrossResult msl =
+            azl::glslToMsl({{"fullscreen", azl::ShaderStage::Vertex, azl::withEntry(kShader, "fullscreen")},
+                            {"draw", azl::ShaderStage::Fragment, azl::withEntry(kShader, "draw")}});
+        if (msl.text.empty())
+            return std::fprintf(stderr, "%s\n", msl.error.c_str()), 1;
         NSError* error = nil;
-        id<MTLLibrary> library = [device newLibraryWithSource:@(kShader) options:nil error:&error];
+        id<MTLLibrary> library = [device newLibraryWithSource:@(msl.text.c_str()) options:nil error:&error];
         if (!library)
             return std::fprintf(stderr, "%s\n", error.localizedDescription.UTF8String), 1;
         MTLRenderPipelineDescriptor* descriptor = [MTLRenderPipelineDescriptor new];
-        descriptor.vertexFunction = [library newFunctionWithName:@"fullscreen"];
-        descriptor.fragmentFunction = [library newFunctionWithName:@"draw"];
+        descriptor.vertexFunction = [library newFunctionWithName:@(azl::mslFunction("fullscreen").c_str())];
+        descriptor.fragmentFunction = [library newFunctionWithName:@(azl::mslFunction("draw").c_str())];
         descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
         id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
         if (!pipeline)

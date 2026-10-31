@@ -391,7 +391,7 @@ add_executable(nocturne-upload src/app/upload.cpp)
 target_link_libraries(nocturne-upload PRIVATE nocturne_upload)
 
 add_executable(nocturne-decode-bench src/app/decode_bench.mm)
-target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media)
+target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media nocturne_shader_cross nocturne_protocol)
 
 add_library(nocturne_fetch STATIC src/upload/media_fetch.cpp)
 target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
