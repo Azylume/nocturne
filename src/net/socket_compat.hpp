@@ -39,6 +39,8 @@ void closeSocket(Socket socket);
 // The last socket call's error on this thread: errno, or WSAGetLastError().
 int socketError();
 std::string socketErrorText(int error);
+// What a getaddrinfo error means.
+std::string resolveErrorText(int error);
 // The error means a non-blocking call would have waited, or a non-blocking connect is under way.
 bool wouldBlock(int error);
 

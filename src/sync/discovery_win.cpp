@@ -174,7 +174,7 @@ struct Advertiser::Impl {
         }
     }
 
-    DNS_SERVICE_REGISTER_REQUEST request(PDNS_SERVICE_COMPLETE callback)
+    DNS_SERVICE_REGISTER_REQUEST request(PDNS_SERVICE_REGISTER_COMPLETE callback)
     {
         DNS_SERVICE_REGISTER_REQUEST r{};
         r.Version = DNS_QUERY_REQUEST_VERSION1;

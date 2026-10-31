@@ -41,6 +41,11 @@ std::string socketErrorText(int error)
     return std::system_category().message(error);
 }
 
+std::string resolveErrorText(int error)
+{
+    return gai_strerrorA(error);
+}
+
 bool wouldBlock(int error)
 {
     return error == WSAEWOULDBLOCK || error == WSAEINPROGRESS;
@@ -133,6 +138,11 @@ int socketError()
 std::string socketErrorText(int error)
 {
     return std::strerror(error);
+}
+
+std::string resolveErrorText(int error)
+{
+    return gai_strerror(error);
 }
 
 bool wouldBlock(int error)
