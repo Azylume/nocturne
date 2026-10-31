@@ -298,6 +298,17 @@ else()
   target_sources(nocturne_udp_clock PRIVATE src/sync/udp_clock_sockets.cpp)
 endif()
 
+# Finding engines on the network: Bonjour on Apple, the DNS-SD API on Windows.
+add_library(nocturne_discovery STATIC)
+target_include_directories(nocturne_discovery PUBLIC src)
+if(APPLE)
+  target_sources(nocturne_discovery PRIVATE src/sync/discovery.mm)
+  target_link_libraries(nocturne_discovery PUBLIC "-framework Foundation")
+elseif(WIN32)
+  target_sources(nocturne_discovery PRIVATE src/sync/discovery_win.cpp)
+  target_link_libraries(nocturne_discovery PUBLIC nocturne_protocol dnsapi)
+endif()
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -324,8 +335,9 @@ target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock)
+    nocturne_udp_clock nocturne_discovery)
   return()
 endif()
 
@@ -430,10 +442,6 @@ target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
 add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
   src/harness/fake_displays.cpp)
 target_link_libraries(nocturne_harness PUBLIC nocturne_engine)
-
-add_library(nocturne_discovery STATIC src/sync/discovery.mm)
-target_include_directories(nocturne_discovery PUBLIC src)
-target_link_libraries(nocturne_discovery PUBLIC "-framework Foundation")
 
 add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
 target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
