@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <mutex>
+#include <optional>
 #include <regex>
 #include <sstream>
 
@@ -38,14 +40,36 @@ const char* carrier(IsfInputType type)
     return width(type) == 4 ? "vec4" : width(type) == 2 ? "vec2" : "float";
 }
 
+// The step between a long input's values when they are evenly spaced, as in nearly every ISF shader. Such a value is
+// computed from its index: a table read per pixel costs measurably more on Intel UHD 630. A long has at least two
+// values (parseIsf).
+std::optional<int> evenStep(const std::vector<int>& values)
+{
+    const int64_t step = int64_t(values[1]) - values[0];
+    for (size_t k = 2; k < values.size(); ++k)
+        if (int64_t(values[k]) - values[k - 1] != step)
+            return std::nullopt;
+    const int64_t span = int64_t(values.back()) - values.front();
+    if (span < std::numeric_limits<int>::min() || span > std::numeric_limits<int>::max())
+        return std::nullopt;
+    return int(step);
+}
+
+std::string longValue(const IsfInput& input, const std::string& p, size_t i)
+{
+    const std::string index = "clamp(int(" + p + " + 0.5), 0, " + std::to_string(input.values.size() - 1) + ")";
+    const std::optional<int> step = evenStep(input.values);
+    if (!step)
+        return "isf_values" + std::to_string(i) + "[" + index + "]";
+    return "(" + std::to_string(input.values.front()) + " + " + std::to_string(*step) + " * " + index + ")";
+}
+
 std::string inputValue(const IsfInput& input, size_t i)
 {
     const std::string p = "isf_p" + std::to_string(i);
     switch (input.type) {
     case IsfInputType::Bool: return p + " >= 0.5";
-    case IsfInputType::Long:
-        return "isf_values" + std::to_string(i) + "[clamp(int(" + p + " + 0.5), 0, " +
-               std::to_string(input.values.size() - 1) + ")]";
+    case IsfInputType::Long: return longValue(input, p, i);
     default: return p;
     }
 }
@@ -186,7 +210,7 @@ std::string assembled(const IsfShader& shader, const std::string& glsl)
         const IsfInput& input = shader.inputs[i];
         out += std::string(carrier(input.type)) + " isf_p" + std::to_string(i) + ";\n";
         out += std::string(glslType(input.type)) + " " + input.name + ";\n";
-        if (input.type == IsfInputType::Long)
+        if (input.type == IsfInputType::Long && !evenStep(input.values))
             out += longTable(input, i);
     }
     out += pictureMacros(shader);
