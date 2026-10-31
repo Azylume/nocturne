@@ -176,8 +176,8 @@ target_link_libraries(nocturne_engine_logic PUBLIC nocturne_protocol nocturne_pr
 
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
-add_executable(nocturne_tests tests/main.cpp tests/autopilot_stepper_test.cpp tests/isf_test.cpp
-  tests/machine_actions_test.cpp)
+add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
+  tests/isf_test.cpp tests/machine_actions_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 add_test(NAME nocturne_tests COMMAND nocturne_tests)
 
