@@ -2,6 +2,7 @@
 
 #include "platform/thread_priority.hpp"
 #include "media/media_library.hpp"
+#include "media/video_source.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 
@@ -325,10 +326,8 @@ void ClipDecoders::run()
 // autoreleases while opening and closing, which this long-lived thread would otherwise keep.
 bool ClipDecoders::round()
 {
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    const bool more = roundBody();
-    pool->release();
-    return more;
+    FrameworkScope scope;
+    return roundBody();
 }
 
 bool ClipDecoders::roundBody()
