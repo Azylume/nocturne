@@ -160,6 +160,11 @@ jobs:
     env:
       VCPKG_ROOT: C:\vcpkg-nocturne
       VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-archives
+      VULKAN_SDK_VERSION: 1.4.363.0
+      VULKAN_SDK_SHA256: 94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141
+      VULKAN_RUNTIME_SHA256: a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
+      MESA_VERSION: 26.2.4
+      MESA_SHA256: 351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
     steps:
       - uses: actions/checkout@v5
       - name: vcpkg at the manifest's baseline
@@ -196,6 +201,17 @@ jobs:
           "$env:VCINSTALLDIR\Tools\Llvm\x64\bin" >> $env:GITHUB_PATH
           "CC=clang-cl" >> $env:GITHUB_ENV
           "CXX=clang-cl" >> $env:GITHUB_ENV
+      - name: Vulkan SDK (headers, loader library, validation layer)
+        # The installer registers the validation layer under HKLM, the only place an elevated process looks for it.
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\vulkansdk.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { throw "Vulkan SDK checksum mismatch" }
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          & $installer --root $sdk --accept-licenses --default-answer --confirm-command install | Out-Null
+          if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { throw "Vulkan SDK did not install" }
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Save the vcpkg packages
@@ -207,11 +223,37 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Build
         run: cmake --build build
+      - name: Lavapipe as the Vulkan driver
+        # The runner has no GPU, so the GPU and golden cases render on Mesa's lavapipe (MIT), a CPU Vulkan driver.
+        # It is a test tool of this job only, never linked into or shipped with Nocturne. The runner's processes are
+        # elevated and an elevated Vulkan loader ignores VK_DRIVER_FILES, so the driver is registered under HKLM. The
+        # loader (LunarG's runtime zip) goes on PATH for the tests only, never into build/, whose DLLs the installer
+        # packs.
+        shell: pwsh
+        run: |
+          $mesa = "$env:RUNNER_TEMP\mesa.7z"
+          Invoke-WebRequest "https://github.com/pal1000/mesa-dist-win/releases/download/$env:MESA_VERSION/mesa3d-$env:MESA_VERSION-release-msvc.7z" -OutFile $mesa
+          if ((Get-FileHash $mesa -Algorithm SHA256).Hash -ne $env:MESA_SHA256) { throw "Mesa checksum mismatch" }
+          $runtime = "$env:RUNNER_TEMP\vulkan-runtime.zip"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/VulkanRT-X64-$env:VULKAN_SDK_VERSION-Components.zip" -OutFile $runtime
+          if ((Get-FileHash $runtime -Algorithm SHA256).Hash -ne $env:VULKAN_RUNTIME_SHA256) { throw "Vulkan runtime checksum mismatch" }
+          7z x -y -bso0 "-o$env:RUNNER_TEMP\mesa" $mesa
+          Expand-Archive $runtime "$env:RUNNER_TEMP\vulkan-runtime"
+          $icd = "$env:RUNNER_TEMP\mesa\x64\lvp_icd.x86_64.json"
+          New-Item -Force HKLM:\SOFTWARE\Khronos\Vulkan\Drivers | Out-Null
+          New-ItemProperty -Force HKLM:\SOFTWARE\Khronos\Vulkan\Drivers -Name $icd -PropertyType DWord -Value 0 | Out-Null
+          $loader = "$env:RUNNER_TEMP\vulkan-runtime\VulkanRT-X64-$env:VULKAN_SDK_VERSION-Components\x64"
+          $summary = & "$loader\vulkaninfo.exe" --summary 2>&1 | Out-String
+          if ($summary -notmatch 'PHYSICAL_DEVICE_TYPE_CPU') { $summary; throw "lavapipe is not the Vulkan device" }
+          if ($summary -notmatch 'VK_LAYER_KHRONOS_validation') { $summary; throw "the validation layer is missing" }
+          "VULKAN_LOADER_DIR=$loader" >> $env:GITHUB_ENV
       - name: Run the engine tests
         shell: bash
         env:
           PYTHON: python
-        run: tools/ci-tests.sh engine 0 1
+        run: |
+          PATH="$(cygpath "$VULKAN_LOADER_DIR"):$PATH"
+          tools/ci-tests.sh engine 0 1
       - name: Test report
         if: always()
         uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
