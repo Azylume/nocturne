@@ -287,13 +287,25 @@ else()
   target_sources(nocturne_net PRIVATE src/net/websocket_sockets.cpp)
 endif()
 
+# The UDP clock (ADR 0005): Network.framework on Apple, plain sockets elsewhere.
+add_library(nocturne_udp_clock STATIC src/sync/clock_estimator.cpp)
+target_include_directories(nocturne_udp_clock PUBLIC src)
+target_link_libraries(nocturne_udp_clock PUBLIC nocturne_protocol)
+if(APPLE)
+  target_sources(nocturne_udp_clock PRIVATE src/sync/udp_clock.mm)
+  target_link_libraries(nocturne_udp_clock PUBLIC "-framework Network" objc)
+else()
+  target_sources(nocturne_udp_clock PRIVATE src/sync/udp_clock_sockets.cpp)
+endif()
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
   tests/media_files_test.cpp tests/video_decoder_test.cpp
-  tests/websocket_frames_test.cpp tests/websocket_test.cpp ${NOCTURNE_PLATFORM_TESTS})
+  tests/websocket_frames_test.cpp tests/websocket_test.cpp
+  tests/udp_clock_test.cpp ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media"
@@ -312,7 +324,8 @@ target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net)
+  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
+    nocturne_udp_clock)
   return()
 endif()
 
@@ -425,8 +438,8 @@ target_link_libraries(nocturne_discovery PUBLIC "-framework Foundation")
 add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
 target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
 
-add_library(nocturne_sync STATIC src/sync/clock_estimator.cpp src/sync/node_sync.mm src/sync/udp_clock.mm)
-target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery "-framework Network")
+add_library(nocturne_sync STATIC src/sync/node_sync.mm)
+target_link_libraries(nocturne_sync PUBLIC nocturne_engine nocturne_net nocturne_discovery nocturne_udp_clock)
 
 add_library(nocturne_app_config STATIC src/app/engine_config.cpp)
 target_link_libraries(nocturne_app_config PUBLIC nocturne_engine nocturne_net)
@@ -489,19 +502,21 @@ add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_hos
 target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
-# The protocol and pairing cases again, against the plain-socket WebSocket other platforms use instead of
-# Network.framework. The product keeps nocturne_net.
+# The protocol, pairing and clock cases again, against the plain-socket WebSocket and UDP clock other platforms use
+# instead of Network.framework. The product keeps nocturne_net and nocturne_udp_clock.
 add_library(nocturne_net_sockets STATIC src/net/websocket_frames.cpp src/net/websocket_rules.cpp
   src/net/websocket_sockets.cpp)
 target_link_libraries(nocturne_net_sockets PUBLIC nocturne_protocol nocturne_return_video)
+add_library(nocturne_udp_clock_sockets STATIC src/sync/clock_estimator.cpp src/sync/udp_clock_sockets.cpp)
+target_link_libraries(nocturne_udp_clock_sockets PUBLIC nocturne_protocol)
 add_executable(nocturne_socket_tests tests/main.cpp tests/golden.cpp tests/protocol_test.cpp tests/pairing_test.cpp
-  tests/websocket_test.cpp)
+  tests/websocket_test.cpp tests/udp_clock_test.cpp)
 target_include_directories(nocturne_socket_tests PRIVATE tests third_party/doctest)
 get_target_property(test_definitions nocturne_tests COMPILE_DEFINITIONS)
 target_compile_definitions(nocturne_socket_tests PRIVATE ${test_definitions})
 add_dependencies(nocturne_socket_tests app)
-target_link_libraries(nocturne_socket_tests PRIVATE nocturne_harness nocturne_net_sockets "-framework CoreGraphics"
-  "-framework ImageIO" "-framework CoreFoundation")
+target_link_libraries(nocturne_socket_tests PRIVATE nocturne_harness nocturne_net_sockets nocturne_udp_clock_sockets
+  "-framework CoreGraphics" "-framework ImageIO" "-framework CoreFoundation")
 add_test(NAME nocturne_socket_tests COMMAND nocturne_socket_tests)
 
 option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, built with Homebrew LLVM" OFF)
