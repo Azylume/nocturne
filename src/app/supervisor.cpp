@@ -171,6 +171,11 @@ private:
             for (long i = 0; i < n; ++i) {
                 line += buffer[i];
                 if (buffer[i] == '\n') {
+#ifdef _WIN32
+                    // The engine's text-mode output ends a line in \r\n, and the log's text mode adds its own \r.
+                    if (line.size() > 1 && line[line.size() - 2] == '\r')
+                        line.erase(line.size() - 2, 1);
+#endif
                     log_.write(timestamp() + " " + line);
                     line.clear();
                 }
