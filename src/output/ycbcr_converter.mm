@@ -1,6 +1,8 @@
 #include "output/ycbcr_converter.hpp"
 
+#include "effects/shader_layout.hpp"
 #include "engine/metal_util.hpp"
+#include "engine/shader_cross.hpp"
 
 #include <IOSurface/IOSurface.h>
 #import <Foundation/Foundation.h>
@@ -16,70 +18,80 @@ namespace azl {
 
 namespace {
 
-constexpr const char* kSource = R"(
-#include <metal_stdlib>
-using namespace metal;
+constexpr const char* kSource = R"(#version 450
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_samplerless_texture_functions : require
 
-struct Params {
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0, scalar) uniform Params {
     // How each chroma sample mixes its block's pixels: top-left, top-right, bottom-left, bottom-right.
-    float4 weights;
+    vec4 weights;
     // Steps of the format per 8-bit code, and the texel value of one step.
     float steps;
     float step;
-};
+} p;
+
+layout(set = 1, binding = 0) uniform texture2D source;
 
 // BT.709 video range, in 8-bit codes, rounded to the format's precision.
-static float quantise(float code, constant Params& p) { return rint(code * p.steps) * p.step; }
-static float luma(float3 c, constant Params& p)
+float quantise(float code) { return roundEven(code * p.steps) * p.step; }
+float luma(vec3 c)
 {
-    return quantise(16.0 + 219.0 * dot(c, float3(0.2126, 0.7152, 0.0722)), p);
+    return quantise(16.0 + 219.0 * dot(c, vec3(0.2126, 0.7152, 0.0722)));
 }
-static float2 chroma(float3 c, constant Params& p)
+vec2 chroma(vec3 c)
 {
-    const float y = dot(c, float3(0.2126, 0.7152, 0.0722));
-    const float2 code = 128.0 + 224.0 * float2((c.b - y) / 1.8556, (c.r - y) / 1.5748);
-    return float2(quantise(code.x, p), quantise(code.y, p));
+    float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    vec2 code = 128.0 + 224.0 * vec2((c.b - y) / 1.8556, (c.r - y) / 1.5748);
+    return vec2(quantise(code.x), quantise(code.y));
 }
+
+vec3 at(uvec2 q) { return texelFetch(source, ivec2(q), 0).rgb; }
+
+#ifdef ENTRY_to420
+layout(set = 1, binding = 1) writeonly uniform image2D lumaPlane;
+layout(set = 1, binding = 2) writeonly uniform image2D chromaPlane;
 
 // Each thread converts a 4x2 block and writes whole RGBA texels: four luma samples per row, two CbCr pairs.
-kernel void to420(texture2d<float, access::read> source [[texture(0)]],
-                  texture2d<float, access::write> lumaPlane [[texture(1)]],
-                  texture2d<float, access::write> chromaPlane [[texture(2)]],
-                  constant Params& p [[buffer(0)]],
-                  uint2 at [[thread_position_in_grid]])
+void main()
 {
-    if (at.x >= chromaPlane.get_width() || at.y >= chromaPlane.get_height())
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= uint(imageSize(chromaPlane).x) || id.y >= uint(imageSize(chromaPlane).y))
         return;
-    const uint2 o = uint2(at.x * 4, at.y * 2);
-    float3 top[4], bottom[4];
-    float4 upper, lower;
-    for (uint i = 0; i < 4; ++i) {
-        top[i] = source.read(o + uint2(i, 0)).rgb;
-        bottom[i] = source.read(o + uint2(i, 1)).rgb;
-        upper[i] = luma(top[i], p);
-        lower[i] = luma(bottom[i], p);
+    uvec2 o = uvec2(id.x * 4u, id.y * 2u);
+    vec3 top[4], bottom[4];
+    vec4 upper, lower;
+    for (uint i = 0u; i < 4u; ++i) {
+        top[i] = at(o + uvec2(i, 0u));
+        bottom[i] = at(o + uvec2(i, 1u));
+        upper[i] = luma(top[i]);
+        lower[i] = luma(bottom[i]);
     }
-    lumaPlane.write(upper, uint2(at.x, o.y));
-    lumaPlane.write(lower, uint2(at.x, o.y + 1));
-    const float4 w = p.weights;
-    const float3 left = w.x * top[0] + w.y * top[1] + w.z * bottom[0] + w.w * bottom[1];
-    const float3 right = w.x * top[2] + w.y * top[3] + w.z * bottom[2] + w.w * bottom[3];
-    chromaPlane.write(float4(chroma(left, p), chroma(right, p)), at);
+    imageStore(lumaPlane, ivec2(id.x, o.y), upper);
+    imageStore(lumaPlane, ivec2(id.x, o.y + 1u), lower);
+    vec4 w = p.weights;
+    vec3 left = w.x * top[0] + w.y * top[1] + w.z * bottom[0] + w.w * bottom[1];
+    vec3 right = w.x * top[2] + w.y * top[3] + w.z * bottom[2] + w.w * bottom[3];
+    imageStore(chromaPlane, ivec2(id), vec4(chroma(left), chroma(right)));
 }
+#endif
+
+#ifdef ENTRY_to422
+layout(set = 1, binding = 1) writeonly uniform image2D pairs;
 
 // '2vuy' and 'v216' are Cb Y0 Cr Y1 per pixel pair, written as one RGBA texel.
-kernel void to422(texture2d<float, access::read> source [[texture(0)]],
-                  texture2d<float, access::write> pairs [[texture(1)]],
-                  constant Params& p [[buffer(0)]],
-                  uint2 at [[thread_position_in_grid]])
+void main()
 {
-    if (at.x >= pairs.get_width() || at.y >= pairs.get_height())
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= uint(imageSize(pairs).x) || id.y >= uint(imageSize(pairs).y))
         return;
-    const float3 a = source.read(uint2(at.x * 2, at.y)).rgb;
-    const float3 b = source.read(uint2(at.x * 2 + 1, at.y)).rgb;
-    const float2 cbcr = chroma(p.weights.x * a + p.weights.y * b, p);
-    pairs.write(float4(cbcr.x, luma(a, p), cbcr.y, luma(b, p)), at);
+    vec3 a = at(uvec2(id.x * 2u, id.y));
+    vec3 b = at(uvec2(id.x * 2u + 1u, id.y));
+    vec2 cbcr = chroma(p.weights.x * a + p.weights.y * b);
+    imageStore(pairs, ivec2(id), vec4(cbcr.x, luma(a), cbcr.y, luma(b)));
 }
+#endif
 )";
 
 struct Plane {
@@ -236,9 +248,10 @@ YCbCrConverter::YCbCrConverter(MTL::Device* device, OSType format) : device_(dev
 {
     if (!writes(format))
         throw std::runtime_error("no Y'CbCr conversion into this pixel format");
-    auto library = makeLibrary(device, kSource);
-    auto function = NS::TransferPtr(library->newFunction(
-        NS::String::string(planesOf(format).size() == 2 ? "to420" : "to422", NS::UTF8StringEncoding)));
+    const std::string entry = planesOf(format).size() == 2 ? "to420" : "to422";
+    auto library = makeLibrary(device, mslSource({{entry, ShaderStage::Compute, withEntry(kSource, entry)}}).c_str());
+    auto function = NS::TransferPtr(
+        library->newFunction(NS::String::string(mslFunction(entry).c_str(), NS::UTF8StringEncoding)));
     NS::Error* error = nullptr;
     pipeline_ = NS::TransferPtr(device->newComputePipelineState(function.get(), &error));
     if (!pipeline_)

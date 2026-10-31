@@ -60,12 +60,12 @@ bool same(const UserIsfShader& a, const UserIsfShader& b)
     return a.file == b.file && a.type == b.type && a.error == b.error && a.text == b.text;
 }
 
-IsfMetal translation(const IsfShader& shader, const fs::path& cacheDir)
+IsfGlsl translation(const IsfShader& shader, const fs::path& cacheDir)
 {
     try {
         return translateIsf(shader, cacheDir);
     } catch (const std::exception& e) {
-        IsfMetal failed;
+        IsfGlsl failed;
         failed.error = e.what();
         return failed;
     }
@@ -119,20 +119,20 @@ bool UserIsfLibrary::scan()
             shaders.push_back(std::move(entry));
             continue;
         }
-        const IsfMetal metal = translation(shader, cacheDir_);
-        entry.error = metal.error.substr(0, metal.error.find_last_not_of('\n') + 1);
+        const IsfGlsl glsl = translation(shader, cacheDir_);
+        entry.error = glsl.error.substr(0, glsl.error.find_last_not_of('\n') + 1);
         if (!utf8(entry.error))
             entry.error = "the shader does not translate";
         if (shader.kind == IsfKind::Transition) {
-            if (metal.error.empty()) {
+            if (glsl.error.empty()) {
                 IsfTransition transition = isfTransition(shader);
-                transition.globals = metal.globals;
-                transition.function = metal.body;
+                transition.globals = glsl.globals;
+                transition.function = glsl.body;
                 transitions.push_back(std::move(transition));
             }
         } else {
             if (effects_.find(shader.type) == effects_.end() || effects_.at(shader.type) != entry.text)
-                registerEffect(isfEffectDef(shader, metal));
+                registerEffect(isfEffectDef(shader, glsl));
             effects[shader.type] = entry.text;
         }
         if (!entry.error.empty())

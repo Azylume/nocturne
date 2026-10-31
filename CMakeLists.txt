@@ -101,7 +101,7 @@ endforeach()
 add_library(nocturne_shader_cross STATIC src/engine/shader_cross.cpp src/engine/isf_compiler.cpp)
 target_include_directories(nocturne_shader_cross PUBLIC src)
 target_link_libraries(nocturne_shader_cross PUBLIC nocturne_protocol PRIVATE glslang::glslang
-  glslang::glslang-default-resource-limits spirv-cross-msl)
+  glslang::glslang-default-resource-limits spirv-cross-msl spirv-cross-glsl)
 
 file(GLOB isf_files CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/isf/*/*.fs)
 list(SORT isf_files)
@@ -142,6 +142,7 @@ add_library(nocturne_protocol STATIC
   src/document/text.cpp
   src/document/palette.cpp
   src/effects/chain_planner.cpp
+  src/effects/shader_layout.cpp
   src/effects/classic_presets.cpp
   src/effects/colour.cpp
   src/effects/effect_registry.cpp
@@ -224,6 +225,22 @@ if(WIN32)
   target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
 endif()
 
+# The GPU interface everything draws through (ADR 0016): the Metal backend on Apple, Vulkan elsewhere.
+add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/glsl.cpp)
+target_include_directories(nocturne_gpu PUBLIC src)
+target_link_libraries(nocturne_gpu PUBLIC nocturne_shader_cross)
+if(APPLE)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_metal.cpp src/gpu/metal_impl.cpp)
+  target_include_directories(nocturne_gpu PUBLIC third_party/metal-cpp)
+  target_link_libraries(nocturne_gpu PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Foundation" objc)
+else()
+  find_package(Vulkan 1.3 REQUIRED)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_vulkan.cpp src/gpu/vulkan_memory.cpp src/gpu/vulkan_spirv.cpp)
+  target_link_libraries(nocturne_gpu PUBLIC Vulkan::Vulkan)
+  # Vulkan structures are initialised from their sType alone, the rest zero.
+  target_compile_options(nocturne_gpu PRIVATE -Wno-missing-field-initializers)
+endif()
+
 # Media: HAP, the decoders' frame caches, the Media Library and text. Reading and writing movies, stills and text
 # rasterising use AVFoundation and CoreText on Apple, FFmpeg and DirectWrite elsewhere (ADR 0016).
 add_library(nocturne_media STATIC
@@ -232,24 +249,23 @@ add_library(nocturne_media STATIC
   src/media/keep_local.cpp
   src/media/library_service.cpp
   src/media/media_library.cpp
+  src/media/picture_upload.cpp
   src/media/snappy.cpp
   src/media/text_renderer.cpp
   src/media/video_decoder.cpp
 )
 target_include_directories(nocturne_media PUBLIC src)
-target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile)
+target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile nocturne_gpu)
 if(APPLE)
   target_sources(nocturne_media PRIVATE
     src/media/clip_decoders.cpp
     src/media/composition_media.cpp
     src/media/composition_service.cpp
     src/media/hap_movie.mm
-    src/media/hap_texture.mm
     src/media/stills.mm
     src/media/text_renderer_coretext.cpp
     src/media/video_source_avf.mm
   )
-  target_include_directories(nocturne_media PUBLIC third_party/metal-cpp)
   target_link_libraries(nocturne_media PUBLIC
     "-framework AVFoundation"
     "-framework CoreMedia"
@@ -370,7 +386,8 @@ enable_testing()
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
-  tests/media_files_test.cpp tests/video_decoder_test.cpp
+  tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
+  tests/picture_upload_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
   tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
   tests/bundle_update_test.cpp tests/h264_decoder_test.cpp
@@ -436,7 +453,6 @@ add_library(nocturne_engine STATIC
   src/engine/fsr_upscaler.cpp
   src/engine/machine_service.cpp
   src/engine/machine_settings.cpp
-  src/engine/metal_impl.cpp
   src/engine/metal_util.cpp
   src/engine/modulation_plan.cpp
   src/engine/modulation_service.cpp
@@ -471,6 +487,7 @@ if(NOCTURNE_TRACY)
 endif()
 target_include_directories(nocturne_engine PUBLIC src third_party/metal-cpp)
 target_link_libraries(nocturne_engine PUBLIC
+  nocturne_gpu
   nocturne_engine_logic
   nocturne_media
   nocturne_return_video
@@ -500,7 +517,7 @@ add_executable(nocturne-upload src/app/upload.cpp)
 target_link_libraries(nocturne-upload PRIVATE nocturne_upload)
 
 add_executable(nocturne-decode-bench src/app/decode_bench.mm)
-target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media)
+target_link_libraries(nocturne-decode-bench PRIVATE nocturne_media nocturne_shader_cross nocturne_protocol)
 
 add_library(nocturne_harness STATIC src/harness/engine_harness.cpp src/harness/fake_audio_input.cpp
   src/harness/fake_displays.cpp)

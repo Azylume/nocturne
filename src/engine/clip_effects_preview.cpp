@@ -7,7 +7,10 @@
 
 namespace azl {
 
-ClipEffectsPreview::ClipEffectsPreview(MTL::Device* device) : device_(NS::RetainPtr(device)), compiler_(device) {}
+ClipEffectsPreview::ClipEffectsPreview(MTL::Device* device)
+    : device_(NS::RetainPtr(device)), compiler_(gpu::Device::retain(device))
+{
+}
 
 bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<const Composition>& composition,
                               const ClipRef& clip, const std::string& slot, std::vector<uint8_t>& bgra,
@@ -24,7 +27,7 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
     if (width != width_ || height != height_) {
         width_ = width;
         height_ = height;
-        sides_ = std::make_unique<SideTargets>(device_.get(), width, height);
+        sides_ = std::make_unique<SideTargets>(gpu::Device::retain(device_.get()), width, height);
         source_.reset();
         target_.reset();
         for (auto& pair : intermediates_)
@@ -66,12 +69,12 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
             const SideTargets::Target target =
                 sides_->begin(0, effect, side, stage.effect->sidePasses[side], pass.plan.float16);
             if (target.fresh)
-                begin(cmd, target.prev, MTL::LoadActionClear)->endEncoding();
-            auto* enc = begin(cmd, target.write, MTL::LoadActionDontCare);
+                begin(cmd, target.prev->native(), MTL::LoadActionClear)->endEncoding();
+            auto* enc = begin(cmd, target.write->native(), MTL::LoadActionDontCare);
             if (target.prev)
-                enc->setFragmentTexture(target.prev, kPrevSlot);
+                enc->setFragmentTexture(target.prev->native(), kPrevSlot);
             for (size_t j = 0; j < side; ++j)
-                enc->setFragmentTexture(sides_->output(0, effect, j), kSideSlot + j);
+                enc->setFragmentTexture(gpu::native(sides_->output(0, effect, j)), kSideSlot + j);
             encodePass(enc, pass, effects, input, float(seconds));
             enc->endEncoding();
             continue;
@@ -83,7 +86,7 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
         enc->endEncoding();
         input = target;
     }
-    MTL::Texture* target = texture(target_, kFrameFormat, true);
+    MTL::Texture* target = texture(target_, gpu::metalFormat(kFrameFormat), true);
     auto* enc = begin(cmd, target, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 1));
     encodePass(enc, passes.back(), effects, input, float(seconds));
     enc->endEncoding();
@@ -172,7 +175,8 @@ void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const Compil
     for (size_t j = 0; j < combined.size(); ++j) {
         const PlannedStage& stage = pass.plan.stages[combined[j]];
         enc->setFragmentTexture(
-            sides_->output(0, effects[stage.chainIndex]->id, stage.effect->sidePasses.size() - 1), kAuxSlot + j);
+            gpu::native(sides_->output(0, effects[stage.chainIndex]->id, stage.effect->sidePasses.size() - 1)),
+            kAuxSlot + j);
     }
     paramsOf(pass.plan, effects, params_);
     plan_->apply(pass.plan, effects, params_);
@@ -182,7 +186,7 @@ void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const Compil
     derive(pass.plan, params_, rates_, header);
     if (params_.empty())
         params_.push_back(0.0f);
-    enc->setRenderPipelineState(pass.pipelines[size_t(BlendVariant::Normal)].get());
+    enc->setRenderPipelineState(pass.pipelines[size_t(BlendVariant::Normal)].native());
     enc->setFragmentBytes(&header, sizeof(header), 0);
     enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
     enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));

@@ -2,7 +2,7 @@
 #include "media/snappy.hpp"
 
 #ifdef __APPLE__
-#include "media/hap_texture.hpp"
+#include "media/picture_upload.hpp"
 #endif
 
 #include <doctest.h>
@@ -123,10 +123,11 @@ TEST_CASE("a malformed HAP frame says what is wrong instead of decoding")
 }
 
 #ifdef __APPLE__
-TEST_CASE("a decoded HAP image uploads into a Metal BC texture block for block")
+TEST_CASE("a decoded HAP image uploads into a BC texture block for block")
 {
-    MTL::Device* device = MTL::CreateSystemDefaultDevice();
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     REQUIRE(device);
+    const azl::gpu::Queue queue = device.makeQueue();
     const int width = 64, height = 32;
     const std::vector<uint8_t> source = testPicture(width, height);
     for (const azl::HapCodec codec : {azl::HapCodec::Hap, azl::HapCodec::HapAlpha, azl::HapCodec::HapQAlpha}) {
@@ -134,17 +135,18 @@ TEST_CASE("a decoded HAP image uploads into a Metal BC texture block for block")
         std::vector<azl::HapImage> images;
         REQUIRE(azl::decodeHapFrame(frame.data(), frame.size(), width, height, images) == "");
         for (const azl::HapImage& image : images) {
-            MTL::Texture* texture = azl::newHapTexture(device, image, width, height);
+            const azl::gpu::Texture texture = azl::uploadHapImage(device, image, width, height);
             REQUIRE(texture);
-            const size_t rowBytes = image.blocks.size() / size_t(height / 4);
-            std::vector<uint8_t> back(image.blocks.size());
-            texture->getBytes(back.data(), rowBytes, MTL::Region(0, 0, width, height), 0);
-            CHECK(back == image.blocks);
-            texture->release();
+            azl::gpu::Scope scope;
+            const azl::gpu::Readback readback(device, texture);
+            azl::gpu::CommandBuffer cmd = queue.commandBuffer();
+            readback.encode(cmd);
+            cmd.commit();
+            cmd.waitUntilCompleted();
+            CHECK(std::vector<uint8_t>(readback.data(), readback.data() + readback.size()) == image.blocks);
         }
     }
     azl::HapImage wrongSize{azl::HapTexture::BC1, std::vector<uint8_t>(8)};
-    CHECK(azl::newHapTexture(device, wrongSize, width, height) == nullptr);
-    device->release();
+    CHECK(!azl::uploadHapImage(device, wrongSize, width, height));
 }
 #endif
