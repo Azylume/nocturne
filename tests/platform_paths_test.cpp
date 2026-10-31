@@ -17,3 +17,16 @@ TEST_CASE("platform: Nocturne's folders live in the user's own data folder")
     CHECK(azl::appLogsFolder() == std::filesystem::path("/Users/test/Library/Logs/Nocturne"));
 #endif
 }
+
+TEST_CASE("platform: the running program finds itself and the programs beside it")
+{
+    const std::filesystem::path self = azl::executablePath();
+    CHECK(self.is_absolute());
+    CHECK(std::filesystem::is_regular_file(self));
+    CHECK(azl::siblingExecutable("nocturne").parent_path() == self.parent_path());
+#ifdef _WIN32
+    CHECK(azl::siblingExecutable("nocturne").filename() == "nocturne.exe");
+#else
+    CHECK(azl::siblingExecutable("nocturne").filename() == "nocturne");
+#endif
+}

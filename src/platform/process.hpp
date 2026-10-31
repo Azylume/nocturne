@@ -26,6 +26,8 @@ std::optional<PipeEnds> makePipe();
 // Blocking. The bytes read, 0 at the end, -1 on an error.
 long readHandle(NativeHandle handle, void* buffer, size_t size);
 long writeHandle(NativeHandle handle, const void* data, size_t size);
+// Never blocks: the bytes read, 0 while none are waiting, -1 at the end or on an error.
+long readAvailable(NativeHandle handle, void* buffer, size_t size);
 void closeHandle(NativeHandle handle);
 
 // Where one of the child's standard streams goes.
@@ -67,7 +69,11 @@ public:
     std::optional<int> poll();
     // Blocks until the child ends; its exit code, -1 when a signal ended it.
     int wait();
-    // Asks the child to quit (SIGTERM). On Windows there is no such request yet: it ends the child like kill().
+    // How the child ended, for a log: "exited with status 3", "killed by SIGKILL", on Windows "crashed with exception
+    // 0xC0000005". Empty while it runs.
+    std::string describeExit() const;
+    // Asks the child to quit: SIGTERM on POSIX; on Windows the stop request a child that called watchStopRequests()
+    // waits for. A Windows child that does not watch for one is ended like kill().
     void terminate();
     void kill();
 
@@ -77,6 +83,9 @@ private:
     std::optional<int> exit_;
 #ifdef _WIN32
     void* handle_ = nullptr;
+#else
+    void ended(int status);
+    int signal_ = 0;
 #endif
 };
 
@@ -86,5 +95,15 @@ std::optional<Process> spawnProcess(const SpawnOptions& options, std::string* er
 
 // In a child started with a heartbeat: the handle to write beats to.
 std::optional<NativeHandle> inheritedHeartbeat();
+
+int currentProcessId();
+
+// Lets other processes ask this one to quit: SIGTERM, SIGINT and SIGHUP on POSIX (which also stops SIGPIPE from ending
+// it); on Windows Process::terminate(), Ctrl+C, Ctrl+Break and closing its console. Call once from main before any
+// thread starts. False when the system refuses.
+bool watchStopRequests();
+// Blocks up to `seconds` until a stop is asked for or `readable` (a pipe's read end) has data or reaches its end. True
+// once a stop was asked for, and from then on.
+bool waitForStop(double seconds, std::optional<NativeHandle> readable = std::nullopt);
 
 } // namespace azl

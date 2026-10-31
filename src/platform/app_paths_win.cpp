@@ -30,4 +30,27 @@ std::filesystem::path appLogsFolder()
     return appDataFolder() / "Logs";
 }
 
+std::filesystem::path executablePath()
+{
+    std::wstring path(MAX_PATH, L'\0');
+    while (true) {
+        const DWORD length = GetModuleFileNameW(nullptr, path.data(), DWORD(path.size()));
+        if (length == 0)
+            return {};
+        if (length < path.size()) {
+            path.resize(length);
+            break;
+        }
+        path.resize(path.size() * 2);
+    }
+    std::error_code ec;
+    const std::filesystem::path resolved = std::filesystem::weakly_canonical(path, ec);
+    return ec ? std::filesystem::path(path) : resolved;
+}
+
+std::filesystem::path siblingExecutable(const std::string& name)
+{
+    return executablePath().parent_path() / (name + ".exe");
+}
+
 } // namespace azl
