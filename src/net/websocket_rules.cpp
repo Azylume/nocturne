@@ -86,7 +86,7 @@ std::vector<std::string> resolveHost(const std::string& host)
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* found = nullptr;
     if (const int error = getaddrinfo(host.c_str(), nullptr, &hints, &found); error != 0)
-        throw std::runtime_error("cannot resolve host \"" + host + "\": " + gai_strerror(error));
+        throw std::runtime_error("cannot resolve host \"" + host + "\": " + resolveErrorText(error));
     std::vector<std::string> addresses;
     for (const addrinfo* a = found; a; a = a->ai_next) {
         char text[NI_MAXHOST];
