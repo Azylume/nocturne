@@ -49,10 +49,26 @@ azl::HapTexture hapTextureOf(azl::PictureFormat format, int plane)
 }
 
 #ifdef __APPLE__
+// Copied out with a blit: on Apple's Paravirtual device (a macOS VM, as on CI runners) getBytes does not see what
+// VideoToolbox wrote into a decoder's IOSurface-backed texture.
 std::vector<uint8_t> textureBytes(MTL::Texture* texture, size_t rowBytes, size_t rows)
 {
-    std::vector<uint8_t> bytes(rowBytes * rows);
-    texture->getBytes(bytes.data(), rowBytes, MTL::Region(0, 0, texture->width(), texture->height()), 0);
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    MTL::Device* device = texture->device();
+    MTL::CommandQueue* queue = device->newCommandQueue();
+    MTL::Buffer* buffer = device->newBuffer(rowBytes * rows, MTL::ResourceStorageModeShared);
+    MTL::CommandBuffer* cmd = queue->commandBuffer();
+    MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
+    blit->copyFromTexture(texture, 0, 0, MTL::Origin(0, 0, 0), MTL::Size(texture->width(), texture->height(), 1),
+                          buffer, 0, rowBytes, rowBytes * rows);
+    blit->endEncoding();
+    cmd->commit();
+    cmd->waitUntilCompleted();
+    const auto* contents = static_cast<const uint8_t*>(buffer->contents());
+    std::vector<uint8_t> bytes(contents, contents + rowBytes * rows);
+    buffer->release();
+    queue->release();
+    pool->release();
     return bytes;
 }
 
