@@ -128,10 +128,15 @@ private:
     BufferHandle handle_;
 };
 
-// Compiled shader code: MSL on Metal, SPIR-V on Vulkan.
+// Compiled shader code: one MSL source holding every entry point on Metal, one SPIR-V module per entry point on
+// Vulkan. gpu/glsl.hpp makes either from GLSL.
 struct ShaderSource {
+    struct Spirv {
+        std::string name;
+        std::vector<uint32_t> code;
+    };
     std::string msl;
-    std::vector<uint32_t> spirv;
+    std::vector<Spirv> spirv;
 };
 
 class ShaderModule {
