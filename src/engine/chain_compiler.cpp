@@ -3,6 +3,7 @@
 #include "engine/frame_ring.hpp"
 #include "engine/isf_compiler.hpp"
 #include "engine/shader_cross.hpp"
+#include "gpu/glsl.hpp"
 #include "engine/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
@@ -466,13 +467,14 @@ std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pas
     const auto start = std::chrono::steady_clock::now();
     const std::vector<std::string> names = passEntries(pass);
     std::string error;
-    const gpu::ShaderModule module = orThrow(device_.makeShaderModule({.msl = passMsl(pass)}, &error), error);
-    const std::string vertex = mslFunction("fullscreen");
+    const gpu::ShaderModule module = orThrow(
+        device_.makeShaderModule(gpu::compileGlsl(fullscreenEntries(pass.glsl, names)), &error), error);
+    const std::string vertex = gpu::entryPoint("fullscreen");
     std::vector<gpu::RenderPipeline> states;
     size_t archived = 0;
     auto make = [&](const std::string& fragment, gpu::Blending blending) {
         bool hit = false;
-        auto state = orThrow(device_.makeRenderPipeline({module, vertex, mslFunction(fragment), format, blending},
+        auto state = orThrow(device_.makeRenderPipeline({module, vertex, gpu::entryPoint(fragment), format, blending},
                                                         archive_, &hit, &error),
                              error);
         archived += hit;

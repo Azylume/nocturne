@@ -217,11 +217,20 @@ if(WIN32)
   target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
 endif()
 
-# The GPU interface everything draws through (ADR 0016): the Metal backend on Apple.
+# The GPU interface everything draws through (ADR 0016): the Metal backend on Apple, Vulkan elsewhere.
+add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/glsl.cpp)
+target_include_directories(nocturne_gpu PUBLIC src)
+target_link_libraries(nocturne_gpu PUBLIC nocturne_shader_cross)
 if(APPLE)
-  add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/gpu_metal.cpp src/gpu/metal_impl.cpp)
-  target_include_directories(nocturne_gpu PUBLIC src third_party/metal-cpp)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_metal.cpp src/gpu/metal_impl.cpp)
+  target_include_directories(nocturne_gpu PUBLIC third_party/metal-cpp)
   target_link_libraries(nocturne_gpu PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Foundation" objc)
+else()
+  find_package(Vulkan 1.3 REQUIRED)
+  target_sources(nocturne_gpu PRIVATE src/gpu/gpu_vulkan.cpp src/gpu/vulkan_memory.cpp src/gpu/vulkan_spirv.cpp)
+  target_link_libraries(nocturne_gpu PUBLIC Vulkan::Vulkan)
+  # Vulkan structures are initialised from their sType alone, the rest zero.
+  target_compile_options(nocturne_gpu PRIVATE -Wno-missing-field-initializers)
 endif()
 
 # Media: HAP, the decoders' frame caches, the Media Library and text. Reading and writing movies, stills and text
@@ -230,26 +239,25 @@ add_library(nocturne_media STATIC
   src/media/hap.cpp
   src/media/hap_encoder.cpp
   src/media/media_library.cpp
+  src/media/picture_upload.cpp
   src/media/snappy.cpp
   src/media/text_renderer.cpp
   src/media/video_decoder.cpp
 )
 target_include_directories(nocturne_media PUBLIC src)
-target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile)
+target_link_libraries(nocturne_media PUBLIC nocturne_protocol nocturne_profile nocturne_gpu)
 if(APPLE)
   target_sources(nocturne_media PRIVATE
     src/media/clip_decoders.cpp
     src/media/composition_media.cpp
     src/media/composition_service.cpp
     src/media/hap_movie.mm
-    src/media/picture_upload.cpp
     src/media/keep_local.cpp
     src/media/library_service.cpp
     src/media/stills.mm
     src/media/text_renderer_coretext.cpp
     src/media/video_source_avf.mm
   )
-  target_link_libraries(nocturne_media PUBLIC nocturne_gpu)
   target_link_libraries(nocturne_media PUBLIC
     "-framework AVFoundation"
     "-framework CoreMedia"
@@ -281,7 +289,8 @@ enable_testing()
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
-  tests/media_files_test.cpp tests/video_decoder_test.cpp)
+  tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
+  tests/picture_upload_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media")
@@ -475,8 +484,7 @@ add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
-target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp tests/gpu_test.cpp
-  tests/picture_upload_test.cpp)
+target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
 option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, built with Homebrew LLVM" OFF)

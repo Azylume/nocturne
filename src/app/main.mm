@@ -658,7 +658,7 @@ std::filesystem::path pipelineCache(const std::filesystem::path& stateDir, MTL::
     std::string name = std::string(device->name()->utf8String()) + "-" + azl::buildId();
     std::replace_if(name.begin(), name.end(), [](unsigned char c) { return !std::isalnum(c) && c != '-'; }, '_');
     const std::filesystem::path dir = stateDir / "pipelines";
-    const std::filesystem::path file = dir / (name + ".metallib");
+    const std::filesystem::path file = dir / (name + azl::gpu::kPipelineCacheExtension);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
