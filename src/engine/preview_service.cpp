@@ -3,9 +3,12 @@
 #include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "media/stills.hpp"
+
+#ifdef __APPLE__
 #include "platform/preview_channel_apple.hpp"
 
 #include <IOSurface/IOSurface.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -47,15 +50,67 @@ std::string stripKey(const std::string& hash, uint32_t width, uint32_t height)
     return hash + "@" + std::to_string(width) + "x" + std::to_string(height);
 }
 
-void copyInto(IOSurfaceRef surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height)
+#ifdef __APPLE__
+using Surface = std::shared_ptr<std::remove_pointer_t<IOSurfaceRef>>;
+
+Surface makeSurface(uint32_t width, uint32_t height)
 {
-    IOSurfaceLock(surface, 0, nullptr);
-    auto* base = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    const size_t stride = IOSurfaceGetBytesPerRow(surface);
+    IOSurfaceRef surface = createPreviewSurface(width, height);
+    return surface ? Surface(surface, CFRelease) : nullptr;
+}
+
+uint64_t surfaceId(const Surface& surface)
+{
+    return IOSurfaceGetID(surface.get());
+}
+
+size_t surfaceBytes(const Surface& surface)
+{
+    return IOSurfaceGetAllocSize(surface.get());
+}
+
+void copyInto(const Surface& surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height, int64_t frame)
+{
+    markPreviewSurface(surface.get(), -1);
+    IOSurfaceLock(surface.get(), 0, nullptr);
+    auto* base = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(surface.get()));
+    const size_t stride = IOSurfaceGetBytesPerRow(surface.get());
     const size_t row = size_t(width) * 4;
     for (uint32_t y = 0; y < height; ++y)
         std::memcpy(base + y * stride, bgra.data() + y * row, row);
-    IOSurfaceUnlock(surface, 0, nullptr);
+    IOSurfaceUnlock(surface.get(), 0, nullptr);
+    markPreviewSurface(surface.get(), frame);
+}
+#else
+using Surface = std::shared_ptr<PreviewChannelWriter>;
+
+Surface makeSurface(uint32_t width, uint32_t height)
+{
+    return PreviewChannelWriter::create(width, height);
+}
+
+uint64_t surfaceId(const Surface& surface)
+{
+    return surface->id();
+}
+
+size_t surfaceBytes(const Surface& surface)
+{
+    return surface->stride() * surface->height();
+}
+
+void copyInto(const Surface& surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t, int64_t frame)
+{
+    surface->write(bgra.data(), size_t(width) * 4, frame);
+}
+#endif
+
+Message surfaceIds(const std::vector<Surface>& surfaces)
+{
+    Message ids = Message::array();
+    for (const Surface& surface : surfaces)
+        ids.push_back(surfaceId(surface));
+    return ids;
 }
 
 } // namespace
@@ -226,21 +281,41 @@ PreviewService::Target PreviewService::makeTarget(const std::string& source, con
         }
         return target;
     }
+    for (size_t i = 0; i < kSurfaceRing; ++i) {
+        Surface surface = makeSurface(watch.width, watch.height);
+        if (!surface)
+            break;
+        target.surfaces.push_back(std::move(surface));
+    }
+    if (!hash)
+        addSurfaceTextures(target, watch);
+    return target;
+}
+
+#ifdef __APPLE__
+// One texture on each IOSurface: the GPU paints the shared picture itself.
+void PreviewService::addSurfaceTextures(Target& target, const Watch& watch) const
+{
     MTL::Device* device = engine_.device();
     auto* desc =
         MTL::TextureDescriptor::texture2DDescriptor(gpu::metalFormat(kFrameFormat), watch.width, watch.height, false);
     desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     desc->setStorageMode(device->hasUnifiedMemory() ? MTL::StorageModeShared : MTL::StorageModeManaged);
-    for (size_t i = 0; i < kSurfaceRing; ++i) {
-        IOSurfaceRef surface = createPreviewSurface(watch.width, watch.height);
-        if (!surface)
-            break;
-        target.surfaces.emplace_back(surface, CFRelease);
-        if (!hash)
-            target.textures.push_back(gpu::Texture::adopt(device->newTexture(desc, surface, 0)));
-    }
-    return target;
+    for (const Surface& surface : target.surfaces)
+        target.textures.push_back(gpu::Texture::adopt(device->newTexture(desc, surface.get(), 0)));
 }
+#else
+// One texture, read back into whichever writer is next.
+void PreviewService::addSurfaceTextures(Target& target, const Watch& watch) const
+{
+    if (target.surfaces.empty())
+        return;
+    target.textures.push_back(engine_.gpuDevice().makeTexture(
+        {.format = kFrameFormat, .width = watch.width, .height = watch.height,
+         .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled}));
+    target.readback = gpu::Readback(engine_.gpuDevice(), target.textures.back());
+}
+#endif
 
 // Under mutex_.
 void PreviewService::updatePictures()
@@ -310,10 +385,12 @@ std::map<std::string, size_t> PreviewService::sizes()
             ++targets;
             surfaces += target.surfaces.size();
             for (const auto& surface : target.surfaces)
-                surfaceBytes += IOSurfaceGetAllocSize(surface.get());
+                surfaceBytes += azl::surfaceBytes(surface);
             textures += target.textures.size();
             for (const auto& texture : target.textures)
+#ifdef __APPLE__
                 if (!texture.native()->iosurface())
+#endif
                     textureBytes += texture.allocatedBytes();
         }
     size_t pictures = 0, pictureBytes = 0, jpegBytes = 0;
@@ -410,14 +487,16 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             Screen screen;
             if (target.textures.empty() || !previewScreen(target.source, *composition, screen))
                 continue;
-            const gpu::Texture& texture = target.textures[target.next];
+            const gpu::Texture& texture = target.textures[target.next % target.textures.size()];
+#ifdef __APPLE__
             if (watch.surface)
                 markPreviewSurface(target.surfaces[target.next].get(), -1);
+#endif
             painter_.encode(cmd.native(), frame.get(), ScreenView{screen}, texture.native());
-            if (watch.surface)
-                cmd.synchronize(texture);
-            else
+            if (target.readback)
                 target.readback.encode(cmd);
+            else
+                cmd.synchronize(texture);
             painted.push_back(&target);
         }
         if (painted.empty())
@@ -434,19 +513,21 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
         Message message = {{"type", "preview"}, {"op", "frame"}, {"source", target->source}, {"frame", frame->index}};
         if (watch.surface) {
             if (!target->announced) {
-                Message ids = Message::array();
-                for (const auto& surface : target->surfaces)
-                    ids.push_back(IOSurfaceGetID(surface.get()));
                 connected = document_.send(client, {{"type", "preview"},
                                                     {"op", "surfaces"},
                                                     {"source", target->source},
                                                     {"width", watch.width},
                                                     {"height", watch.height},
-                                                    {"surfaces", ids}}) &&
+                                                    {"surfaces", surfaceIds(target->surfaces)}}) &&
                             connected;
                 target->announced = true;
             }
+#ifdef __APPLE__
             markPreviewSurface(target->surfaces[target->next].get(), int64_t(frame->index));
+#else
+            target->surfaces[target->next]->write(target->readback.data(), target->readback.rowBytes(),
+                                                  int64_t(frame->index));
+#endif
             message["surface"] = target->next;
         } else {
             const gpu::Readback& pixels = target->readback;
@@ -455,7 +536,7 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             message["jpeg"] = Message::binary(encodeJpeg(pixels.data(), watch.width, watch.height, pixels.rowBytes()));
         }
         connected = document_.send(client, message) && connected;
-        target->next = (target->next + 1) % target->textures.size();
+        target->next = (target->next + 1) % (watch.surface ? target->surfaces.size() : target->textures.size());
     }
     return connected;
 }
@@ -482,21 +563,15 @@ bool PreviewService::serveClip(ClientId client, Watch& watch, Target& target,
         if (target.surfaces.empty())
             return true;
         if (!target.announced) {
-            Message ids = Message::array();
-            for (const auto& surface : target.surfaces)
-                ids.push_back(IOSurfaceGetID(surface.get()));
             connected = document_.send(client, {{"type", "preview"},
                                                 {"op", "surfaces"},
                                                 {"source", target.source},
                                                 {"width", watch.width},
                                                 {"height", watch.height},
-                                                {"surfaces", ids}});
+                                                {"surfaces", surfaceIds(target.surfaces)}});
             target.announced = true;
         }
-        IOSurfaceRef surface = target.surfaces[target.next].get();
-        markPreviewSurface(surface, -1);
-        copyInto(surface, picture, strip.width, strip.height);
-        markPreviewSurface(surface, int64_t(target.sent));
+        copyInto(target.surfaces[target.next], picture, strip.width, strip.height, int64_t(target.sent));
         message["surface"] = target.next;
         target.next = (target.next + 1) % target.surfaces.size();
     } else {

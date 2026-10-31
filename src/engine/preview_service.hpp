@@ -6,8 +6,11 @@
 #include "media/media_library.hpp"
 #include "protocol/document_server.hpp"
 
+#ifdef __APPLE__
 #include <IOSurface/IOSurfaceRef.h>
-#include <Metal/Metal.hpp>
+#else
+#include "platform/preview_channel.hpp"
+#endif
 
 #include <atomic>
 #include <condition_variable>
@@ -32,8 +35,9 @@ namespace azl {
 //   {"type": "preview", "op": "watch", "watch": "clips", "sources": ["composition", "layer:3", "screen:2", "clip:H"],
 //    "via": "surface" | "jpeg", "width": 320, "height": 180, "fps": 30}
 //
-// Via "surface" (a UI on the same machine) each source is painted into a ring of global IOSurfaces, announced once,
-// and every new picture names the surface it is in; nothing is copied or encoded on the way:
+// Via "surface" (a UI on the same machine) each source is painted into a ring of shared pictures, announced once, and
+// every new picture names the surface it is in. On Apple they are global IOSurfaces the GPU paints into, so nothing is
+// copied or encoded on the way; elsewhere they are PreviewChannelWriters, filled from a GPU readback:
 //     -> {"type": "preview", "op": "surfaces", "source": S, "width", "height", "surfaces": [id, id, id]}
 //     -> {"type": "preview", "op": "frame", "source": S, "frame": index, "surface": i}
 // The ring comes round again while a late reader still has to read a surface, so each surface also names the frame
@@ -113,7 +117,11 @@ private:
         std::vector<gpu::Texture> textures;
         // The JPEG path's picture as the CPU reads it.
         gpu::Readback readback;
+#ifdef __APPLE__
         std::vector<std::shared_ptr<std::remove_pointer_t<IOSurfaceRef>>> surfaces;
+#else
+        std::vector<std::shared_ptr<PreviewChannelWriter>> surfaces;
+#endif
         size_t next = 0;
         bool announced = false;
         // A clip source: its strip, and how many pictures it has sent.
@@ -158,6 +166,7 @@ private:
     bool drawEffects(const Target& target, const Strip& strip, size_t index,
                      const std::shared_ptr<const Composition>& composition, std::vector<uint8_t>& picture);
     Target makeTarget(const std::string& source, const Watch& watch) const;
+    void addSurfaceTextures(Target& target, const Watch& watch) const;
     void addClipTargets(Watch& watch) const;
     Message clipsState() const;
     void updatePictures();
