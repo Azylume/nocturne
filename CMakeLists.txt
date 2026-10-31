@@ -272,9 +272,11 @@ enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
-  tests/audio_input_test.cpp tests/opus_codec_test.cpp)
+  tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
+  tests/media_files_test.cpp tests/video_decoder_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
-target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden")
+target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
+  NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media")
 target_link_libraries(nocturne_tests PRIVATE nocturne_audio)
 if(APPLE)
   target_sources(nocturne_tests PRIVATE src/audio/power_spectrum_pocketfft.cpp)
@@ -456,10 +458,9 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
   tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
-  tests/hap_test.cpp tests/hap_codec_test.cpp tests/hap_playback_test.cpp
+  tests/hap_playback_test.cpp
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
-target_compile_definitions(nocturne_tests PRIVATE
-  NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media" NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
   NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
 add_dependencies(nocturne_tests app nocturne-hap-encode)

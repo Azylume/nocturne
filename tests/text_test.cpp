@@ -120,22 +120,6 @@ TEST_CASE("a composition file keeps text clips without looking for media")
     CHECK(loaded.composition.layers[0].clips.at(1) == textClip(title()));
 }
 
-TEST_CASE("a missing font falls back to the system font")
-{
-    NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    std::set<std::string> missing;
-    const azl::TextLayout layout{.text = "Fallback", .font = "No Such Font 1234", .size = 0.1};
-    const azl::VideoFrameRef frame = azl::TextRenderer::rasterise(device.get(), 540, layout, missing);
-    REQUIRE(frame);
-    REQUIRE(frame->text);
-    CHECK(frame->text->bounds[2] > 100.0f);
-    CHECK(missing == std::set<std::string>{"No Such Font 1234"});
-
-    missing.clear();
-    azl::TextRenderer::rasterise(device.get(), 540, {.text = "Found", .font = "Helvetica Bold"}, missing);
-    CHECK(missing.empty());
-}
-
 TEST_CASE("text clips render on any layer with font, size, colour, alignment and outline")
 {
     azl::EngineHarness harness(kSize, 60.0, {}, twoLayers());

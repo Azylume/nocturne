@@ -2,6 +2,7 @@
 
 #include "harness/engine_harness.hpp"
 #include "protocol/messages.hpp"
+#include "test_files.hpp"
 
 #include <doctest.h>
 
@@ -19,25 +20,6 @@ namespace {
 namespace fs = std::filesystem;
 namespace msg = azl::msg;
 using azl::Message;
-
-fs::path mediaDir()
-{
-    const char* dir = std::getenv("NOCTURNE_MEDIA_DIR");
-    return dir ? dir : NOCTURNE_MEDIA_DIR;
-}
-
-class TempDir {
-public:
-    TempDir()
-    {
-        std::string pattern = (fs::temp_directory_path() / "nocturne-test-XXXXXX").string();
-        REQUIRE(mkdtemp(pattern.data()));
-        path = pattern;
-    }
-    ~TempDir() { fs::remove_all(path); }
-
-    fs::path path;
-};
 
 [[maybe_unused]] fs::path copyMedia(const std::string& name, const fs::path& to)
 {
