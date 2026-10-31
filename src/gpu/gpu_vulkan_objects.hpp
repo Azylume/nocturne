@@ -176,7 +176,8 @@ struct CommandObject {
 void retain(CommandObject* c, std::shared_ptr<const void> object);
 void pushBytes(CommandObject* c, uint32_t binding, const void* data, size_t size);
 void bindBuffer(CommandObject* c, uint32_t binding, BufferObject* buffer, size_t offset);
-void drawIndexed(CommandObject* c, BufferObject* indices, uint32_t count, size_t offset, uint32_t instances);
+void drawIndexed(CommandObject* c, BufferObject* indices, uint32_t count, size_t offset, uint32_t instances,
+                 uint32_t firstInstance);
 void bindPipeline(CommandObject* c, PipelineObject* pipeline);
 void flush(CommandObject* c);
 void setScissor(CommandObject* c, uint32_t x, uint32_t y, uint32_t width, uint32_t height);

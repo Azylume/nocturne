@@ -49,8 +49,9 @@ azl::HapTexture hapTextureOf(azl::PictureFormat format, int plane)
 }
 
 #ifdef __APPLE__
-std::vector<uint8_t> textureBytes(MTL::Texture* texture, size_t rowBytes, size_t rows)
+std::vector<uint8_t> textureBytes(const azl::gpu::Texture& from, size_t rowBytes, size_t rows)
 {
+    MTL::Texture* texture = from.native();
     std::vector<uint8_t> bytes(rowBytes * rows);
     texture->getBytes(bytes.data(), rowBytes, MTL::Region(0, 0, texture->width(), texture->height()), 0);
     return bytes;
@@ -161,14 +162,12 @@ void checkColour(const Rgba& image, int x, int y, int r, int g, int b)
 class Device {
 public:
 #ifdef __APPLE__
-    Device() : device_(MTL::CreateSystemDefaultDevice()) {}
-    ~Device() { device_->release(); }
-    azl::MediaDevice* get() const { return device_; }
+    const azl::MediaDevice* get() const { return &device_; }
 
 private:
-    MTL::Device* device_;
+    azl::MediaDevice device_ = azl::MediaDevice::systemDefault();
 #else
-    azl::MediaDevice* get() const { return nullptr; }
+    const azl::MediaDevice* get() const { return nullptr; }
 #endif
 };
 

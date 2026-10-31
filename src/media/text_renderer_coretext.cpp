@@ -132,7 +132,7 @@ double alignShift(TextAlign align, double width)
 
 } // namespace
 
-VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, const TextLayout& layout,
+VideoFrameRef TextRenderer::rasterise(const MediaDevice* device, uint32_t height, const TextLayout& layout,
                                       std::set<std::string>& missingFonts)
 {
     const double px = layout.size * height;
@@ -181,12 +181,12 @@ VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, cons
     DecodedPicture picture;
     picture.planes[0] = {PlaneFormat::RG8, int(width), int(rows), size_t(width) * 2, rg.data()};
     picture.planeCount = 1;
-    auto texture = std::make_shared<gpu::Texture>(uploadPicture(gpu::Device::retain(device), picture, true)[0]);
+    auto texture = std::make_shared<gpu::Texture>(uploadPicture(*device, picture, true)[0]);
     if (!*texture)
         return nullptr;
 
     auto frame = std::make_shared<VideoFrame>();
-    frame->luma = texture->native();
+    frame->luma = *texture;
     frame->resources = texture;
     frame->text = VideoFrame::Text{{float(-padLeft - std::round(alignShift(layout.align, blockWidth))),
                                     float(-pad - std::round(blockHeight / 2.0)), float(width), float(rows)},
@@ -194,8 +194,8 @@ VideoFrameRef TextRenderer::rasterise(MTL::Device* device, uint32_t height, cons
     return frame;
 }
 
-TextRenderer::TextRenderer(MTL::Device* device, uint32_t height)
-    : device_(NS::RetainPtr(device)), height_(height), thread_([this] { run(); })
+TextRenderer::TextRenderer(const MediaDevice* device, uint32_t height)
+    : device_(device ? *device : MediaDevice{}), height_(height), thread_([this] { run(); })
 {
 }
 

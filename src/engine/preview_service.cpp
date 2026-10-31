@@ -147,7 +147,7 @@ PreviewService::PreviewService(DocumentServer& document, Engine& engine)
       engine_(engine),
       queue_(engine.gpuDevice().makeQueue()),
       gpu_(engine.device(), "previews", ""),
-      painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
+      painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("previews");
           run();
@@ -175,7 +175,7 @@ PreviewService::~PreviewService()
 void PreviewService::setClipLibrary(MediaLibrary* library)
 {
     if (library && !effects_)
-        effects_ = std::make_unique<ClipEffectsPreview>(engine_.device());
+        effects_ = std::make_unique<ClipEffectsPreview>(engine_.gpuDevice());
     library_ = library;
 }
 
@@ -492,7 +492,7 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
             if (watch.surface)
                 markPreviewSurface(target.surfaces[target.next].get(), -1);
 #endif
-            painter_.encode(cmd.native(), frame.get(), ScreenView{screen}, texture.native());
+            painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
             if (target.readback)
                 target.readback.encode(cmd);
             else
@@ -606,7 +606,7 @@ bool PreviewService::drawEffects(const Target& target, const Strip& strip, size_
     picture = strip.pictures[index];
     const TransportState transport = engine_.transport();
     const std::string slot = std::to_string(target.cell->layer) + "/" + std::to_string(target.cell->column);
-    return effects_->draw(queue_.native(), composition, *clip, slot, picture, strip.width, strip.height, transport.time,
+    return effects_->draw(queue_, composition, *clip, slot, picture, strip.width, strip.height, transport.time,
                           transport.beat, engine_.audio());
 }
 

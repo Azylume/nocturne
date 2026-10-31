@@ -1,10 +1,7 @@
 #pragma once
 
+#include "gpu/gpu.hpp"
 #include "media/decoded_picture.hpp"
-
-#ifdef __APPLE__
-#include <Metal/Metal.hpp>
-#endif
 
 #include <array>
 #include <atomic>
@@ -18,28 +15,25 @@
 
 namespace azl {
 
-#ifdef __APPLE__
-// The GPU decoders make their textures on.
-using MediaDevice = MTL::Device;
-#else
-// Off Apple decoders hand system-memory pictures to the GPU backend, which uploads them: they take no device.
-struct MediaDevice;
-#endif
+// The GPU decoders and text make their textures on. Without one (probing a file, tests that read pictures on the CPU)
+// frames carry no textures: on Apple a source makes none, elsewhere a frame keeps its picture in system memory.
+using MediaDevice = gpu::Device;
 
 // How a video picture's two textures make its colour: Y'CbCr planes, or a HAP frame's compressed textures (the colour
 // in `luma`; for YCoCgAlpha the alpha in `chroma`, else `chroma` repeats `luma`).
 enum class PictureFormat : uint32_t { YCbCr, Rgb, Rgba, YCoCg, YCoCgAlpha };
 
-// One decoded picture as two zero-copy textures over the decoder's IOSurface: luma (R8) and interleaved chroma (RG8)
-// at half resolution, or a HAP frame's textures (`format`). `resources` keeps the pixel buffer, the Metal textures and
-// the producer's texture cache alive, so a frame stays valid on the GPU after its decoder is gone. Off Apple a frame
-// carries its picture in system memory instead, for the GPU backend to upload.
+// One decoded picture as two textures: luma (R8, R16) and interleaved chroma (RG8, RG16) at half resolution, or a HAP
+// frame's textures (`format`). On Apple they are zero-copy views of the decoder's IOSurface; elsewhere the decode
+// thread uploads the picture. `resources` keeps what the textures were made from alive (the pixel buffer and the
+// producer's texture cache), so a frame stays valid on the GPU after its decoder is gone, and is never null for a frame
+// with textures: it names the picture. Off Apple a frame decoded without a device carries its picture in system memory
+// instead.
 struct VideoFrame {
     int index = 0;
-#ifdef __APPLE__
-    MTL::Texture* luma = nullptr;
-    MTL::Texture* chroma = nullptr;
-#else
+    gpu::Texture luma;
+    gpu::Texture chroma;
+#ifndef __APPLE__
     std::shared_ptr<const DecodedPicture> picture;
 #endif
     // Rows of the affine Y'CbCr -> R'G'B' transform for the stream's matrix and range: rgb[i] = dot(row.xyz, yuv) + w.
@@ -146,7 +140,7 @@ public:
     };
 
     // Opens the file (blocking: call it off the render thread). Throws std::runtime_error when it cannot be played.
-    VideoDecoder(MediaDevice* device, const std::string& path, Options options);
+    VideoDecoder(const MediaDevice* device, const std::string& path, Options options);
     ~VideoDecoder();
 
     ClipLength length() const;
@@ -186,7 +180,7 @@ public:
     struct Impl;
 
 private:
-    void open(MediaDevice* device, const std::string& path, Options options);
+    void open(const MediaDevice* device, const std::string& path, Options options);
 
     std::shared_ptr<Impl> impl_;
 };

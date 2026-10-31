@@ -42,7 +42,7 @@ int startFrame(int frames, double position, bool forward)
 
 } // namespace
 
-ClipDecoders::ClipDecoders(MTL::Device* device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
+ClipDecoders::ClipDecoders(const gpu::Device& device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
                            std::chrono::microseconds frameCost)
     : device_(device), library_(library), cacheBytes_(cacheBytes), preloadBytes_(preloadBytes), frameCost_(frameCost),
       thread_([this] {
@@ -513,7 +513,7 @@ std::shared_ptr<VideoDecoder> ClipDecoders::open(const ClipKey& clip)
             library_->flag(clip.second, MediaStatus::Corrupt, reason);
             report(clip, "broken, flagged corrupt: " + reason);
         };
-        return std::make_shared<VideoDecoder>(device_, entry->path.string(),
+        return std::make_shared<VideoDecoder>(&device_, entry->path.string(),
                                               VideoDecoder::Options{cacheBytes_, stats_, hash, broken, frameCost_});
     } catch (const std::exception& e) {
         library_->flag(hash, MediaStatus::Corrupt, e.what());

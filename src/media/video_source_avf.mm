@@ -360,8 +360,8 @@ CVMetalTextureRef planeTexture(CVMetalTextureCacheRef cache, CVPixelBufferRef pi
 class AvfSource final : public VideoSource {
 public:
     // Without a device (probing) the source makes no frames.
-    AvfSource(MTL::Device* device, const std::string& path)
-        : track_(openTrack(path)), device_(device ? gpu::Device::retain(device) : gpu::Device{})
+    AvfSource(const MediaDevice* device, const std::string& path)
+        : track_(openTrack(path)), device_(device ? *device : gpu::Device{})
     {
         source_.fps = track_.fps;
         source_.frameCount = track_.frameCount;
@@ -374,8 +374,8 @@ public:
         if (!device)
             return;
         source_.keyframes = keyframesOf(track_);
-        if (CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, (__bridge id<MTLDevice>)device, nullptr,
-                                      &cache_) != kCVReturnSuccess)
+        if (CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, (__bridge id<MTLDevice>)device->native(),
+                                      nullptr, &cache_) != kCVReturnSuccess)
             throw std::runtime_error("cannot create a Metal texture cache");
     }
 
@@ -405,8 +405,8 @@ public:
             return nullptr;
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->luma = (__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->luma);
-        frame->chroma = (__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->chroma);
+        frame->luma = gpu::Texture::retain((__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->luma));
+        frame->chroma = gpu::Texture::retain((__bridge MTL::Texture*)CVMetalTextureGetTexture(resources->chroma));
         frame->yuvToRgb = yuvToRgb_;
         frame->turns = track_.turns;
         frame->resources = std::move(resources);
@@ -421,8 +421,8 @@ public:
                 return nullptr;
         auto frame = std::make_shared<VideoFrame>();
         frame->index = index;
-        frame->luma = resources->textures[0].native();
-        frame->chroma = (resources->textures[1] ? resources->textures[1] : resources->textures[0]).native();
+        frame->luma = resources->textures[0];
+        frame->chroma = resources->textures[1] ? resources->textures[1] : resources->textures[0];
         frame->format = format;
         frame->turns = track_.turns;
         frame->resources = std::move(resources);
@@ -444,7 +444,7 @@ int64_t liveAssetReaders()
     return gLiveReaders.load();
 }
 
-std::unique_ptr<VideoSource> openVideoSource(MediaDevice* device, const std::string& path)
+std::unique_ptr<VideoSource> openVideoSource(const MediaDevice* device, const std::string& path)
 {
     return std::make_unique<AvfSource>(device, path);
 }

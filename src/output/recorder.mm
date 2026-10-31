@@ -434,7 +434,7 @@ struct Recorder::Session : FrameTap, std::enable_shared_from_this<Session> {
             std::chrono::milliseconds spaceInterval);
     ~Session() override;
 
-    Done encode(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition, double seconds) override;
+    Done encode(gpu::CommandBuffer& cmd, const Frame& frame, const Composition& composition, double seconds) override;
     bool encodeConverted(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
                          CVPixelBufferRef buffer);
     bool encodeBGRA(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition, CVPixelBufferRef buffer,
@@ -492,7 +492,7 @@ Recorder::Session::Session(Recorder& owner, Settings s, double fps, AudioPlan au
         converter->setGpuTimeline(gpu);
     }
     if (!whole) {
-        painter = std::make_unique<ScreenPainter>(engine.device(), gpu::metalFormat(kFrameFormat),
+        painter = std::make_unique<ScreenPainter>(engine.gpuDevice(), kFrameFormat,
                                                   std::array<uint32_t, 2>{compositionWidth, compositionHeight});
         painter->setGpuTimeline(gpu);
     }
@@ -551,7 +551,7 @@ Recorder::Session::~Session()
         CVPixelBufferPoolRelease(pool);
 }
 
-FrameTap::Done Recorder::Session::encode(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
+FrameTap::Done Recorder::Session::encode(gpu::CommandBuffer& cmd, const Frame& frame, const Composition& composition,
                                          double seconds)
 {
     CVPixelBufferRef buffer = nullptr;
@@ -561,8 +561,8 @@ FrameTap::Done Recorder::Session::encode(MTL::CommandBuffer* cmd, const Frame& f
         return nullptr;
     }
     CVMetalTextureRef texture = nullptr;
-    const bool encoded = converter ? encodeConverted(cmd, frame, composition, buffer)
-                                   : encodeBGRA(cmd, frame, composition, buffer, texture);
+    const bool encoded = converter ? encodeConverted(cmd.native(), frame, composition, buffer)
+                                   : encodeBGRA(cmd.native(), frame, composition, buffer, texture);
     if (!encoded) {
         CFRelease(buffer);
         writer->drop();
@@ -622,7 +622,9 @@ void Recorder::Session::paint(MTL::CommandBuffer* cmd, const Frame& frame, const
         for (const Screen& s : composition.screens)
             if (s.id == *screen)
                 shown = s;
-    painter->encode(cmd, &frame, screenView(composition, shown, false, std::nullopt), target);
+    gpu::CommandBuffer painting = gpu::CommandBuffer::wrap(cmd);
+    painter->encode(painting, &frame, screenView(composition, shown, false, std::nullopt),
+                    gpu::Texture::retain(target));
 }
 
 Recorder::Recorder(Engine& engine, double fps, OnEnded onEnded, OnSpace onSpace)
