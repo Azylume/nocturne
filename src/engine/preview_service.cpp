@@ -1,11 +1,14 @@
 #include "engine/preview_service.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "media/stills.hpp"
-#include "protocol/preview_surface.hpp"
+
+#ifdef __APPLE__
+#include "platform/preview_channel_apple.hpp"
 
 #include <IOSurface/IOSurface.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -47,46 +50,67 @@ std::string stripKey(const std::string& hash, uint32_t width, uint32_t height)
     return hash + "@" + std::to_string(width) + "x" + std::to_string(height);
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-// Global, so the UI process finds it by id. The deprecated flag still works for unsandboxed processes; passing a mach
-// port instead needs a channel the protocol does not have.
-IOSurfaceRef globalSurface(uint32_t width, uint32_t height)
-{
-    CFMutableDictionaryRef props =
-        CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    auto number = [&](CFStringRef key, int value) {
-        CFNumberRef n = CFNumberCreate(nullptr, kCFNumberIntType, &value);
-        CFDictionarySetValue(props, key, n);
-        CFRelease(n);
-    };
-    number(kIOSurfaceWidth, int(width));
-    number(kIOSurfaceHeight, int(height));
-    number(kIOSurfaceBytesPerElement, 4);
-    number(kIOSurfacePixelFormat, int('BGRA'));
-    CFDictionarySetValue(props, kIOSurfaceIsGlobal, kCFBooleanTrue);
-    IOSurfaceRef surface = IOSurfaceCreate(props);
-    CFRelease(props);
-    return surface;
-}
-#pragma clang diagnostic pop
+#ifdef __APPLE__
+using Surface = std::shared_ptr<std::remove_pointer_t<IOSurfaceRef>>;
 
-void markSurface(IOSurfaceRef surface, int64_t frame)
+Surface makeSurface(uint32_t width, uint32_t height)
 {
-    CFNumberRef value = CFNumberCreate(nullptr, kCFNumberSInt64Type, &frame);
-    IOSurfaceSetValue(surface, previewFrameKey(), value);
-    CFRelease(value);
+    IOSurfaceRef surface = createPreviewSurface(width, height);
+    return surface ? Surface(surface, CFRelease) : nullptr;
 }
 
-void copyInto(IOSurfaceRef surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height)
+uint64_t surfaceId(const Surface& surface)
 {
-    IOSurfaceLock(surface, 0, nullptr);
-    auto* base = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    const size_t stride = IOSurfaceGetBytesPerRow(surface);
+    return IOSurfaceGetID(surface.get());
+}
+
+size_t surfaceBytes(const Surface& surface)
+{
+    return IOSurfaceGetAllocSize(surface.get());
+}
+
+void copyInto(const Surface& surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height, int64_t frame)
+{
+    markPreviewSurface(surface.get(), -1);
+    IOSurfaceLock(surface.get(), 0, nullptr);
+    auto* base = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(surface.get()));
+    const size_t stride = IOSurfaceGetBytesPerRow(surface.get());
     const size_t row = size_t(width) * 4;
     for (uint32_t y = 0; y < height; ++y)
         std::memcpy(base + y * stride, bgra.data() + y * row, row);
-    IOSurfaceUnlock(surface, 0, nullptr);
+    IOSurfaceUnlock(surface.get(), 0, nullptr);
+    markPreviewSurface(surface.get(), frame);
+}
+#else
+using Surface = std::shared_ptr<PreviewChannelWriter>;
+
+Surface makeSurface(uint32_t width, uint32_t height)
+{
+    return PreviewChannelWriter::create(width, height);
+}
+
+uint64_t surfaceId(const Surface& surface)
+{
+    return surface->id();
+}
+
+size_t surfaceBytes(const Surface& surface)
+{
+    return surface->stride() * surface->height();
+}
+
+void copyInto(const Surface& surface, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t, int64_t frame)
+{
+    surface->write(bgra.data(), size_t(width) * 4, frame);
+}
+#endif
+
+Message surfaceIds(const std::vector<Surface>& surfaces)
+{
+    Message ids = Message::array();
+    for (const Surface& surface : surfaces)
+        ids.push_back(surfaceId(surface));
+    return ids;
 }
 
 } // namespace
@@ -121,9 +145,9 @@ bool previewScreen(const std::string& source, const Composition& composition, Sc
 PreviewService::PreviewService(DocumentServer& document, Engine& engine)
     : document_(document),
       engine_(engine),
-      queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
+      queue_(engine.gpuDevice().makeQueue()),
       gpu_(engine.device(), "previews", ""),
-      painter_(engine.device(), kFrameFormat, {engine.config().width, engine.config().height}),
+      painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("previews");
           run();
@@ -151,7 +175,7 @@ PreviewService::~PreviewService()
 void PreviewService::setClipLibrary(MediaLibrary* library)
 {
     if (library && !effects_)
-        effects_ = std::make_unique<ClipEffectsPreview>(engine_.device());
+        effects_ = std::make_unique<ClipEffectsPreview>(engine_.gpuDevice());
     library_ = library;
 }
 
@@ -248,25 +272,50 @@ PreviewService::Target PreviewService::makeTarget(const std::string& source, con
         target.strip = stripKey(*hash, watch.width, watch.height);
         target.cell = watch.cell;
     }
-    MTL::Device* device = engine_.device();
-    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, watch.width, watch.height, false);
-    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    desc->setStorageMode(device->hasUnifiedMemory() ? MTL::StorageModeShared : MTL::StorageModeManaged);
-    for (size_t i = 0; i < (watch.surface ? kSurfaceRing : 1); ++i) {
-        if (!watch.surface) {
-            if (!hash)
-                target.textures.push_back(NS::TransferPtr(device->newTexture(desc)));
-            continue;
+    if (!watch.surface) {
+        if (!hash) {
+            target.textures.push_back(engine_.gpuDevice().makeTexture(
+                {.format = kFrameFormat, .width = watch.width, .height = watch.height,
+                 .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled}));
+            target.readback = gpu::Readback(engine_.gpuDevice(), target.textures.back());
         }
-        IOSurfaceRef surface = globalSurface(watch.width, watch.height);
+        return target;
+    }
+    for (size_t i = 0; i < kSurfaceRing; ++i) {
+        Surface surface = makeSurface(watch.width, watch.height);
         if (!surface)
             break;
-        target.surfaces.emplace_back(surface, CFRelease);
-        if (!hash)
-            target.textures.push_back(NS::TransferPtr(device->newTexture(desc, surface, 0)));
+        target.surfaces.push_back(std::move(surface));
     }
+    if (!hash)
+        addSurfaceTextures(target, watch);
     return target;
 }
+
+#ifdef __APPLE__
+// One texture on each IOSurface: the GPU paints the shared picture itself.
+void PreviewService::addSurfaceTextures(Target& target, const Watch& watch) const
+{
+    MTL::Device* device = engine_.device();
+    auto* desc =
+        MTL::TextureDescriptor::texture2DDescriptor(gpu::metalFormat(kFrameFormat), watch.width, watch.height, false);
+    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    desc->setStorageMode(device->hasUnifiedMemory() ? MTL::StorageModeShared : MTL::StorageModeManaged);
+    for (const Surface& surface : target.surfaces)
+        target.textures.push_back(gpu::Texture::adopt(device->newTexture(desc, surface.get(), 0)));
+}
+#else
+// One texture, read back into whichever writer is next.
+void PreviewService::addSurfaceTextures(Target& target, const Watch& watch) const
+{
+    if (target.surfaces.empty())
+        return;
+    target.textures.push_back(engine_.gpuDevice().makeTexture(
+        {.format = kFrameFormat, .width = watch.width, .height = watch.height,
+         .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled}));
+    target.readback = gpu::Readback(engine_.gpuDevice(), target.textures.back());
+}
+#endif
 
 // Under mutex_.
 void PreviewService::updatePictures()
@@ -336,11 +385,13 @@ std::map<std::string, size_t> PreviewService::sizes()
             ++targets;
             surfaces += target.surfaces.size();
             for (const auto& surface : target.surfaces)
-                surfaceBytes += IOSurfaceGetAllocSize(surface.get());
+                surfaceBytes += azl::surfaceBytes(surface);
             textures += target.textures.size();
             for (const auto& texture : target.textures)
-                if (!texture->iosurface())
-                    textureBytes += texture->allocatedSize();
+#ifdef __APPLE__
+                if (!texture.native()->iosurface())
+#endif
+                    textureBytes += texture.allocatedBytes();
         }
     size_t pictures = 0, pictureBytes = 0, jpegBytes = 0;
     for (const auto& [key, strip] : strips_) {
@@ -428,64 +479,64 @@ bool PreviewService::serve(ClientId client, Watch& watch, const FrameRef& frame,
         return connected;
 
     AZL_ZONE("paint previews");
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    MTL::CommandBuffer* cmd = queue_->commandBuffer();
     std::vector<Target*> painted;
-    for (Target& target : watch.targets) {
-        Screen screen;
-        if (target.textures.empty() || !previewScreen(target.source, *composition, screen))
-            continue;
-        MTL::Texture* texture = target.textures[target.next].get();
-        if (watch.surface)
-            markSurface(target.surfaces[target.next].get(), -1);
-        painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
-        if (texture->storageMode() == MTL::StorageModeManaged) {
-            MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
-            blit->synchronizeResource(texture);
-            blit->endEncoding();
+    {
+        gpu::Scope scope;
+        gpu::CommandBuffer cmd = queue_.commandBuffer();
+        for (Target& target : watch.targets) {
+            Screen screen;
+            if (target.textures.empty() || !previewScreen(target.source, *composition, screen))
+                continue;
+            const gpu::Texture& texture = target.textures[target.next % target.textures.size()];
+#ifdef __APPLE__
+            if (watch.surface)
+                markPreviewSurface(target.surfaces[target.next].get(), -1);
+#endif
+            painter_.encode(cmd, frame.get(), ScreenView{screen}, texture);
+            if (target.readback)
+                target.readback.encode(cmd);
+            else
+                cmd.synchronize(texture);
+            painted.push_back(&target);
         }
-        painted.push_back(&target);
+        if (painted.empty())
+            return connected;
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        AZL_GPU_COLLECT(gpu_);
+        paintStats_.pictures += painted.size();
+        const gpu::Completion done = cmd.completion();
+        paintStats_.gpuMicros += uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
     }
-    if (painted.empty()) {
-        pool->release();
-        return connected;
-    }
-    cmd->commit();
-    cmd->waitUntilCompleted();
-    AZL_GPU_COLLECT(gpu_);
-    paintStats_.pictures += painted.size();
-    paintStats_.gpuMicros += uint64_t(std::max(0.0, cmd->GPUEndTime() - cmd->GPUStartTime()) * 1e6);
-    pool->release();
 
     for (Target* target : painted) {
         Message message = {{"type", "preview"}, {"op", "frame"}, {"source", target->source}, {"frame", frame->index}};
         if (watch.surface) {
             if (!target->announced) {
-                Message ids = Message::array();
-                for (const auto& surface : target->surfaces)
-                    ids.push_back(IOSurfaceGetID(surface.get()));
                 connected = document_.send(client, {{"type", "preview"},
                                                     {"op", "surfaces"},
                                                     {"source", target->source},
                                                     {"width", watch.width},
                                                     {"height", watch.height},
-                                                    {"surfaces", ids}}) &&
+                                                    {"surfaces", surfaceIds(target->surfaces)}}) &&
                             connected;
                 target->announced = true;
             }
-            markSurface(target->surfaces[target->next].get(), int64_t(frame->index));
+#ifdef __APPLE__
+            markPreviewSurface(target->surfaces[target->next].get(), int64_t(frame->index));
+#else
+            target->surfaces[target->next]->write(target->readback.data(), target->readback.rowBytes(),
+                                                  int64_t(frame->index));
+#endif
             message["surface"] = target->next;
         } else {
-            const size_t bytesPerRow = size_t(watch.width) * 4;
-            std::vector<uint8_t> pixels(bytesPerRow * watch.height);
-            target->textures[target->next]->getBytes(pixels.data(), bytesPerRow,
-                                                     MTL::Region(0, 0, watch.width, watch.height), 0);
+            const gpu::Readback& pixels = target->readback;
             message["width"] = watch.width;
             message["height"] = watch.height;
-            message["jpeg"] = Message::binary(encodeJpeg(pixels.data(), watch.width, watch.height, bytesPerRow));
+            message["jpeg"] = Message::binary(encodeJpeg(pixels.data(), watch.width, watch.height, pixels.rowBytes()));
         }
         connected = document_.send(client, message) && connected;
-        target->next = (target->next + 1) % target->textures.size();
+        target->next = (target->next + 1) % (watch.surface ? target->surfaces.size() : target->textures.size());
     }
     return connected;
 }
@@ -512,21 +563,15 @@ bool PreviewService::serveClip(ClientId client, Watch& watch, Target& target,
         if (target.surfaces.empty())
             return true;
         if (!target.announced) {
-            Message ids = Message::array();
-            for (const auto& surface : target.surfaces)
-                ids.push_back(IOSurfaceGetID(surface.get()));
             connected = document_.send(client, {{"type", "preview"},
                                                 {"op", "surfaces"},
                                                 {"source", target.source},
                                                 {"width", watch.width},
                                                 {"height", watch.height},
-                                                {"surfaces", ids}});
+                                                {"surfaces", surfaceIds(target.surfaces)}});
             target.announced = true;
         }
-        IOSurfaceRef surface = target.surfaces[target.next].get();
-        markSurface(surface, -1);
-        copyInto(surface, picture, strip.width, strip.height);
-        markSurface(surface, int64_t(target.sent));
+        copyInto(target.surfaces[target.next], picture, strip.width, strip.height, int64_t(target.sent));
         message["surface"] = target.next;
         target.next = (target.next + 1) % target.surfaces.size();
     } else {
@@ -561,7 +606,7 @@ bool PreviewService::drawEffects(const Target& target, const Strip& strip, size_
     picture = strip.pictures[index];
     const TransportState transport = engine_.transport();
     const std::string slot = std::to_string(target.cell->layer) + "/" + std::to_string(target.cell->column);
-    return effects_->draw(queue_.get(), composition, *clip, slot, picture, strip.width, strip.height, transport.time,
+    return effects_->draw(queue_, composition, *clip, slot, picture, strip.width, strip.height, transport.time,
                           transport.beat, engine_.audio());
 }
 

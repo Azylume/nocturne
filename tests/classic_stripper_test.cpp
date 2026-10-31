@@ -25,8 +25,8 @@ std::string uvProbe()
     if (!azl::findEffect(type))
         azl::registerEffect({.type = type,
                              .kind = azl::StageKind::Pointwise,
-                             .metal = "\n    float2 at = round(floor(px) * 255.0 / (h.size - 1.0));\n"
-                                      "    return float4(at / 255.0, 128.0 / 255.0, 1.0);\n"});
+                             .glsl = "\n    vec2 at = round(floor(px) * 255.0 / (h.size - 1.0));\n"
+                                     "    return vec4(at / 255.0, 128.0 / 255.0, 1.0);\n"});
     return type;
 }
 

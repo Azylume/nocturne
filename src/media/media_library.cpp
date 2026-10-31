@@ -1,6 +1,7 @@
 #include "media/media_library.hpp"
 
-#include <CommonCrypto/CommonDigest.h>
+#include "platform/app_paths.hpp"
+#include "platform/crypto.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -93,17 +94,15 @@ std::string sha256File(const fs::path& file)
     std::ifstream in(file, std::ios::binary);
     if (!in)
         throw std::runtime_error("cannot read " + file.string());
-    CC_SHA256_CTX ctx;
-    CC_SHA256_Init(&ctx);
+    Sha256 hash;
     std::vector<char> buffer(1 << 20);
     while (in) {
         in.read(buffer.data(), std::streamsize(buffer.size()));
-        CC_SHA256_Update(&ctx, buffer.data(), CC_LONG(in.gcount()));
+        hash.update(buffer.data(), size_t(in.gcount()));
     }
     if (in.bad())
         throw std::runtime_error("cannot read " + file.string());
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256_Final(digest, &ctx);
+    const Sha256Digest digest = hash.finish();
 
     static constexpr char kHex[] = "0123456789abcdef";
     std::string hex;
@@ -122,8 +121,7 @@ MediaLibrary::MediaLibrary(fs::path root) : root_(std::move(root))
 
 fs::path MediaLibrary::defaultRoot()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/MediaLibrary";
+    return appDataFolder() / "MediaLibrary";
 }
 
 MediaEntry MediaLibrary::add(const fs::path& file)
@@ -249,7 +247,8 @@ void MediaLibrary::load()
             media_[entry.hash] = std::move(entry);
         }
     } catch (const nlohmann::json::exception& e) {
-        std::fprintf(stderr, "media library: unreadable index %s (%s), starting empty\n", index.c_str(), e.what());
+        std::fprintf(stderr, "media library: unreadable index %s (%s), starting empty\n", index.string().c_str(),
+                     e.what());
         media_.clear();
         folders_.clear();
         std::error_code ec;
@@ -273,14 +272,14 @@ void MediaLibrary::save() const
         std::ofstream out(temp);
         out << j.dump(2);
         if (!out) {
-            std::fprintf(stderr, "media library: cannot write %s\n", temp.c_str());
+            std::fprintf(stderr, "media library: cannot write %s\n", temp.string().c_str());
             return;
         }
     }
     std::error_code ec;
     fs::rename(temp, index, ec);
     if (ec)
-        std::fprintf(stderr, "media library: cannot replace %s: %s\n", index.c_str(), ec.message().c_str());
+        std::fprintf(stderr, "media library: cannot replace %s: %s\n", index.string().c_str(), ec.message().c_str());
 }
 
 } // namespace azl

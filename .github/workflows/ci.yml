@@ -1,7 +1,7 @@
 # Builds once (arm64, Ninja, ccache) and runs the tests in parallel shards (tools/ci-tests.sh) from that build;
-# on main and nightly also proves the universal (arm64 + x86_64) build compiles. Docs-only changes run nothing here
-# (dco.yml still checks every pull request). A newer push to a pull request cancels the run in progress; every push
-# to main runs to the end.
+# on main and nightly also proves the universal (arm64 + x86_64) build compiles. The windows job builds, tests and packs
+# the installer on Windows. Docs-only changes run nothing here (dco.yml still checks every pull request). A newer push
+# to a pull request cancels the run in progress; every push to main runs to the end.
 name: CI
 
 on:
@@ -68,7 +68,9 @@ jobs:
         run: ccache -s
       - name: Pack what the tests run
         # A tar keeps the bundles' signatures and the executable bits; an artifact alone would not.
-        run: tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+        run: >
+          tar -C build -czf tests.tgz nocturne_tests src/ui/nocturne_ui_tests Nocturne.app "Nocturne UI.app"
+          src/platform/nocturne_platform_child nocturne_fake_engine nocturne-hap-encode
       - uses: actions/upload-artifact@v4
         with:
           name: tests-${{ github.run_id }}
@@ -148,3 +150,128 @@ jobs:
         run: cmake --build build
       - name: Every binary in both bundles holds both slices
         run: tools/check-universal.sh build/Nocturne.app "build/Nocturne UI.app"
+
+  # Builds with clang-cl against the vcpkg manifest, runs the engine suite without the cases that need a GPU, a desktop
+  # session or the Credential Manager (.github/windows-ci-tests.txt; the GPU suite runs on a real machine), and packs
+  # the installer.
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      VCPKG_ROOT: C:\vcpkg-nocturne
+      VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-archives
+      VULKAN_SDK_VERSION: 1.4.363.0
+      VULKAN_SDK_SHA256: 94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141
+      VULKAN_RUNTIME_SHA256: a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
+      MESA_VERSION: 26.2.4
+      MESA_SHA256: 351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
+    steps:
+      - uses: actions/checkout@v5
+      - name: vcpkg at the manifest's baseline
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+          git init -q $env:VCPKG_ROOT
+          git -C $env:VCPKG_ROOT fetch -q --depth 1 https://github.com/microsoft/vcpkg $baseline
+          git -C $env:VCPKG_ROOT checkout -q FETCH_HEAD
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          "image=$env:ImageVersion" >> $env:GITHUB_OUTPUT
+      - name: Restore the vcpkg packages (FFmpeg, opus, pocketfft)
+        # A new runner image brings a new compiler, which vcpkg's package hashes include, so its key starts over.
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\vcpkg-archives
+          key: vcpkg-${{ steps.vcpkg.outputs.image }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ steps.vcpkg.outputs.image }}-
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-windows-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Visual Studio's clang-cl first on PATH
+        shell: pwsh
+        run: |
+          "$env:VCINSTALLDIR\Tools\Llvm\x64\bin" >> $env:GITHUB_PATH
+          "CC=clang-cl" >> $env:GITHUB_ENV
+          "CXX=clang-cl" >> $env:GITHUB_ENV
+      - name: Vulkan SDK (headers, loader library, validation layer)
+        # The installer registers the validation layer under HKLM, the only place an elevated process looks for it.
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\vulkansdk.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { throw "Vulkan SDK checksum mismatch" }
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          & $installer --root $sdk --accept-licenses --default-answer --confirm-command install | Out-Null
+          if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { throw "Vulkan SDK did not install" }
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Save the vcpkg packages
+        # Saved once configuring has built them all, so a later failure does not throw the FFmpeg build away.
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\vcpkg-archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+      - name: Build
+        run: cmake --build build
+      - name: Lavapipe as the Vulkan driver
+        # The runner has no GPU, so the GPU and golden cases render on Mesa's lavapipe (MIT), a CPU Vulkan driver.
+        # It is a test tool of this job only, never linked into or shipped with Nocturne. The runner's processes are
+        # elevated and an elevated Vulkan loader ignores VK_DRIVER_FILES, so the driver is registered under HKLM. The
+        # loader (LunarG's runtime zip) goes on PATH for the tests only, never into build/, whose DLLs the installer
+        # packs.
+        shell: pwsh
+        run: |
+          $mesa = "$env:RUNNER_TEMP\mesa.7z"
+          Invoke-WebRequest "https://github.com/pal1000/mesa-dist-win/releases/download/$env:MESA_VERSION/mesa3d-$env:MESA_VERSION-release-msvc.7z" -OutFile $mesa
+          if ((Get-FileHash $mesa -Algorithm SHA256).Hash -ne $env:MESA_SHA256) { throw "Mesa checksum mismatch" }
+          $runtime = "$env:RUNNER_TEMP\vulkan-runtime.zip"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/VulkanRT-X64-$env:VULKAN_SDK_VERSION-Components.zip" -OutFile $runtime
+          if ((Get-FileHash $runtime -Algorithm SHA256).Hash -ne $env:VULKAN_RUNTIME_SHA256) { throw "Vulkan runtime checksum mismatch" }
+          7z x -y -bso0 "-o$env:RUNNER_TEMP\mesa" $mesa
+          Expand-Archive $runtime "$env:RUNNER_TEMP\vulkan-runtime"
+          $icd = "$env:RUNNER_TEMP\mesa\x64\lvp_icd.x86_64.json"
+          New-Item -Force HKLM:\SOFTWARE\Khronos\Vulkan\Drivers | Out-Null
+          New-ItemProperty -Force HKLM:\SOFTWARE\Khronos\Vulkan\Drivers -Name $icd -PropertyType DWord -Value 0 | Out-Null
+          $loader = "$env:RUNNER_TEMP\vulkan-runtime\VulkanRT-X64-$env:VULKAN_SDK_VERSION-Components\x64"
+          $summary = & "$loader\vulkaninfo.exe" --summary 2>&1 | Out-String
+          if ($summary -notmatch 'PHYSICAL_DEVICE_TYPE_CPU') { $summary; throw "lavapipe is not the Vulkan device" }
+          if ($summary -notmatch 'VK_LAYER_KHRONOS_validation') { $summary; throw "the validation layer is missing" }
+          "VULKAN_LOADER_DIR=$loader" >> $env:GITHUB_ENV
+      - name: Run the engine tests
+        shell: bash
+        env:
+          PYTHON: python
+        run: |
+          PATH="$(cygpath "$VULKAN_LOADER_DIR"):$PATH"
+          tools/ci-tests.sh engine 0 1
+      - name: Test report
+        if: always()
+        uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
+        with:
+          report_paths: build/test-reports/*.xml
+          annotate_only: true
+          detailed_summary: true
+          include_passed: false
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-windows
+          path: build/test-reports/
+      - name: Installer
+        shell: pwsh
+        run: tools\make-installer.ps1 -BuildDir build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-windows-installer
+          path: build/installer/Nocturne-*-windows-x64-unsigned.exe

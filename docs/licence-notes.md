@@ -17,7 +17,7 @@ shaders, copied snippets), check its licence here and add a row to ADR 0012's ta
 | Component | Version | Licence | Use | Compatible |
 |---|---|---|---|---|
 | glslang | vulkan-sdk-1.4.363.0 | BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0 (its LICENSE.txt); the "GPL-3 with Bison exception" section covers only Bison skeleton output, which the exception lets us ship under any terms (and Bison is no longer used) | FetchContent, linked into the engine; GLSL to SPIR-V | yes |
-| SPIRV-Cross | vulkan-sdk-1.4.363.0 | Apache-2.0 (a few files MIT) | FetchContent, linked into the engine; SPIR-V to MSL | yes |
+| SPIRV-Cross | vulkan-sdk-1.4.363.0 | Apache-2.0 (a few files MIT) | FetchContent, linked into the engine; SPIR-V to MSL, and ISF shaders back to GLSL | yes |
 | ISFMSLKit (mrRay) | 3aa9355 | MIT; its own dependencies are BSD/MIT/Apache | reference reading only, nothing copied | yes (unused) |
 | VVMetalKit (mrRay) | 85ff46e | MIT text (README calls it BSD); bundles Apple's AAPLMathUtilities under the Apple sample code licence | reference reading only, nothing copied | yes (unused) |
 | ISF-Files (Vidvox) | 395072d | MIT for the repository; shaders ported from elsewhere carry their own terms, and many say nothing | source of the curated shaders, vendored verbatim with the licence next to them | per shader, below |
@@ -93,3 +93,10 @@ projects is vendored, so ADR 0012's dependency tables do not change.
 | ffmpeg (Homebrew build, GPL-2.0-or-later with libx264) | GPL-2.0-or-later | yes, as a separate program | `tools/transcode-media.sh` and `nocturne-upload` run it to decode sources to raw RGBA for our own HAP encoder, and `tests/media/make_hap_goldens.sh` runs its HAP decoder for the reference pictures; nothing links it. Homebrew's ffmpeg has no HAP encoder (it needs libsnappy), so the encoder is ours |
 
 No GPL code is linked or vendored for HAP.
+
+## Media off Apple (Windows port, checked 2026-10-31)
+
+| Project | Licence | Compatible | Used how |
+|---|---|---|---|
+| FFmpeg 9.0.2 (vcpkg, features avcodec avformat avdevice swresample swscale nvcodec opus; no `gpl`, no `nonfree`) | LGPL-2.1-or-later | yes | linked as DLLs off Apple only (ADR 0016): decoding and the QuickTime container for HAP in `src/media/*_ffmpeg.cpp`; the macOS build does not use it |
+| stb_image_write.h v1.16 (github.com/nothings/stb, commit 003501f) | MIT or public domain (dual) | yes | vendored in `third_party/stb/stb_image_write.h` with its licence text; JPEG stills off Apple (`src/media/stills_ffmpeg.cpp`) |

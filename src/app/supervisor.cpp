@@ -1,26 +1,21 @@
 #include "document/composition_file.hpp"
+#include "platform/app_paths.hpp"
+#include "platform/process.hpp"
 #include "supervisor/crash_guard.hpp"
 #include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
 
 #include <nlohmann/json.hpp>
 
-#include <fcntl.h>
+#ifdef __APPLE__
 #include <libproc.h>
-#include <mach-o/dyld.h>
-#include <poll.h>
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <csignal>
+#endif
 
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cctype>
-#include <cerrno>
 #include <chrono>
-#include <climits>
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,22 +30,26 @@
 #include <thread>
 #include <vector>
 
-extern char** environ;
-
 namespace {
 
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr int kHeartbeatFd = 3;
-
 constexpr const char* kUsage = R"(usage: nocturne-supervisor [options] [-- engine options]
 Runs the engine, restarts it when it crashes or hangs, and switches to safe mode after too many crashes. Runs the
 venue desk beside it and restarts it when it stops; the desk never holds up the engine.
   --engine PATH          engine binary (default: nocturne next to this binary)
-  --state DIR            composition, skip list and status (default ~/Library/Application Support/Nocturne/State)
+)"
+#ifdef _WIN32
+R"(  --state DIR            composition, skip list and status (default %LOCALAPPDATA%\Nocturne\State)
+  --logs DIR             supervisor.log and engine.log (default %LOCALAPPDATA%\Nocturne\Logs)
+)"
+#else
+R"(  --state DIR            composition, skip list and status (default ~/Library/Application Support/Nocturne/State)
   --logs DIR             supervisor.log and engine.log (default ~/Library/Logs/Nocturne)
-  --hang-timeout S       seconds without a finished frame that count as hung (default 2)
+)"
+#endif
+R"(  --hang-timeout S       seconds without a finished frame that count as hung (default 2)
   --startup-timeout S    seconds the engine may take to its first frame (default 30)
   --crash-limit N        crashes within the window that start safe mode (default 3)
   --crash-window S       (default 60)
@@ -83,28 +82,13 @@ struct Options {
     std::exit(code);
 }
 
-fs::path home()
-{
-    const char* h = std::getenv("HOME");
-    return h ? h : "/tmp";
-}
-
-fs::path ownDirectory()
-{
-    std::array<char, PATH_MAX> path{};
-    uint32_t size = path.size();
-    if (_NSGetExecutablePath(path.data(), &size) != 0)
-        return ".";
-    return fs::weakly_canonical(path.data()).parent_path();
-}
-
 Options parse(int argc, char** argv)
 {
     Options o;
-    o.engine = ownDirectory() / "nocturne";
-    o.desk = ownDirectory() / "nocturne-desk";
-    o.state = home() / "Library/Application Support/Nocturne/State";
-    o.logs = home() / "Library/Logs/Nocturne";
+    o.engine = azl::siblingExecutable("nocturne");
+    o.desk = azl::siblingExecutable("nocturne-desk");
+    o.state = azl::appDataFolder() / "State";
+    o.logs = azl::appLogsFolder();
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         auto value = [&] {
@@ -140,7 +124,11 @@ std::string timestamp()
     const std::time_t t = std::chrono::system_clock::to_time_t(now);
     const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
     std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+#else
     localtime_r(&t, &local);
+#endif
     char text[32];
     std::strftime(text, sizeof text, "%Y-%m-%d %H:%M:%S", &local);
     char out[40];
@@ -160,27 +148,17 @@ std::string tenths(double value)
     return text;
 }
 
-int signalPipe[2] = {-1, -1};
-
-void onSignal(int)
-{
-    const char byte = 1;
-    [[maybe_unused]] ssize_t n = ::write(signalPipe[1], &byte, 1);
-}
-
-void setCloexec(int fd)
-{
-    ::fcntl(fd, F_SETFD, FD_CLOEXEC);
-}
-
 // Copies the engine's output into engine.log line by line, each line stamped with the time it arrived.
 class OutputPump {
 public:
-    OutputPump(int fd, azl::RotatingLog& log) : fd_(fd), log_(log), thread_([this] { run(); }) {}
+    OutputPump(azl::NativeHandle output, azl::RotatingLog& log)
+        : output_(output), log_(log), thread_([this] { run(); })
+    {
+    }
     ~OutputPump()
     {
         thread_.join();
-        ::close(fd_);
+        azl::closeHandle(output_);
     }
 
 private:
@@ -188,15 +166,16 @@ private:
     {
         std::string line;
         char buffer[4096];
-        while (true) {
-            const ssize_t n = ::read(fd_, buffer, sizeof buffer);
-            if (n < 0 && errno == EINTR)
-                continue;
-            if (n <= 0)
-                break;
-            for (ssize_t i = 0; i < n; ++i) {
+        long n;
+        while ((n = azl::readHandle(output_, buffer, sizeof buffer)) > 0) {
+            for (long i = 0; i < n; ++i) {
                 line += buffer[i];
                 if (buffer[i] == '\n') {
+#ifdef _WIN32
+                    // The engine's text-mode output ends a line in \r\n, and the log's text mode adds its own \r.
+                    if (line.size() > 1 && line[line.size() - 2] == '\r')
+                        line.erase(line.size() - 2, 1);
+#endif
                     log_.write(timestamp() + " " + line);
                     line.clear();
                 }
@@ -206,30 +185,10 @@ private:
             log_.write(timestamp() + " " + line + "\n");
     }
 
-    int fd_;
+    azl::NativeHandle output_;
     azl::RotatingLog& log_;
     std::thread thread_;
 };
-
-std::string describe(int status)
-{
-    if (WIFEXITED(status))
-        return "exited with status " + std::to_string(WEXITSTATUS(status));
-    if (WIFSIGNALED(status)) {
-        const int sig = WTERMSIG(status);
-        const char* name = sig > 0 && sig < NSIG ? sys_signame[sig] : "?";
-        std::string upper = name;
-        for (char& c : upper)
-            c = char(std::toupper(c));
-        return "killed by SIG" + upper;
-    }
-    return "stopped with status " + std::to_string(status);
-}
-
-bool exitedWith(int status, int code)
-{
-    return WIFEXITED(status) && WEXITSTATUS(status) == code;
-}
 
 std::string describe(const std::vector<azl::crash::Mark>& marks)
 {
@@ -250,7 +209,7 @@ public:
 
     int run()
     {
-        say("supervisor started (pid " + std::to_string(getpid()) + "), engine " + opt_.engine.string() + ", state " +
+        say("supervisor started (pid " + std::to_string(azl::currentProcessId()) + "), engine " + opt_.engine.string() + ", state " +
             opt_.state.string());
         killStale("engine.pid", opt_.engine, "engine");
         if (!opt_.desk.empty()) {
@@ -280,7 +239,7 @@ private:
 
     fs::path statePath(const char* name) const { return opt_.state / name; }
 
-    void writeStatus(pid_t pid)
+    void writeStatus(int pid)
     {
         nlohmann::json crashes = nlohmann::json::array();
         for (const std::string& c : crashLog_)
@@ -290,7 +249,7 @@ private:
                                     {"engine", pid},
                                     {"starts", starts_},
                                     {"crashes", crashes},
-                                    {"supervisor", getpid()}};
+                                    {"supervisor", azl::currentProcessId()}};
         try {
             azl::writeFileAtomically(statePath("status.json"), status.dump(2) + "\n", false);
         } catch (const std::exception& e) {
@@ -299,8 +258,10 @@ private:
     }
 
     // An engine or desk left behind by a supervisor that died is killed, so it never holds the displays and the port.
+    // On Windows none is left behind: the job object every child joins ends them with the supervisor.
     void killStale(const char* pidFile, const fs::path& binary, const char* what)
     {
+#ifdef __APPLE__
         std::ifstream in(statePath(pidFile));
         pid_t pid = 0;
         if (!(in >> pid) || pid <= 1)
@@ -314,186 +275,147 @@ private:
         ::kill(pid, SIGKILL);
         for (int i = 0; i < 50 && ::kill(pid, 0) == 0; ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
+#endif
     }
 
-    // Spawns the engine with its output on a pipe, and the heartbeat pipe's write end as fd 3 when `heartbeat` is set.
-    std::optional<pid_t> spawn(const std::vector<std::string>& args, int heartbeat, int& output)
+    // Spawns the binary with its output on a pipe, and the heartbeat pipe's write end handed down when it is set.
+    std::optional<azl::Process> spawn(const fs::path& binary, const std::vector<std::string>& args,
+                                      std::optional<azl::NativeHandle> heartbeat, azl::NativeHandle& output,
+                                      const char* pidFile)
     {
-        return spawn(opt_.engine, args, heartbeat, output, "engine.pid");
-    }
-
-    std::optional<pid_t> spawn(const fs::path& binary, const std::vector<std::string>& args, int heartbeat, int& output,
-                               const char* pidFile)
-    {
-        int out[2];
-        if (::pipe(out) != 0)
+        const std::optional<azl::PipeEnds> out = azl::makePipe();
+        if (!out)
             return std::nullopt;
-        setCloexec(out[0]);
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
-        posix_spawn_file_actions_adddup2(&actions, out[1], 1);
-        posix_spawn_file_actions_adddup2(&actions, out[1], 2);
-        if (heartbeat >= 0)
-            posix_spawn_file_actions_adddup2(&actions, heartbeat, kHeartbeatFd);
-        posix_spawnattr_t attributes;
-        posix_spawnattr_init(&attributes);
-        posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF);
-        sigset_t handled;
-        sigemptyset(&handled);
-        for (int sig : {SIGPIPE, SIGTERM, SIGINT, SIGHUP})
-            sigaddset(&handled, sig);
-        posix_spawnattr_setsigdefault(&attributes, &handled);
-
-        std::vector<std::string> env;
-        const std::string supervised = std::string(azl::restart::kSupervisedVariable) + "=";
-        for (char** e = environ; *e; ++e)
-            if (std::strncmp(*e, "NOCTURNE_RESPONSIBLE=", 21) != 0 &&
-                std::strncmp(*e, "NOCTURNE_HEARTBEAT_FD=", 22) != 0 &&
-                std::strncmp(*e, supervised.c_str(), supervised.size()) != 0)
-                env.push_back(*e);
-        env.push_back(supervised + "1");
-        if (heartbeat >= 0)
-            env.push_back("NOCTURNE_HEARTBEAT_FD=" + std::to_string(kHeartbeatFd));
-        std::vector<char*> argv;
-        argv.push_back(const_cast<char*>(binary.c_str()));
-        for (const std::string& a : args)
-            argv.push_back(const_cast<char*>(a.c_str()));
-        argv.push_back(nullptr);
-        std::vector<char*> envp;
-        for (std::string& e : env)
-            envp.push_back(e.data());
-        envp.push_back(nullptr);
-
-        pid_t pid = 0;
-        const int error = posix_spawn(&pid, binary.c_str(), &actions, &attributes, argv.data(), envp.data());
-        posix_spawn_file_actions_destroy(&actions);
-        posix_spawnattr_destroy(&attributes);
-        ::close(out[1]);
-        if (error != 0) {
-            ::close(out[0]);
-            say("cannot start " + binary.string() + ": " + std::strerror(error));
+        azl::SpawnOptions options{.program = binary,
+                                  .args = args,
+                                  .input = azl::Stdio::null(),
+                                  .output = azl::Stdio::to(out->write),
+                                  .error = azl::Stdio::to(out->write),
+                                  .heartbeat = heartbeat,
+                                  .environment = {{"NOCTURNE_RESPONSIBLE", std::nullopt},
+                                                  {"NOCTURNE_HEARTBEAT_FD", std::nullopt},
+                                                  {"NOCTURNE_HEARTBEAT_HANDLE", std::nullopt},
+                                                  {azl::restart::kSupervisedVariable, "1"}}};
+        std::string error;
+        std::optional<azl::Process> process = azl::spawnProcess(options, &error);
+        azl::closeHandle(out->write);
+        if (!process) {
+            azl::closeHandle(out->read);
+            say("cannot start " + binary.string() + ": " + error);
             return std::nullopt;
         }
-        output = out[0];
-        std::ofstream(statePath(pidFile)) << pid << "\n";
-        return pid;
+        output = out->read;
+        std::ofstream(statePath(pidFile)) << process->pid() << "\n";
+        return process;
+    }
+
+    // Asks the child to quit; true when it has within `seconds`.
+    static bool askToQuit(azl::Process& child, double seconds)
+    {
+        child.terminate();
+        for (int i = 0; i < int(seconds * 50.0); ++i) {
+            if (child.poll())
+                return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return false;
     }
 
     // Asks the engine to quit and kills it when it does not within 3 s.
-    int stop(pid_t pid)
+    void stopEngine(azl::Process& engine)
     {
-        ::kill(pid, SIGTERM);
-        int status = 0;
-        for (int i = 0; i < 150; ++i) {
-            if (::waitpid(pid, &status, WNOHANG) == pid)
-                return status;
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        }
+        if (askToQuit(engine, 3.0))
+            return;
         say("engine did not quit within 3 s, killing it");
-        ::kill(pid, SIGKILL);
-        ::waitpid(pid, &status, 0);
-        return status;
-    }
-
-    bool drainSignals(int fd)
-    {
-        char buffer[64];
-        bool any = false;
-        while (::read(fd, buffer, sizeof buffer) > 0)
-            any = true;
-        return any;
+        engine.kill();
+        engine.wait();
     }
 
     void runEngine()
     {
-        int heartbeat[2];
-        if (::pipe(heartbeat) != 0) {
+        const std::optional<azl::PipeEnds> heartbeat = azl::makePipe();
+        if (!heartbeat) {
             say("cannot create the heartbeat pipe");
             std::this_thread::sleep_for(std::chrono::seconds(1));
             return;
         }
-        setCloexec(heartbeat[0]);
-        ::fcntl(heartbeat[0], F_SETFL, O_NONBLOCK);
         std::vector<std::string> args = opt_.engineArgs;
         args.insert(args.end(), {"--state", opt_.state.string()});
-        int output = -1;
+        azl::NativeHandle output{};
         const auto started = Clock::now();
-        const std::optional<pid_t> pid = spawn(args, heartbeat[1], output);
-        ::close(heartbeat[1]);
-        if (!pid) {
-            ::close(heartbeat[0]);
+        std::optional<azl::Process> engine = spawn(opt_.engine, args, heartbeat->write, output, "engine.pid");
+        azl::closeHandle(heartbeat->write);
+        if (!engine) {
+            azl::closeHandle(heartbeat->read);
             crashed("could not be started", {}, std::nullopt);
             return;
         }
         ++starts_;
-        say("engine started (pid " + std::to_string(*pid) + ")");
-        writeStatus(*pid);
+        say("engine started (pid " + std::to_string(engine->pid()) + ")");
+        writeStatus(engine->pid());
         OutputPump pump(output, engineLog_);
 
         std::optional<Clock::time_point> lastBeat;
         std::string hang;
-        int status = 0;
         while (true) {
-            pollfd fds[2] = {{heartbeat[0], POLLIN, 0}, {signalPipe[0], POLLIN, 0}};
-            ::poll(fds, 2, 100);
-            if (drainSignals(signalPipe[0])) {
+            if (azl::waitForStop(0.1, heartbeat->read)) {
                 stopping_ = true;
                 say("stopping the engine");
-                status = stop(*pid);
+                stopEngine(*engine);
                 break;
             }
             char beats[256];
-            const ssize_t n = ::read(heartbeat[0], beats, sizeof beats);
+            const long n = azl::readAvailable(heartbeat->read, beats, sizeof beats);
             const auto now = Clock::now();
             if (n > 0) {
                 if (!lastBeat)
                     say("engine running, first frame " + tenths(seconds(now - started)) + " s after the start");
                 lastBeat = now;
             }
-            if (::waitpid(*pid, &status, WNOHANG) == *pid)
+            if (engine->poll())
                 break;
             if (lastBeat && seconds(now - *lastBeat) > opt_.hangTimeout)
                 hang = "hung: no frame for " + tenths(seconds(now - *lastBeat)) + " s";
             else if (!lastBeat && seconds(now - started) > opt_.startupTimeout)
                 hang = "hung: no frame " + std::to_string(int(opt_.startupTimeout)) + " s after the start";
             if (!hang.empty()) {
-                ::kill(*pid, SIGKILL);
-                ::waitpid(*pid, &status, 0);
+                engine->kill();
+                engine->wait();
                 break;
             }
         }
-        ::close(heartbeat[0]);
+        azl::closeHandle(heartbeat->read);
         std::error_code ec;
         fs::remove(statePath("engine.pid"), ec);
         const std::optional<azl::crash::Crash> crash = azl::crash::readCrash(statePath("crash.json"));
         fs::remove(statePath("crash.json"), ec);
 
+        const std::optional<int> code = hang.empty() ? engine->poll() : std::nullopt;
         if (stopping_) {
-            say("engine " + describe(status));
+            say("engine " + engine->describeExit());
             return;
         }
-        if (hang.empty() && exitedWith(status, azl::restart::kStop)) {
+        if (code == azl::restart::kStop) {
             stopping_ = true;
             say("stop asked for from a client; stopping");
             return;
         }
-        if (hang.empty() && exitedWith(status, azl::restart::kNormal)) {
+        if (code == azl::restart::kNormal) {
             say("engine restart asked for from a client");
             return;
         }
-        if (hang.empty() && exitedWith(status, azl::restart::kSafeMode)) {
+        if (code == azl::restart::kSafeMode) {
             safeReason_ = "asked for from a client";
             say("safe mode: " + safeReason_);
             writeStatus(0);
             return;
         }
-        if (hang.empty() && exitedWith(status, 0)) {
-            say("engine quit (" + describe(status) + "), restarting");
+        if (code == 0) {
+            say("engine quit (" + engine->describeExit() + "), restarting");
             std::this_thread::sleep_for(std::chrono::seconds(1));
             return;
         }
-        crashed(hang.empty() ? describe(status) : hang, azl::crash::readMarks(statePath("inflight.json")), crash);
+        crashed(hang.empty() ? engine->describeExit() : hang, azl::crash::readMarks(statePath("inflight.json")), crash);
     }
 
     // Only what the crashing thread was opening or compiling is skipped; a hang or a crash elsewhere skips nothing.
@@ -543,33 +465,28 @@ private:
         args.insert(args.end(), {"--safe-mode", safeReason_, "--state", opt_.state.string()});
         if (!opt_.fallbackImage.empty())
             args.insert(args.end(), {"--fallback-image", opt_.fallbackImage});
-        int output = -1;
-        const std::optional<pid_t> pid = spawn(args, -1, output);
-        if (!pid) {
-            pollfd fd{signalPipe[0], POLLIN, 0};
-            ::poll(&fd, 1, 2000);
-            stopping_ = drainSignals(signalPipe[0]);
+        azl::NativeHandle output{};
+        std::optional<azl::Process> engine = spawn(opt_.engine, args, std::nullopt, output, "engine.pid");
+        if (!engine) {
+            stopping_ = azl::waitForStop(2.0);
             return;
         }
-        say("safe mode started (pid " + std::to_string(*pid) + ")");
-        writeStatus(*pid);
+        say("safe mode started (pid " + std::to_string(engine->pid()) + ")");
+        writeStatus(engine->pid());
         OutputPump pump(output, engineLog_);
-        int status = 0;
         while (true) {
-            pollfd fd{signalPipe[0], POLLIN, 0};
-            ::poll(&fd, 1, 200);
-            if (drainSignals(signalPipe[0])) {
+            if (azl::waitForStop(0.2)) {
                 stopping_ = true;
-                status = stop(*pid);
+                stopEngine(*engine);
                 break;
             }
-            if (::waitpid(*pid, &status, WNOHANG) == *pid)
+            if (engine->poll())
                 break;
         }
         std::error_code ec;
         fs::remove(statePath("engine.pid"), ec);
-        say("safe mode " + describe(status));
-        if (!stopping_ && exitedWith(status, azl::restart::kNormal)) {
+        say("safe mode " + engine->describeExit());
+        if (!stopping_ && engine->poll() == azl::restart::kNormal) {
             say("leaving safe mode, asked for from a client");
             safeReason_.clear();
             crashes_.clear();
@@ -597,31 +514,24 @@ private:
             args.push_back("--loopback-only");
         double wait = 1.0;
         while (!stopping_) {
-            int output = -1;
+            azl::NativeHandle output{};
             const auto started = Clock::now();
-            const std::optional<pid_t> pid = spawn(opt_.desk, args, -1, output, "desk.pid");
-            int status = 0;
-            if (pid) {
-                say("desk started (pid " + std::to_string(*pid) + ")");
+            std::optional<azl::Process> desk = spawn(opt_.desk, args, std::nullopt, output, "desk.pid");
+            if (desk) {
+                say("desk started (pid " + std::to_string(desk->pid()) + ")");
                 OutputPump pump(output, deskLog_);
-                bool reaped = false;
-                while (!stopping_ && !(reaped = ::waitpid(*pid, &status, WNOHANG) == *pid))
+                while (!stopping_ && !desk->poll())
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                if (!reaped) {
-                    ::kill(*pid, SIGTERM);
-                    for (int i = 0; i < 50 && !(reaped = ::waitpid(*pid, &status, WNOHANG) == *pid); ++i)
-                        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                }
-                if (!reaped) {
-                    ::kill(*pid, SIGKILL);
-                    ::waitpid(*pid, &status, 0);
+                if (!desk->poll() && !askToQuit(*desk, 1.0)) {
+                    desk->kill();
+                    desk->wait();
                 }
                 std::error_code ec;
                 fs::remove(statePath("desk.pid"), ec);
             }
             if (stopping_)
                 break;
-            say("desk " + (pid ? describe(status) : std::string("could not be started")) + ", restarting");
+            say("desk " + (desk ? desk->describeExit() : std::string("could not be started")) + ", restarting");
             wait = seconds(Clock::now() - started) > 30.0 ? 1.0 : std::min(wait * 2.0, 10.0);
             const auto until = Clock::now() + std::chrono::duration<double>(wait);
             while (!stopping_ && Clock::now() < until)
@@ -653,18 +563,8 @@ int main(int argc, char** argv)
         std::printf("skip list cleared\n");
         return 0;
     }
-    if (::pipe(signalPipe) != 0)
+    if (!azl::watchStopRequests())
         return 1;
-    setCloexec(signalPipe[0]);
-    setCloexec(signalPipe[1]);
-    ::fcntl(signalPipe[0], F_SETFL, O_NONBLOCK);
-    ::fcntl(signalPipe[1], F_SETFL, O_NONBLOCK);
-    std::signal(SIGPIPE, SIG_IGN);
-    struct sigaction action{};
-    action.sa_handler = onSignal;
-    sigemptyset(&action.sa_mask);
-    for (int sig : {SIGTERM, SIGINT, SIGHUP})
-        sigaction(sig, &action, nullptr);
     try {
         return Supervisor(std::move(opt)).run();
     } catch (const std::exception& e) {

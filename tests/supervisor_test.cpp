@@ -1,4 +1,5 @@
 #include "clips.hpp"
+#include "crash_marks.hpp"
 #include "http_get.hpp"
 
 #include "audio/audio_input.hpp"
@@ -153,112 +154,6 @@ TEST_CASE("a rotating log appends across reopenings and keeps a fixed number of 
     CHECK(fs::exists(path.string() + ".1"));
     CHECK(fs::exists(path.string() + ".2"));
     CHECK_FALSE(fs::exists(path.string() + ".3"));
-}
-
-TEST_CASE("crash marks name what is being opened, and a skip list entry is never opened again")
-{
-    TempDir dir;
-    const fs::path marks = dir.path / "inflight.json";
-    const fs::path skips = dir.path / "skip.json";
-    azl::crash::setup(marks, skips);
-    {
-        azl::crash::Scope opening("clip", "abc", "poison.mp4");
-        const auto now = azl::crash::readMarks(marks);
-        REQUIRE(now.size() == 1);
-        CHECK(now[0].name == "poison.mp4");
-    }
-    CHECK(azl::crash::readMarks(marks).empty());
-
-    CHECK(azl::crash::addSkips(skips, {{"clip", "abc", "poison.mp4"}}, "killed by SIGSEGV").size() == 1);
-    CHECK(azl::crash::addSkips(skips, {{"clip", "abc", "poison.mp4"}}, "again").empty());
-    REQUIRE(azl::crash::readSkips(skips).size() == 1);
-    CHECK(azl::crash::readSkips(skips)[0].reason == "killed by SIGSEGV");
-    CHECK_FALSE(azl::crash::skipped("clip", "abc"));
-    azl::crash::setup(marks, skips);
-    CHECK(azl::crash::skipped("clip", "abc"));
-    CHECK_FALSE(azl::crash::skipped("effect", "abc"));
-    azl::crash::setup({}, {});
-}
-
-namespace {
-
-// Holds a mark on its own thread until it goes, as the decoders' or the compiler's thread does inside an open or
-// compile.
-class HeldMark {
-public:
-    HeldMark(std::string kind, std::string key, std::string name)
-    {
-        std::future<void> held = held_.get_future();
-        thread_ = std::thread([this, kind, key, name, release = release_.get_future()] {
-            azl::crash::Scope scope(kind, key, name);
-            held_.set_value();
-            release.wait();
-        });
-        held.wait();
-    }
-
-    ~HeldMark()
-    {
-        release_.set_value();
-        thread_.join();
-    }
-
-private:
-    std::promise<void> held_;
-    std::promise<void> release_;
-    std::thread thread_;
-};
-
-struct CrashFiles {
-    CrashFiles() { azl::crash::setup(marks, skips, crash); }
-    ~CrashFiles() { azl::crash::setup({}, {}); }
-
-    std::vector<azl::crash::Mark> culprits() const
-    {
-        return azl::crash::culprits(azl::crash::readMarks(marks), azl::crash::readCrash(crash));
-    }
-
-    TempDir dir;
-    fs::path marks = dir.path / "inflight.json";
-    fs::path skips = dir.path / "skip.json";
-    fs::path crash = dir.path / "crash.json";
-};
-
-const std::string kChain = "edgeDetection,classicStripper,classicColorize";
-
-} // namespace
-
-TEST_CASE("a crash on another thread than a clip being opened skip-lists nothing")
-{
-    CrashFiles files;
-    HeldMark opening("clip", "abc", "red_machine_01.mov");
-    std::thread([] { azl::crash::recordCrash(SIGSEGV); }).join();
-    const std::vector<azl::crash::Mark> inFlight = azl::crash::readMarks(files.marks);
-    REQUIRE(inFlight.size() == 1);
-    const std::optional<azl::crash::Crash> crash = azl::crash::readCrash(files.crash);
-    REQUIRE(crash);
-    CHECK(crash->signal == SIGSEGV);
-    CHECK(crash->thread != inFlight[0].thread);
-    CHECK(files.culprits().empty());
-}
-
-TEST_CASE("a crash inside a chain compile skip-lists that chain and nothing in flight elsewhere")
-{
-    CrashFiles files;
-    HeldMark opening("clip", "def", "smoke_01.mov");
-    std::vector<azl::crash::Mark> culprits;
-    std::thread([&] {
-        azl::crash::Scope compiling("effect", kChain, kChain);
-        azl::crash::recordCrash(SIGBUS);
-        culprits = files.culprits();
-    }).join();
-    REQUIRE(culprits.size() == 1);
-    CHECK(culprits[0].kind == "effect");
-    CHECK(culprits[0].key == kChain);
-    CHECK(azl::crash::addSkips(files.skips, culprits, "killed by SIGBUS").size() == 1);
-    azl::crash::setup(files.marks, files.skips, files.crash);
-    CHECK(azl::crash::skipped("effect", kChain));
-    CHECK_FALSE(azl::crash::skipped("clip", "def"));
 }
 
 TEST_CASE("a real fault inside a chain compile is recorded on the compiling thread and the process still dies of it")

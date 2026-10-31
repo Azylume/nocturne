@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs one shard of the test suite as CI does: the engine tests of every N-th test file (by name), or the UI tests,
-# without the cases .github/realtime-tests.txt lists, as a console log and a JUnit report under build/test-reports.
+# without the cases .github/realtime-tests.txt lists (on Windows also .github/windows-ci-tests.txt), as a console log
+# and a JUnit report under build/test-reports.
 # A failed case is rerun once on its own; a shard passes when the rerun does, and says which cases needed it.
 # usage: tools/ci-tests.sh engine SHARD SHARDS | tools/ci-tests.sh ui
 set -euo pipefail
@@ -10,15 +11,21 @@ BUILD=${NOCTURNE_BUILD_DIR:-$ROOT/build}
 REPORTS=$BUILD/test-reports
 mkdir -p "$REPORTS"
 export NOCTURNE_NO_AUDIO_INPUT=1
+PYTHON=${PYTHON:-/usr/bin/python3}
 
-skip=$(grep -v '^#' "$ROOT/.github/realtime-tests.txt" | grep -v '^$' | sed 's/,/\\,/g' | paste -sd, -)
+skip_lists=("$ROOT/.github/realtime-tests.txt")
+case $(uname -s) in
+MINGW* | MSYS*) skip_lists+=("$ROOT/.github/windows-ci-tests.txt") ;;
+esac
+skip=$(cat "${skip_lists[@]}" | grep -v '^#' | grep -v '^$' | sed 's/,/\\,/g' | paste -sd, -)
 
 case $1 in
 engine)
     shard=$2
     shards=$3
+    # "?" stands for the path separator: the test binary names its files with "\" on Windows.
     files=$(ls "$ROOT"/tests/*_test.cpp "$ROOT"/tests/*_test.mm | sort | awk -v n="$shard" -v m="$shards" \
-        'NR % m == n % m { sub(".*/", "*/tests/"); print }' | paste -sd, -)
+        'NR % m == n % m { sub(".*/", "*?tests?"); print }' | paste -sd, -)
     name=engine-$shard
     binary=$BUILD/nocturne_tests
     filters=(--source-file="$files")
@@ -40,7 +47,7 @@ run() {
     local status=0
     "$binary" ${filters[@]+"${filters[@]}"} --test-case-exclude="$skip" --reporters=junit --out="$REPORTS/$1.xml" "${@:2}" \
         > "$REPORTS/$1.log" 2>&1 || status=$?
-    /usr/bin/python3 - "$REPORTS/$1.xml" "$1" <<'PY' || status=1
+    "$PYTHON" - "$REPORTS/$1.xml" "$1" <<'PY' || status=1
 import sys, xml.etree.ElementTree as ET
 tree = ET.parse(sys.argv[1])
 cases = list(tree.iter("testcase"))
@@ -60,35 +67,33 @@ if run "$name"; then
     exit 0
 fi
 
-# The failed cases, from the JUnit report, rerun one by one.
-failed=$(/usr/bin/python3 -c '
+# The failed cases, from the JUnit report, rerun one by one. Python on Windows ends its lines with "\r\n".
+failed=$("$PYTHON" -c '
 import sys, xml.etree.ElementTree as ET
 tree = ET.parse(sys.argv[1])
 for case in tree.iter("testcase"):
     if case.find("failure") is not None or case.find("error") is not None:
         print(case.get("name"))
-' "$REPORTS/$name.xml")
+' "$REPORTS/$name.xml" | tr -d '\r')
 if [ -z "$failed" ]; then
     echo "== $name: failed without a failed case in the report" >&2
     exit 1
 fi
-# The report names a subcase as "case/subcase" (a name may hold a slash itself): the whole case reruns, found by
-# taking "/..." off the end until the filter runs something.
+# The report names a subcase as "case/subcase" (a name may hold a slash itself), and a filter matches only whole
+# cases: the rerun takes the longest "/"-cut of the name that is a test case of this shard.
+cases=$("$binary" ${filters[@]+"${filters[@]}"} --list-test-cases | grep -v -e '^\[doctest\]' -e '^====' | tr -d '\r')
 status=0
 while IFS= read -r case; do
     name_=$case
-    while :; do
-        echo "== $name: rerunning '$name_'"
-        if run "$name-rerun" --test-case="$(printf '%s' "$name_" | sed 's/,/\\,/g')"; then
-            echo "::warning::flaky: '$case' failed once and passed on its rerun ($name)"
-            break
-        fi
-        if grep -q '<testcase' "$REPORTS/$name-rerun.xml" || [[ $name_ != */* ]]; then
-            echo "::error::'$case' failed twice ($name)"
-            status=1
-            break
-        fi
+    while [[ $name_ == */* ]] && ! grep -qxF -- "$name_" <<< "$cases"; do
         name_=${name_%/*}
     done
+    echo "== $name: rerunning '$name_'"
+    if run "$name-rerun" --test-case="$(printf '%s' "$name_" | sed 's/,/\\,/g')"; then
+        echo "::warning::flaky: '$case' failed once and passed on its rerun ($name)"
+    else
+        echo "::error::'$case' failed twice ($name)"
+        status=1
+    fi
 done <<< "$failed"
 exit $status

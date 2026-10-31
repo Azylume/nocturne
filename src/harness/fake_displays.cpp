@@ -1,6 +1,7 @@
 #include "harness/fake_displays.hpp"
 
 #include "engine/frame_trace.hpp"
+#include "platform/thread_priority.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -44,15 +45,14 @@ Image toRgba(const uint8_t* bgra, uint32_t width, uint32_t height)
 
 class FakeSurface : public Surface {
 public:
-    FakeSurface(FakeDisplays& owner, MTL::Device* device, const DisplayInfo& display)
+    FakeSurface(FakeDisplays& owner, const gpu::Device& device, const DisplayInfo& display)
         : owner_(owner), id_(display.id), refreshHz_(display.refreshHz), lateness_(owner.lateness_),
-          random_(uint32_t(std::hash<std::string>{}(display.id))), device_(NS::RetainPtr(device))
+          random_(uint32_t(std::hash<std::string>{}(display.id))), device_(device),
+          target_(device.makeTexture({.format = kSurfaceFormat,
+                                      .width = display.width,
+                                      .height = display.height,
+                                      .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled}))
     {
-        auto desc = NS::RetainPtr(
-            MTL::TextureDescriptor::texture2DDescriptor(kSurfaceFormat, display.width, display.height, false));
-        desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-        desc->setStorageMode(MTL::StorageModePrivate);
-        target_ = NS::TransferPtr(device->newTexture(desc.get()));
         owner_.open_[id_] = this;
     }
 
@@ -69,7 +69,7 @@ public:
             next += period;
             if (Clock::now() > next)
                 next = Clock::now();
-            std::this_thread::sleep_until(next + late());
+            sleepUntil(next + late());
             if (running) {
                 refresh_ = next;
                 onRefresh(next);
@@ -77,17 +77,17 @@ public:
         }
     }
 
-    MTL::Texture* nextTarget() override { return target_.get(); }
+    const gpu::Texture* nextTarget() override { return &target_; }
 
     // Shown as a display would: at the first refresh after its GPU work ends, the next one at the earliest, not when
     // the completion handler happens to run.
-    void present(MTL::CommandBuffer* cmd, Shown shown) override
+    void present(gpu::CommandBuffer& cmd, Shown shown) override
     {
         if (wanted())
             encodeCapture(cmd);
         const double refresh = traceSeconds(refresh_), period = 1.0 / refreshHz_;
-        cmd->addCompletedHandler([shown = std::move(shown), refresh, period](MTL::CommandBuffer* done) {
-            const double end = traceFromHost(done->GPUEndTime());
+        cmd.onCompleted([shown = std::move(shown), refresh, period](const gpu::Completion& done) {
+            const double end = traceFromHost(done.gpuEnd);
             shown(refresh + period * std::max(1.0, std::ceil((end - refresh) / period)));
         });
     }
@@ -115,18 +115,13 @@ private:
         return std::exchange(capture_->wanted, false);
     }
 
-    void encodeCapture(MTL::CommandBuffer* cmd)
+    void encodeCapture(gpu::CommandBuffer& cmd)
     {
-        const uint32_t width = uint32_t(target_->width());
-        const uint32_t height = uint32_t(target_->height());
-        const size_t rowBytes = size_t(width) * 4;
-        auto buffer = NS::TransferPtr(device_->newBuffer(rowBytes * height, MTL::ResourceStorageModeShared));
-        auto* blit = cmd->blitCommandEncoder();
-        blit->copyFromTexture(target_.get(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), buffer.get(), 0,
-                              rowBytes, rowBytes * height);
-        blit->endEncoding();
-        cmd->addCompletedHandler([capture = capture_, buffer, width, height](MTL::CommandBuffer*) {
-            Image image = toRgba(static_cast<const uint8_t*>(buffer->contents()), width, height);
+        const gpu::Readback readback(device_, target_);
+        readback.encode(cmd);
+        cmd.onCompleted([capture = capture_, readback, width = target_.width(),
+                         height = target_.height()](const gpu::Completion&) {
+            Image image = toRgba(readback.data(), width, height);
             std::lock_guard lock(capture->mutex);
             capture->image = std::move(image);
             capture->done.notify_all();
@@ -139,8 +134,8 @@ private:
     const std::pair<std::chrono::microseconds, std::chrono::microseconds> lateness_;
     std::minstd_rand random_;
     Clock::time_point refresh_;
-    NS::SharedPtr<MTL::Device> device_;
-    NS::SharedPtr<MTL::Texture> target_;
+    gpu::Device device_;
+    gpu::Texture target_;
     std::shared_ptr<Capture> capture_ = std::make_shared<Capture>();
 };
 
@@ -181,7 +176,7 @@ void FakeDisplays::detach(const std::string& id)
     changed();
 }
 
-std::unique_ptr<Surface> FakeDisplays::open(const std::string& id, MTL::Device* device)
+std::unique_ptr<Surface> FakeDisplays::open(const std::string& id, const gpu::Device& device)
 {
     auto it = std::find_if(attached_.begin(), attached_.end(), [&](const DisplayInfo& d) { return d.id == id; });
     if (it == attached_.end() || !it->mirrorOf.empty())

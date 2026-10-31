@@ -154,7 +154,7 @@ void Outputs::update()
         output->setScreen(std::make_shared<const ScreenView>(view(*composition_, screen)));
         const bool present = attached.contains(screen.display);
         if (present && !output->attached()) {
-            if (auto surface = displays_.open(screen.display, engine_.device()))
+            if (auto surface = displays_.open(screen.display, engine_.gpuDevice()))
                 output->attach(std::move(surface));
         } else if (!present && output->attached()) {
             output->detach();

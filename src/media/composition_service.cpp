@@ -2,9 +2,8 @@
 
 #include "media/composition_media.hpp"
 
-#include <sys/stat.h>
-
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -19,12 +18,6 @@ namespace {
 
 constexpr size_t kRecent = 20;
 
-struct Request {
-    CompositionService* service;
-    Message message;
-    DocumentServer::Sink reply;
-};
-
 fs::path pathField(const Message& message, const char* key)
 {
     std::string path = message.value(key, "");
@@ -38,7 +31,7 @@ fs::path pathField(const Message& message, const char* key)
 
 void print(const char* what, const fs::path& path, const std::vector<std::string>& warnings)
 {
-    std::printf("composition: %s %s\n", what, path.c_str());
+    std::printf("composition: %s %s\n", what, path.string().c_str());
     for (const std::string& w : warnings)
         std::printf("composition: warning: %s\n", w.c_str());
     std::fflush(stdout);
@@ -75,10 +68,25 @@ bool mediaPresent(nlohmann::json& composition, const fs::path& root, MediaLibrar
     return present;
 }
 
+// Whole Unix seconds, as stat's st_mtime.
+double unixSeconds(fs::file_time_type time)
+{
+#ifdef _LIBCPP_VERSION
+    const auto system = std::chrono::file_clock::to_sys(time);
+#else
+    const auto system = std::chrono::clock_cast<std::chrono::system_clock>(time);
+#endif
+    return double(std::chrono::floor<std::chrono::seconds>(system).time_since_epoch().count());
+}
+
 std::optional<Message> showEntry(const fs::path& file, MediaLibrary& library)
 {
-    struct stat info {};
-    if (::stat(file.c_str(), &info) != 0 || !S_ISREG(info.st_mode))
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec))
+        return std::nullopt;
+    const uint64_t size = fs::file_size(file, ec);
+    const fs::file_time_type modified = fs::last_write_time(file, ec);
+    if (ec)
         return std::nullopt;
     std::optional<nlohmann::json> j;
     try {
@@ -90,8 +98,8 @@ std::optional<Message> showEntry(const fs::path& file, MediaLibrary& library)
         return std::nullopt;
     return Message{{"path", file.string()},
                    {"name", file.stem().string()},
-                   {"modified", double(info.st_mtimespec.tv_sec)},
-                   {"size", uint64_t(info.st_size)},
+                   {"modified", unixSeconds(modified)},
+                   {"size", size},
                    {"mediaPresent", mediaPresent((*j)["composition"], mediaRootOf(file, {}), library)}};
 }
 
@@ -109,23 +117,19 @@ void addJsonFiles(const fs::path& folder, std::vector<fs::path>& files)
 CompositionService::CompositionService(DocumentServer& document, MediaLibrary& library, AttachedDisplays displays,
                                        ShowFolders folders, std::function<void()> beforeLoad)
     : document_(document), library_(library), displays_(std::move(displays)), folders_(std::move(folders)),
-      beforeLoad_(std::move(beforeLoad)), queue_(dispatch_queue_create("nocturne.composition", DISPATCH_QUEUE_SERIAL))
+      beforeLoad_(std::move(beforeLoad)), queue_("nocturne.composition")
 {
     std::error_code ec;
     fs::create_directories(folders_.shows, ec);
     document_.handle("composition", [this](const Message& message, DocumentServer::Sink reply) {
-        dispatch_async_f(queue_, new Request{this, message, std::move(reply)}, [](void* context) {
-            std::unique_ptr<Request> request(static_cast<Request*>(context));
-            request->service->handle(request->message, request->reply);
-        });
+        queue_.async([this, message, reply = std::move(reply)] { handle(message, reply); });
     });
 }
 
 CompositionService::~CompositionService()
 {
     document_.handle("composition", nullptr);
-    dispatch_sync_f(queue_, nullptr, [](void*) {});
-    dispatch_release(queue_);
+    queue_.flush();
 }
 
 void CompositionService::handle(const Message& message, const DocumentServer::Sink& reply)

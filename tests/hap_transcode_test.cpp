@@ -118,7 +118,8 @@ TEST_CASE("conversion to HAP gives a HAP movie with every frame of the source, c
     playMedia(client, conversion.file, {azl::SyncMode::Timeline, azl::PlayMode::Loop, 0});
     CHECK(frameAfterStep(harness, 11) == 10);
     // ffmpeg's Y'CbCr to RGB and HAP Q's own rounding: within 10 of the source colour.
-    const uint8_t* patch = pixel(harness.readScreen(), 240, 405);
+    const azl::Image screen = harness.readScreen();
+    const uint8_t* patch = pixel(screen, 240, 405);
     CHECK(std::abs(patch[0] - 200) <= 10);
     CHECK(std::abs(patch[1] - 40) <= 10);
     CHECK(std::abs(patch[2] - 40) <= 10);

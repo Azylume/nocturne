@@ -1,6 +1,6 @@
 #include "engine/render_thread.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 
 #include <algorithm>
@@ -40,7 +40,7 @@ public:
             next_ = now;
             return now;
         }
-        std::this_thread::sleep_until(next_ - kSpinMargin);
+        sleepUntil(next_ - kSpinMargin);
         while (Clock::now() < next_)
             std::this_thread::yield();
         return next_;

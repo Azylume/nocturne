@@ -2,10 +2,9 @@
 
 #include "media/keep_local.hpp"
 #include "media/media_library.hpp"
+#include "platform/work_queue.hpp"
 #include "upload/media_fetch.hpp"
 #include "upload/upload_states.hpp"
-
-#include <dispatch/dispatch.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -98,7 +97,7 @@ private:
     std::map<std::string, bool> present_;
     std::set<std::string> rendering_;
     std::map<std::string, std::vector<uint8_t>> rendered_;
-    dispatch_queue_t renders_;
+    WorkQueue renders_;
     std::unique_ptr<MediaFetcher> fetcher_;
 };
 

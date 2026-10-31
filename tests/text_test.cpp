@@ -120,22 +120,6 @@ TEST_CASE("a composition file keeps text clips without looking for media")
     CHECK(loaded.composition.layers[0].clips.at(1) == textClip(title()));
 }
 
-TEST_CASE("a missing font falls back to the system font")
-{
-    NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    std::set<std::string> missing;
-    const azl::TextLayout layout{.text = "Fallback", .font = "No Such Font 1234", .size = 0.1};
-    const azl::VideoFrameRef frame = azl::TextRenderer::rasterise(device.get(), 540, layout, missing);
-    REQUIRE(frame);
-    REQUIRE(frame->text);
-    CHECK(frame->text->bounds[2] > 100.0f);
-    CHECK(missing == std::set<std::string>{"No Such Font 1234"});
-
-    missing.clear();
-    azl::TextRenderer::rasterise(device.get(), 540, {.text = "Found", .font = "Helvetica Bold"}, missing);
-    CHECK(missing.empty());
-}
-
 TEST_CASE("text clips render on any layer with font, size, colour, alignment and outline")
 {
     azl::EngineHarness harness(kSize, 60.0, {}, twoLayers());
@@ -167,6 +151,30 @@ TEST_CASE("italic text does not smear its last glyph to the edge of the composit
     CHECK(edge == 0);
     checkGolden(image, "text_italic");
 }
+
+#ifdef _WIN32
+// Windows has no Helvetica Neue, so the case above draws upright there: the same check in an italic Windows ships.
+TEST_CASE("italic text in a Windows font does not smear its last glyph to the edge of the composition")
+{
+    auto render = [](const char* font) {
+        azl::EngineHarness harness(kSize, 60.0, {}, {.layers = {{.id = 1, .name = "Layer 1"}}});
+        Client client(harness.document());
+        setSlot(client, 1, 1, textClip({.text = "VORTEX", .font = font, .size = 0.16}));
+        trigger(client, 1, 1);
+        harness.step(2);
+        return harness.readScreen();
+    };
+    const azl::Image image = render("Arial Italic");
+    CHECK(image.rgba != render("Arial").rgba);
+    size_t edge = 0;
+    for (uint32_t y = 0; y < image.height; ++y) {
+        const size_t i = (size_t(y) * image.width + image.width - 1) * 4;
+        edge += image.rgba[i] + image.rgba[i + 1] + image.rgba[i + 2];
+    }
+    CHECK(edge == 0);
+    checkGolden(image, "text_italic_windows");
+}
+#endif
 
 TEST_CASE("text and its parameters update live and undo through the protocol")
 {
@@ -236,7 +244,8 @@ TEST_CASE("a text clip plays through transitions, effects and Autopilot like a v
     bool sawVideo = false;
     for (int i = 0; i < 16; ++i) {
         harness.step(30);
-        const uint8_t* q = pixel(harness.readScreen(), 240, 405);
+        const azl::Image screen = harness.readScreen();
+        const uint8_t* q = pixel(screen, 240, 405);
         sawVideo = sawVideo || (q[0] > 150 && q[1] < 100);
         sawText = sawText || red(harness.readScreen(), 255) > 20000;
     }

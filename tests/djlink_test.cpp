@@ -361,7 +361,8 @@ TEST_CASE("djlink: nothing in the module can send onto the network")
 {
     // The receive-only promise in code: no source in src/djlink calls anything that puts a packet on a socket,
     // connects one, or joins a multicast group.
-    const std::regex sending(R"(\b(send|sendto|sendmsg|sendmsg_x|sendfile|connect|connectx|write|writev|pwrite)\s*\(|)"
+    const std::regex sending(R"(\b(send|sendto|sendmsg|sendmsg_x|sendfile|sendSome|sendAll|connect|connectx|write|)"
+                             R"(writev|pwrite)\s*\(|)"
                              R"(\b(nw_connection_\w+|CFSocket\w*|IP_ADD_MEMBERSHIP|IP_MULTICAST_\w+|SO_BROADCAST)\b)");
     int files = 0;
     for (const auto& entry : fs::directory_iterator(kSource / "src/djlink")) {

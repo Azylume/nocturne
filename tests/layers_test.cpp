@@ -25,7 +25,7 @@ constexpr int kTinted = 177;
 // Flips the picture upside down onto exact pixel centres, so the test card's colour bars land on its grey ramp.
 azl::EffectDef flip()
 {
-    return {"testFlip", azl::StageKind::Remap, {}, false, "\n    return float2(px.x, h.size.y - px.y);\n", {}};
+    return {"testFlip", azl::StageKind::Remap, {}, false, "\n    return vec2(px.x, h.size.y - px.y);\n", {}};
 }
 
 void registerFlip()

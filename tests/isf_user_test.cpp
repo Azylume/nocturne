@@ -223,7 +223,8 @@ TEST_CASE("a rescan takes in new, changed and removed user ISF files without a r
     harness.step(4);
     harness.engine().waitForCompiles();
     harness.step(2);
-    const auto tinted = pixel(harness.readScreen(), 1, 1);
+    const azl::Image screen = harness.readScreen();
+    const auto tinted = pixel(screen, 1, 1);
     CHECK(tinted[1] < 5);
 
     // The shader changes: the chain compiles again and the picture follows.

@@ -4,11 +4,10 @@
 #include "engine/preview_service.hpp"
 #include "engine/render_thread.hpp"
 #include "media/media_library.hpp"
+#include "platform/work_queue.hpp"
 #include "protocol/document_server.hpp"
 #include "sync/node_sync.hpp"
 #include "sync/udp_clock.hpp"
-
-#include <dispatch/dispatch.h>
 
 #include <mutex>
 #include <stdexcept>
@@ -33,20 +32,6 @@ struct Forward : EngineClient::Listener {
     void previewArrived(const std::string&) override { arrived(); }
 };
 
-// What the client sends reaches the document off the server's lock, in order: the server answers under its lock, and
-// the client may send while it handles an answer.
-struct Delivery {
-    DocumentServer* document;
-    ClientId client;
-    Message message;
-};
-
-void deliver(void* context)
-{
-    std::unique_ptr<Delivery> delivery(static_cast<Delivery*>(context));
-    delivery->document->receive(delivery->client, delivery->message);
-}
-
 } // namespace
 
 struct LocalPreviews::Impl {
@@ -56,7 +41,7 @@ struct LocalPreviews::Impl {
                                : std::make_unique<MediaLibrary>(options.library.empty() ? MediaLibrary::defaultRoot()
                                                                                         : options.library)),
           library(options.shared ? *options.shared : *owned),
-          engine(device.get(),
+          engine(gpu::Device::retain(device.get()),
                  {.width = options.width,
                   .height = options.height,
                   .clipCacheBytes = kClipCacheBytes,
@@ -64,7 +49,7 @@ struct LocalPreviews::Impl {
                  &library),
           document(defaultComposition(), [this](auto composition) { follow(std::move(composition)); }),
           previews(document, engine), fps(options.fps), client(forward),
-          sends(dispatch_queue_create("nocturne.ui.local-previews", DISPATCH_QUEUE_SERIAL))
+          sends("nocturne.ui.local-previews")
     {
         forward.arrived = std::move(arrived);
         previews.setClipLibrary(&library);
@@ -80,7 +65,7 @@ struct LocalPreviews::Impl {
         id = document.connect([this](const Message& message) { client.receive(message); });
         client.attached(
             [this](const Message& message) {
-                dispatch_async_f(sends, new Delivery{&document, id, message}, deliver);
+                sends.async([this, message] { document.receive(id, message); });
             },
             true);
         render = std::make_unique<RenderThread>(engine, fps);
@@ -92,8 +77,7 @@ struct LocalPreviews::Impl {
         node.reset();
         client.detached();
         document.disconnect(id);
-        dispatch_sync_f(sends, nullptr, [](void*) {});
-        dispatch_release(sends);
+        sends.flush();
         engine.waitForCompiles();
     }
 
@@ -116,7 +100,9 @@ struct LocalPreviews::Impl {
     double fps;
     Forward forward;
     EngineClient client;
-    dispatch_queue_t sends;
+    // What the client sends reaches the document off the server's lock, in order: the server answers under its lock,
+    // and the client may send while it handles an answer.
+    WorkQueue sends;
     ClientId id = 0;
     std::unique_ptr<NodeSync> node;
     std::unique_ptr<RenderThread> render;

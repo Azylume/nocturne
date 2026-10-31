@@ -3,11 +3,14 @@
 
 #include "effects/chain_planner.hpp"
 #include "effects/isf.hpp"
+#include "engine/chain_compiler.hpp"
 #include "engine/isf_compiler.hpp"
 
-#include <Metal/Metal.hpp>
 #include <doctest.h>
+#ifdef __APPLE__
+#include <Metal/Metal.hpp>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -105,8 +108,8 @@ TEST_CASE("every built-in ISF shader loads: effects and generators register unde
     for (const azl::IsfSource& source : azl::isfSources()) {
         CAPTURE(source.name);
         const azl::IsfShader shader = parsed(source);
-        const azl::IsfMetal metal = azl::translateIsf(shader, {});
-        CHECK_MESSAGE(metal.error.empty(), metal.error);
+        const azl::IsfGlsl glsl = azl::translateIsf(shader, {});
+        CHECK_MESSAGE(glsl.error.empty(), glsl.error);
         if (shader.kind != azl::IsfKind::Transition)
             types.push_back(azl::isfType(source.name));
     }
@@ -126,7 +129,7 @@ TEST_CASE("every built-in ISF shader loads: effects and generators register unde
 
     azl::prepareIsf({});
     for (const std::string& type : types)
-        CHECK(azl::findEffect(type)->metal.find("#error") == std::string::npos);
+        CHECK(azl::findEffect(type)->glsl.find("#error") == std::string::npos);
     std::vector<azl::TransitionMode> modes;
     for (const azl::IsfTransition& t : *azl::isfTransitions())
         if (!t.function.empty())
@@ -215,8 +218,8 @@ TEST_CASE("an ISF shader that does not translate reports its error when used, an
 {
     azl::IsfShader shader = parsed({"Test Broken", R"(/*{"INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
 void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * notDeclared; })"});
-    const azl::IsfMetal metal = azl::translateIsf(shader, {});
-    REQUIRE_FALSE(metal.error.empty());
+    const azl::IsfGlsl glsl = azl::translateIsf(shader, {});
+    REQUIRE_FALSE(glsl.error.empty());
     azl::EffectDef def = azl::isfEffect(shader);
     def.type = "testIsfBroken";
     if (!azl::findEffect(def.type))
@@ -224,7 +227,7 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * notDeclared; })"});
 
     azl::EngineHarness harness({.width = 160, .height = 90});
     Client client(harness.document());
-    azl::applyIsf(shader, metal, "testIsfBroken");
+    azl::applyIsf(shader, glsl, "testIsfBroken");
     harness.step();
     REQUIRE(addEffect(client, "testIsfBroken")["type"] == "change");
     const uint64_t rendered = harness.stats().rendered;
@@ -237,6 +240,7 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * notDeclared; })"});
     CHECK(pixel(harness.readScreen(), 1, 1)[0] > 250);
 }
 
+#ifdef __APPLE__
 // Information: every last pass carries the ISF transitions, so switching a transition never compiles; this is what
 // they add to compiling one.
 TEST_CASE("compile time the ISF transitions add to a last pass")
@@ -246,7 +250,7 @@ TEST_CASE("compile time the ISF transitions add to a last pass")
     const std::vector<const azl::EffectDef*> chain{azl::findEffect("colorize")};
     int run = 0;
     auto compileMs = [&] {
-        const std::string source = azl::planChain(azl::SourceKind::Yuv, chain).back().metal;
+        const std::string source = azl::passMsl(azl::planChain(azl::SourceKind::Yuv, chain).back());
         double best = 1e9;
         for (int i = 0; i < 5; ++i) {
             // A comment of its own each time, so no shader cache answers.
@@ -271,6 +275,7 @@ TEST_CASE("compile time the ISF transitions add to a last pass")
     MESSAGE(line);
     std::printf("%s\n", line);
 }
+#endif
 
 // The compiler inlines a last pass's chain wherever the fade code evaluates a picture, so a transition case that
 // evaluated its own would make every last pass slower to compile.
@@ -279,9 +284,9 @@ TEST_CASE("the ISF transitions add no evaluation of a last pass's pictures")
     azl::prepareIsf({});
     const std::vector<const azl::EffectDef*> chain{azl::findEffect("colorize")};
     auto evaluations = [&] {
-        const std::string source = azl::planChain(azl::SourceKind::Yuv, chain).back().metal;
+        const std::string source = azl::planChain(azl::SourceKind::Yuv, chain).back().glsl;
         size_t count = 0;
-        for (const std::string call : {"fadeIncoming(", "fadeOutgoing(", "FADE_IN(", "FADE_OUT(", "FROM("})
+        for (const std::string call : {"fadeIncoming(", "fadeOutgoing(", "INCOMING(", "OUTGOING("})
             for (size_t at = source.find(call); at != std::string::npos; at = source.find(call, at + 1))
                 ++count;
         return count;

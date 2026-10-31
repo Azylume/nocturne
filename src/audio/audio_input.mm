@@ -682,12 +682,6 @@ std::string AudioInput::permission()
     return permissionName([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]);
 }
 
-bool AudioInput::disabled()
-{
-    const char* value = std::getenv("NOCTURNE_NO_AUDIO_INPUT");
-    return value && std::string(value) == "1";
-}
-
 void AudioInput::select(std::string device, std::vector<int> channels)
 {
     Impl* impl = impl_.get();
@@ -699,25 +693,6 @@ void AudioInput::select(std::string device, std::vector<int> channels)
       impl->channels = request->second;
       impl->reconcile("select", true);
     });
-}
-
-AudioChoice startingInput(const AudioChoice& commandLine, const std::optional<ResumeAudio>& saved,
-                          const std::vector<AudioDeviceInfo>& devices, std::string& log)
-{
-    log.clear();
-    if (!saved || saved->commandLine != commandLine || saved->open == commandLine)
-        return commandLine;
-    const std::string& device = saved->open.device;
-    const bool named = !device.empty() && device != "off" && device != "system" && !device.starts_with(kAppPrefix);
-    const bool attached = std::any_of(devices.begin(), devices.end(), [&](const AudioDeviceInfo& d) {
-        return d.uid == device || lower(d.name).find(lower(device)) != std::string::npos;
-    });
-    if (named && !attached) {
-        log = "'" + device + "', open before the restart, is not attached; opening the command line's input";
-        return commandLine;
-    }
-    log = "reopening '" + device + "', the input open before the restart";
-    return saved->open;
 }
 
 void AudioInput::onChange(Changed changed)

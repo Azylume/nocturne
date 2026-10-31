@@ -26,7 +26,11 @@ std::string stamp()
     const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
     std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &seconds);
+#else
     localtime_r(&seconds, &local);
+#endif
     char text[32];
     const size_t n = std::strftime(text, sizeof text, "%Y%m%d-%H%M%S", &local);
     std::snprintf(text + n, sizeof text - n, ".%03lld", static_cast<long long>(ms));
@@ -158,7 +162,7 @@ void StateSaver::save(const std::shared_ptr<const Composition>& composition, con
         }
         std::lock_guard lock(mutex_);
         if (std::exchange(failing_, false))
-            std::fprintf(stderr, "state: saved again to %s\n", path_.c_str());
+            std::fprintf(stderr, "state: saved again to %s\n", path_.string().c_str());
         ++saves_;
     } catch (const std::exception& e) {
         std::lock_guard lock(mutex_);

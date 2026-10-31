@@ -32,6 +32,8 @@ ever make it closed; running it as a network service counts as distribution, so 
 | stb_dxt.h v1.12 | third_party/stb, the HAP encoder's BC block compressor (ticket 94) | MIT / public domain (dual) | yes |
 | HAP frame format (Vidvox) and snappy format (Google) | re-implemented from their specifications in src/media/hap.cpp and src/media/snappy.cpp (ticket 94); no code copied | BSD-2-Clause, BSD-3-Clause (the references) | yes |
 | ffmpeg, ffprobe (Homebrew, with libx264) | tools/transcode-media.sh and nocturne-upload (ticket 84) run them as separate programs; nothing links them | GPL-2.0-or-later build | yes (not linked; GPL-2.0+ allows GPL-3.0 anyway) |
+| pocketfft (C++ header-only, commit 0fa0ef5) | the audio spectrum's FFT off Apple, through vcpkg (`pocketfft` 2024-11-30); on Apple only the tests, through FetchContent, to compare it with vDSP (ADR 0016) | BSD-3-Clause | yes |
+| libopus 1.6.1 | return audio's Opus codec off Apple, through vcpkg (`opus`); Apple uses AudioToolbox (ADR 0016) | BSD-3-Clause | yes |
 
 No incompatible dependency was found.
 

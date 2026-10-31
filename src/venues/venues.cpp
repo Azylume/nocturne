@@ -1,5 +1,7 @@
 #include "venues/venues.hpp"
 
+#include "platform/app_paths.hpp"
+#include "platform/credentials.hpp"
 #include "protocol/messages.hpp"
 
 #include <algorithm>
@@ -48,6 +50,31 @@ std::string shortName(const std::string& host)
     return lowercase(host.substr(0, host.find('.')));
 }
 
+#ifdef _WIN32
+std::string credentialCommand()
+{
+    return std::string("`cmdkey /generic:") + kTailscaleKeychainService + " /user:" + kTailscaleKeychainAccount +
+           " /pass`";
+}
+
+std::string keyHelp(const fs::path&)
+{
+    return "add it to the Windows Credential Manager with " + credentialCommand() +
+           ", or set NOCTURNE_TAILSCALE_API_KEY";
+}
+
+// Windows gives a file no owner-only permission bits to check, so a key in one is never used.
+bool othersCanRead(const fs::path&)
+{
+    return true;
+}
+
+std::string notPrivate()
+{
+    return "Windows cannot keep it private there: keep the key in the Credential Manager (" + credentialCommand() +
+           ") instead";
+}
+#else
 std::string keyHelp(const fs::path& path)
 {
     return "add it to the login keychain with `security add-generic-password -s " +
@@ -55,32 +82,30 @@ std::string keyHelp(const fs::path& path)
            "NOCTURNE_TAILSCALE_API_KEY, or put api_key in " + path.string() + " (chmod 600)";
 }
 
+bool othersCanRead(const fs::path& path)
+{
+    const auto shared = fs::perms::group_all | fs::perms::others_all;
+    return (fs::status(path).permissions() & shared) != fs::perms::none;
+}
+
+std::string notPrivate()
+{
+    return "others can read it: chmod 600 it, or keep the key in the keychain";
+}
+#endif
+
 } // namespace
 
 fs::path defaultVenuesConfigPath()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/venues.json";
+    return appDataFolder() / "venues.json";
 }
 
 std::string systemTailscaleKey()
 {
     if (const char* key = std::getenv("NOCTURNE_TAILSCALE_API_KEY"); key && *key)
         return key;
-    const std::string command = std::string("/usr/bin/security find-generic-password -s ") +
-                                kTailscaleKeychainService + " -a " + kTailscaleKeychainAccount + " -w 2>/dev/null";
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return "";
-    std::string key;
-    char buffer[256];
-    while (size_t n = fread(buffer, 1, sizeof buffer, pipe))
-        key.append(buffer, n);
-    if (pclose(pipe) != 0)
-        return "";
-    while (!key.empty() && (key.back() == '\n' || key.back() == '\r'))
-        key.pop_back();
-    return key;
+    return readCredential(kTailscaleKeychainService, kTailscaleKeychainAccount).value_or("");
 }
 
 TailscaleSettings loadTailscaleSettings(const fs::path& path, const std::function<std::string()>& fallbackKey)
@@ -98,10 +123,8 @@ TailscaleSettings loadTailscaleSettings(const fs::path& path, const std::functio
             settings.tag = file.value("tag", settings.tag);
             settings.port = file.value("port", settings.port);
             if (file.contains("api_key")) {
-                const auto shared = fs::perms::group_all | fs::perms::others_all;
-                if ((fs::status(path).permissions() & shared) != fs::perms::none) {
-                    settings.keyProblem = path.string() + " holds the Tailscale API key but others can read it: " +
-                                          "chmod 600 it, or keep the key in the keychain";
+                if (othersCanRead(path)) {
+                    settings.keyProblem = path.string() + " holds the Tailscale API key but " + notPrivate();
                     return settings;
                 }
                 settings.apiKey = file.value("api_key", "");

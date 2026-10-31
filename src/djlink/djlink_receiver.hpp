@@ -1,5 +1,7 @@
 #pragma once
 
+#include "net/socket_compat.hpp"
+
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -51,7 +53,7 @@ private:
 
     const Options options_;
     const OnDatagram onDatagram_;
-    std::array<int, 3> sockets_{-1, -1, -1};
+    std::array<Socket, 3> sockets_{kNoSocket, kNoSocket, kNoSocket};
     unsigned index_ = 0;
     std::atomic<bool> running_{true};
     std::atomic<bool> listening_{false};

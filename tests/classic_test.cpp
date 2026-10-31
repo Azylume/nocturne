@@ -85,18 +85,18 @@ const char* kColorizePreset = R"(<?xml version="1.0" encoding="UTF-8"?>
 // 200/100/50 with alpha from 64 at the top to 255 at the bottom.
 const std::map<std::string, std::pair<std::string, std::string>> kProbes{
     {"uv.png",
-     {"parityUv", "\n    float2 at = round(floor(px) * 255.0 / (h.size - 1.0));\n"
-                  "    return float4(at / 255.0, 128.0 / 255.0, 1.0);\n"}},
+     {"parityUv", "\n    vec2 at = round(floor(px) * 255.0 / (h.size - 1.0));\n"
+                  "    return vec4(at / 255.0, 128.0 / 255.0, 1.0);\n"}},
     {"alpha.png",
      {"parityAlpha", "\n    float a = round(64.0 + floor(px.y) * 191.0 / (h.size.y - 1.0));\n"
-                     "    return float4(200.0, 100.0, 50.0, a) / 255.0;\n"}}};
+                     "    return vec4(200.0, 100.0, 50.0, a) / 255.0;\n"}}};
 
 // Registers a probe input as a pointwise effect, once, and returns its type.
 std::string probeEffect(const std::string& input)
 {
     const auto& [type, metal] = kProbes.at(input);
     if (!azl::findEffect(type))
-        azl::registerEffect({.type = type, .kind = azl::StageKind::Pointwise, .metal = metal});
+        azl::registerEffect({.type = type, .kind = azl::StageKind::Pointwise, .glsl = metal});
     return type;
 }
 
@@ -357,7 +357,7 @@ TEST_CASE("Classic Stripper's per-pixel strip loop hashes nothing and takes no c
     for (const char* type : {"classicStripper", "classicStripper_resample"}) {
         CAPTURE(type);
         const azl::EffectDef& effect = *azl::findEffect(type);
-        const std::string& metal = effect.mask.empty() ? effect.metal : effect.mask;
+        const std::string& metal = effect.mask.empty() ? effect.glsl : effect.mask;
         const size_t loop = metal.find("for (int i = 0; i < count; ++i)");
         REQUIRE(loop != std::string::npos);
         const std::string body = metal.substr(loop);
@@ -369,7 +369,7 @@ TEST_CASE("Classic Stripper's per-pixel strip loop hashes nothing and takes no c
     }
     // Only the plain variant stops early: the resampling one adds every strip it is in.
     CHECK(azl::findEffect("classicStripper")->mask.find("break;") != std::string::npos);
-    CHECK(azl::findEffect("classicStripper_resample")->metal.find("break;") == std::string::npos);
+    CHECK(azl::findEffect("classicStripper_resample")->glsl.find("break;") == std::string::npos);
 }
 
 TEST_CASE("Classic Mirror Quad and Polar Kaleido read the picture where measured, map their presets, and each edit is "
@@ -575,16 +575,9 @@ TEST_CASE("built-in presets: each of Nocturne's own effects has 3 to 5 looks wit
     azl::EngineHarness harness({.width = 320, .height = 180}, 60.0, root.path);
     azl::WebSocketServer server(harness.document(), 0);
     const auto ctl = [&](const std::string& args) {
-        const std::string command =
-            "'" + ctlPath().string() + "' --port " + std::to_string(server.port()) + " " + args + " 2>&1";
-        std::string out;
-        FILE* pipe = popen(command.c_str(), "r");
-        REQUIRE(pipe);
-        char buffer[512];
-        while (fgets(buffer, sizeof buffer, pipe))
-            out += buffer;
-        CHECK(pclose(pipe) == 0);
-        return out;
+        const CtlOutput run = runNocturneCtl(server.port(), args);
+        CHECK(run.code == 0);
+        return run.output;
     };
     for (const std::string& type : own) {
         CAPTURE(type);
@@ -724,7 +717,8 @@ TEST_CASE("Classic Trails, Strobe and Shift Glitch keep their measured history, 
         Client client(harness.document());
         addEffect(client, "classicStrobe", {{"frequency", 1.0}, {"colorGreen", 0.5}, {"colorBlue", 0.0}});
         harness.step();
-        const uint8_t* p = pixel(harness.readScreen(), 600, 300);
+        const azl::Image screen = harness.readScreen();
+        const uint8_t* p = pixel(screen, 600, 300);
         CHECK(std::vector<int>{p[0], p[1], p[2]} == std::vector<int>{255, 128, 0});
     }
 

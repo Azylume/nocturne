@@ -2,11 +2,10 @@
 
 #include "document/composition_file.hpp"
 #include "media/media_library.hpp"
+#include "platform/process.hpp"
 
 #include <nlohmann/json.hpp>
 
-#include <cerrno>
-#include <csignal>
 #include <cstdio>
 #include <fstream>
 
@@ -37,7 +36,7 @@ std::optional<UploadState::Kind> kindFromName(const std::string& name)
 
 UploadState resolved(UploadState state)
 {
-    if (state.kind == UploadState::Kind::Uploading && state.pid > 0 && kill(state.pid, 0) != 0 && errno == ESRCH) {
+    if (state.kind == UploadState::Kind::Uploading && state.pid > 0 && !processRunning(state.pid)) {
         state.kind = UploadState::Kind::Failed;
         state.error = kInterrupted;
     }
@@ -107,7 +106,7 @@ void UploadStates::load()
     std::ifstream in(file_);
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (!j.is_object()) {
-        std::fprintf(stderr, "upload states: unreadable %s\n", file_.c_str());
+        std::fprintf(stderr, "upload states: unreadable %s\n", file_.string().c_str());
         return;
     }
     for (const auto& [hash, entry] : j.items()) {

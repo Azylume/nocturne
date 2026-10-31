@@ -1,7 +1,6 @@
 #include "upload/s3.hpp"
 
-#include <CommonCrypto/CommonDigest.h>
-#include <CommonCrypto/CommonHMAC.h>
+#include "platform/crypto.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -25,16 +24,19 @@ std::string hex(const unsigned char* bytes, size_t size)
 
 std::string hmac(const std::string& key, const std::string& data)
 {
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CCHmac(kCCHmacAlgSHA256, key.data(), key.size(), data.data(), data.size(), digest);
-    return {reinterpret_cast<const char*>(digest), sizeof digest};
+    const Sha256Digest digest = hmacSha256(key.data(), key.size(), data.data(), data.size());
+    return {reinterpret_cast<const char*>(digest.data()), digest.size()};
 }
 
 std::string utcStamp()
 {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &now);
+#else
     gmtime_r(&now, &tm);
+#endif
     char text[17];
     std::strftime(text, sizeof text, "%Y%m%dT%H%M%SZ", &tm);
     return text;
@@ -101,9 +103,8 @@ S3Error::S3Error(int status, std::string code, const std::string& what)
 
 std::string sha256Hex(const std::string& data)
 {
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(data.data(), CC_LONG(data.size()), digest);
-    return hex(digest, sizeof digest);
+    const Sha256Digest digest = sha256(data.data(), data.size());
+    return hex(digest.data(), digest.size());
 }
 
 std::string uriEncode(const std::string& text, bool keepSlash)

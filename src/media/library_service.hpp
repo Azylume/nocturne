@@ -1,9 +1,8 @@
 #pragma once
 
 #include "media/media_library.hpp"
+#include "platform/work_queue.hpp"
 #include "protocol/document_server.hpp"
-
-#include <dispatch/dispatch.h>
 
 #include <atomic>
 #include <cstdint>
@@ -56,7 +55,7 @@ private:
     DocumentServer& document_;
     MediaLibrary& library_;
     std::function<void(const std::string&)> found_;
-    dispatch_queue_t queue_;
+    WorkQueue queue_;
     StillCounts stills_;
 };
 

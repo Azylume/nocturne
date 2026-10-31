@@ -1,7 +1,8 @@
 #include "media/clip_decoders.hpp"
 
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "media/media_library.hpp"
+#include "media/video_source.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 
@@ -42,7 +43,7 @@ int startFrame(int frames, double position, bool forward)
 
 } // namespace
 
-ClipDecoders::ClipDecoders(MTL::Device* device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
+ClipDecoders::ClipDecoders(const gpu::Device& device, MediaLibrary* library, size_t cacheBytes, size_t preloadBytes,
                            std::chrono::microseconds frameCost)
     : device_(device), library_(library), cacheBytes_(cacheBytes), preloadBytes_(preloadBytes), frameCost_(frameCost),
       thread_([this] {
@@ -325,10 +326,8 @@ void ClipDecoders::run()
 // autoreleases while opening and closing, which this long-lived thread would otherwise keep.
 bool ClipDecoders::round()
 {
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    const bool more = roundBody();
-    pool->release();
-    return more;
+    FrameworkScope scope;
+    return roundBody();
 }
 
 bool ClipDecoders::roundBody()
@@ -472,7 +471,7 @@ void ClipDecoders::retryMissing()
         const std::optional<MediaEntry> entry = library_->find(hash);
         if (!entry || entry->status != MediaStatus::Ok)
             continue;
-        std::fprintf(stderr, "clip %s: the file is back at %s\n", hash.c_str(), entry->path.c_str());
+        std::fprintf(stderr, "clip %s: the file is back at %s\n", hash.c_str(), entry->path.string().c_str());
         std::lock_guard lock(mutex_);
         std::erase_if(missing_, [&](const ClipKey& clip) { return clip.second == hash; });
         std::erase_if(decoders_, [&](const auto& d) { return d.first.second == hash && !d.second; });
@@ -513,7 +512,7 @@ std::shared_ptr<VideoDecoder> ClipDecoders::open(const ClipKey& clip)
             library_->flag(clip.second, MediaStatus::Corrupt, reason);
             report(clip, "broken, flagged corrupt: " + reason);
         };
-        return std::make_shared<VideoDecoder>(device_, entry->path.string(),
+        return std::make_shared<VideoDecoder>(&device_, entry->path.string(),
                                               VideoDecoder::Options{cacheBytes_, stats_, hash, broken, frameCost_});
     } catch (const std::exception& e) {
         library_->flag(hash, MediaStatus::Corrupt, e.what());
