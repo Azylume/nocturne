@@ -188,6 +188,13 @@ inline void RenderPass::setTexture(uint32_t slot, const Texture& texture)
 {
     vk::bindTexture(pass_, slot, texture.native());
 }
+inline void RenderPass::setTexture(uint32_t slot, const Texture* texture)
+{
+    if (texture)
+        return vk::bindTexture(pass_, slot, texture->native());
+    pass_->dirty = pass_->dirty || pass_->textures[slot];
+    pass_->textures[slot] = nullptr;
+}
 inline void RenderPass::setBytes(uint32_t index, const void* data, size_t size)
 {
     vk::pushBytes(pass_, index, data, size);
