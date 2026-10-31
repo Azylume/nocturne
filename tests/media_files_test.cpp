@@ -7,6 +7,7 @@
 
 #include <doctest.h>
 
+#include <cmath>
 #include <fstream>
 #include <optional>
 #include <set>
@@ -132,6 +133,31 @@ TEST_CASE("a sampled picture fills its size, cropped to its aspect, as premultip
         }
     }
     CHECK_THROWS_AS(azl::VideoSampler(mediaDir() / "audio_only.m4a", 64, 36, 3), std::runtime_error);
+}
+
+// Rows of these widths do not end on a block swscale writes whole; under a checking heap (page heap, ASan) a write past
+// a picture faults here. Full page heap on Windows caught one with the 426-wide clip at its own size.
+TEST_CASE("stills and sampled pictures of odd widths are whole")
+{
+    TempDir dir;
+    const fs::path hap = writeHapCount(dir.path / "count.mov", azl::HapCodec::HapQ, 10);
+    for (const int width : {77, 142, 213}) {
+        CAPTURE(width);
+        const int height = int(std::lround(width * 9.0 / 16.0));
+        for (const fs::path& file : {mediaDir() / "count_709_tv.mp4", hap}) {
+            INFO(file.filename().string());
+            // Platforms round the height either way.
+            const std::optional<std::pair<int, int>> still = jpegSize(azl::videoStill(file, uint32_t(width)));
+            REQUIRE(still);
+            CHECK(still->first == width);
+            CHECK(std::abs(still->second - height) <= 1);
+            azl::VideoSampler sampler(file, uint32_t(width) / 2, uint32_t(height) / 2 + 1, 1);
+            CHECK(sampler.picture(0).size() == size_t(width / 2) * (height / 2 + 1) * 4);
+        }
+    }
+    const fs::path wide = mediaDir() / "count_426.mp4";
+    CHECK(jpegSize(azl::videoStill(wide, 1000)) == std::pair{426, 240});
+    CHECK(azl::VideoSampler(wide, 426, 240, 1).picture(0).size() == size_t(426) * 240 * 4);
 }
 
 TEST_CASE("a missing font falls back to the system font")

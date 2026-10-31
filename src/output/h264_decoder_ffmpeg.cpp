@@ -2,9 +2,6 @@
 
 #include "media/ffmpeg_util.hpp"
 
-#include <cstddef>
-#include <cstring>
-
 namespace azl {
 
 // libavcodec's H.264 decoder on one thread, without frame delay: each access unit in, its picture out. Packets go in
@@ -44,34 +41,12 @@ struct H264Decoder::Session {
         const int* bt709 = sws_getCoefficients(SWS_CS_ITU709);
         sws_setColorspaceDetails(scale.get(), bt709, in.color_range == AVCOL_RANGE_JPEG, bt709, 1, 0, 1 << 16,
                                  1 << 16);
-        if (!sizeScaled(in.width, in.height) ||
-            sws_scale(scale.get(), in.data, in.linesize, 0, in.height, scaled->data, scaled->linesize) <= 0)
+        Picture picture{uint32_t(in.width), uint32_t(in.height),
+                        ff::scalePacked(scale.get(), in.data, in.linesize, in.height, AV_PIX_FMT_BGRA, in.width,
+                                        in.height, scaled)};
+        if (picture.bgra.empty())
             return std::nullopt;
-        Picture picture{uint32_t(in.width), uint32_t(in.height), {}};
-        const size_t row = size_t(in.width) * 4;
-        picture.bgra.resize(row * size_t(in.height));
-        for (int y = 0; y < in.height; ++y)
-            std::memcpy(picture.bgra.data() + size_t(y) * row, scaled->data[0] + ptrdiff_t(y) * scaled->linesize[0],
-                        row);
         return picture;
-    }
-
-    // swscale writes whole SIMD blocks, past the end of a row as tight as the picture's, so it scales into a frame
-    // with FFmpeg's own aligned and padded rows.
-    bool sizeScaled(int width, int height)
-    {
-        if (scaled && scaled->width == width && scaled->height == height)
-            return true;
-        scaled.reset(av_frame_alloc());
-        if (!scaled)
-            return false;
-        scaled->format = AV_PIX_FMT_BGRA;
-        scaled->width = width;
-        scaled->height = height;
-        if (av_frame_get_buffer(scaled.get(), 0) >= 0)
-            return true;
-        scaled.reset();
-        return false;
     }
 };
 

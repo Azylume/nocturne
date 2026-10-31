@@ -9,6 +9,7 @@ extern "C" {
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 // Owning handles for FFmpeg objects and the few steps every FFmpeg reader shares.
 namespace azl::ff {
@@ -61,5 +62,11 @@ inline uint32_t fourccOfTag(uint32_t tag)
 {
     return (tag & 0xff) << 24 | (tag >> 8 & 0xff) << 16 | (tag >> 16 & 0xff) << 8 | tag >> 24;
 }
+
+// The picture in `data` scaled to `width` x `height` pixels of the 4-byte `format`, rows packed; empty when it cannot
+// be scaled. swscale writes whole SIMD blocks past the end of a row that tight, so it scales into `padded`, a frame
+// with FFmpeg's own aligned and padded rows that the next call of the same size and format reuses.
+std::vector<uint8_t> scalePacked(SwsContext* scale, const uint8_t* const data[], const int linesize[], int sourceHeight,
+                                 AVPixelFormat format, int width, int height, Frame& padded);
 
 } // namespace azl::ff

@@ -1,5 +1,8 @@
 #include "media/ffmpeg_util.hpp"
 
+#include <cstddef>
+#include <cstring>
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -109,5 +112,38 @@ Format openFormat(const std::filesystem::path& file, int& error)
 }
 
 #endif
+
+namespace {
+
+bool fits(const AVFrame* frame, AVPixelFormat format, int width, int height)
+{
+    return frame && frame->format == format && frame->width == width && frame->height == height;
+}
+
+} // namespace
+
+std::vector<uint8_t> scalePacked(SwsContext* scale, const uint8_t* const data[], const int linesize[], int sourceHeight,
+                                 AVPixelFormat format, int width, int height, Frame& padded)
+{
+    if (!fits(padded.get(), format, width, height)) {
+        padded.reset(av_frame_alloc());
+        if (!padded)
+            return {};
+        padded->format = format;
+        padded->width = width;
+        padded->height = height;
+        if (av_frame_get_buffer(padded.get(), 0) < 0) {
+            padded.reset();
+            return {};
+        }
+    }
+    if (sws_scale(scale, data, linesize, 0, sourceHeight, padded->data, padded->linesize) <= 0)
+        return {};
+    const size_t row = size_t(width) * 4;
+    std::vector<uint8_t> out(row * size_t(height));
+    for (int y = 0; y < height; ++y)
+        std::memcpy(out.data() + size_t(y) * row, padded->data[0] + ptrdiff_t(y) * padded->linesize[0], row);
+    return out;
+}
 
 } // namespace azl::ff
