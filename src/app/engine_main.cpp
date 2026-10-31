@@ -542,12 +542,12 @@ const char* roleName(azl::Role role)
 }
 
 // One pipeline cache per GPU and build: a new build or another GPU starts an empty one, and the others are removed.
-std::filesystem::path pipelineCache(const std::filesystem::path& stateDir, MTL::Device* device)
+std::filesystem::path pipelineCache(const std::filesystem::path& stateDir, const azl::gpu::Device& device)
 {
-    std::string name = std::string(device->name()->utf8String()) + "-" + azl::buildId();
+    std::string name = device.name() + "-" + azl::buildId();
     std::replace_if(name.begin(), name.end(), [](unsigned char c) { return !std::isalnum(c) && c != '-'; }, '_');
     const std::filesystem::path dir = stateDir / "pipelines";
-    const std::filesystem::path file = dir / (name + ".metallib");
+    const std::filesystem::path file = dir / (name + azl::gpu::kPipelineCacheExtension);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
@@ -766,7 +766,7 @@ int runEngine(const EngineConfig& opt)
         saved = loadState(stateDir / "composition.json");
     }
 
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     azl::UserIsfLibrary userIsf(opt.state.empty() ? std::filesystem::path() : stateDir / "isf-user",
                                 opt.state.empty() ? std::filesystem::path() : stateDir / "isf");
     azl::MediaLibrary library(opt.library);
@@ -777,13 +777,13 @@ int runEngine(const EngineConfig& opt)
     const std::optional<azl::ShowFile> showFile = startingShowFile(start, saved);
     if (start.composition)
         saved.reset();
-    const std::string cache = opt.state.empty() ? "" : pipelineCache(stateDir, device.get()).string();
+    const std::string cache = opt.state.empty() ? "" : pipelineCache(stateDir, device).string();
     const std::filesystem::path settingsFile = opt.state.empty() ? std::filesystem::path() : stateDir / "settings.json";
     const azl::StartingSettings starting =
         azl::startingSettings(azl::loadMachineSettings(settingsFile), settingsFlags(opt));
     std::unique_ptr<azl::FrameTrace> trace =
         opt.frameTrace.empty() ? nullptr : std::make_unique<azl::FrameTrace>(opt.frameTrace);
-    azl::Engine engine(device.get(),
+    azl::Engine engine(device,
                        {.width = opt.width,
                         .height = opt.height,
                         .clipCacheBytes = size_t(starting.settings.frameCacheMB) << 20,
@@ -998,7 +998,7 @@ int runEngine(const EngineConfig& opt)
         const azl::FrameRef frame = engine.latestFrame();
         return frame ? frame->index : UINT64_MAX;
     });
-    std::printf("device %s | composition %ux%u at %.0f fps%s\n", device->name()->utf8String(), opt.width, opt.height,
+    std::printf("device %s | composition %ux%u at %.0f fps%s\n", device.name().c_str(), opt.width, opt.height,
                 opt.fps, opt.windowed ? " | windowed" : "");
     std::printf("media library %s | clip cache %llu MB | seed %u%s%s\n", opt.library.c_str(),
                 (unsigned long long)starting.settings.frameCacheMB, opt.seed,

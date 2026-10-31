@@ -42,8 +42,9 @@ inline constexpr size_t kFromChromaSlot = kPrevSlot + 1;
 inline constexpr size_t kFadeLumaSlot = kSideSlot + 16;
 inline constexpr size_t kFadeChromaSlot = kFadeLumaSlot + 1;
 
-// One GPU pass. Its fragment shader `passMain` reads the textures above, the Header at buffer(0) and the stages'
-// parameters, in stage order, at buffer(1).
+// One GPU pass: GLSL with a fragment entry point per name in passEntries, each compiled with `#define ENTRY_<name>`
+// (withEntry). It reads the textures above at their slots, the Header at buffer 0 and the stages' parameters, in
+// stage order, at buffer 1 (shader_layout.hpp).
 struct PlannedPass {
     SourceKind source = SourceKind::TestCard;
     // For a side pass: the stages fused before its multi-pass stage, then that stage.
@@ -58,7 +59,7 @@ struct PlannedPass {
     uint32_t divisor = 1;
     // The target is RGBA16F instead of 8-bit.
     bool float16 = false;
-    std::string metal;
+    std::string glsl;
 };
 
 // Layout of buffer(0), shared with the generated shaders. A text source reads its fill colour, its outline colour and
@@ -102,5 +103,10 @@ std::vector<PlannedPass> planChain(SourceKind source, const std::vector<const Ef
 std::vector<size_t> combinedStages(const PlannedPass& pass);
 // Whether a last pass has the single-pass fade entry points.
 bool singlePassFade(const PlannedPass& pass);
+// The pass's fragment entry points in pipeline order: passMain alone, or for a last pass a pair per way of mixing in
+// (plain, a transition's outgoing picture, the single-pass fade), the fixed-function entry before the one that
+// composites over a copy of the target.
+std::vector<std::string> passEntries(const PlannedPass& pass);
+
 
 } // namespace azl

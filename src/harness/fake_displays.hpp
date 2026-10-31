@@ -27,7 +27,7 @@ public:
     void detach(const std::string& id);
 
     std::vector<DisplayInfo> attached() const override { return attached_; }
-    std::unique_ptr<Surface> open(const std::string& id, MTL::Device* device) override;
+    std::unique_ptr<Surface> open(const std::string& id, const gpu::Device& device) override;
     bool unmirror(const std::vector<std::string>& ids) override;
     // Every unmirror call so far, with its ids.
     const std::vector<std::vector<std::string>>& unmirrored() const { return unmirrored_; }

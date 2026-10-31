@@ -1,13 +1,12 @@
 #pragma once
 
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <string_view>
 
 namespace azl {
 
-// Fixed-function blending of a premultiplied colour into the target.
-enum class Blending { None, Normal, Add, Screen, Multiply };
+using Blending = gpu::Blending;
 
 // Shaders compile from source at start-up, so the build needs no Xcode `metal` tool.
 NS::SharedPtr<MTL::Library> makeLibrary(MTL::Device* device, const char* source);

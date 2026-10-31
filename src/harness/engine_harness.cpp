@@ -11,7 +11,7 @@ namespace azl {
 
 namespace {
 
-constexpr MTL::PixelFormat kReadbackFormat = MTL::PixelFormatRGBA8Unorm;
+constexpr gpu::Format kReadbackFormat = gpu::Format::RGBA8;
 
 std::filesystem::path temporaryLibrary()
 {
@@ -54,10 +54,10 @@ Composition placedByRole(Composition composition, const RoleDisplays& roles)
 } // namespace
 
 EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::path libraryRoot, Composition initial)
-    : fps_(fps), device_(NS::TransferPtr(MTL::CreateSystemDefaultDevice())),
+    : fps_(fps), device_(gpu::Device::systemDefault()),
       libraryRoot_(libraryRoot.empty() ? temporaryLibrary() : libraryRoot), library_(libraryRoot_),
       userIsf_(libraryRoot_ / "isf-user", libraryRoot_ / "isf"),
-      engine_(device_.get(), deterministic(config), &library_), screenDisplays_(libraryRoot_ / "screen-displays.json"),
+      engine_(device_, deterministic(config), &library_), screenDisplays_(libraryRoot_ / "screen-displays.json"),
       outputs_(engine_, displays_, {}, &known_),
       document_(placedByRole(std::move(initial), screenDisplays_.roles()),
                 [this](auto composition) {
@@ -103,9 +103,9 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
                        [this](const MachineSettings& s) { applySettings(s, engine_, previewService_); },
                        [this] { return settingsUse(engine_, previewService_); }),
       // NOCTURNE_OPAQUE_OUTPUTS=1 reads every screen back as --opaque-outputs draws it, to check it changes nothing.
-      painter_(device_.get(), kReadbackFormat, {config.width, config.height}, config.debugFrameBits,
-               config.opaqueOutputs || std::getenv("NOCTURNE_OPAQUE_OUTPUTS")),
-      queue_(NS::TransferPtr(device_->newCommandQueue())),
+      painter_(device_.native(), gpu::metalFormat(kReadbackFormat), {config.width, config.height},
+               config.debugFrameBits, config.opaqueOutputs || std::getenv("NOCTURNE_OPAQUE_OUTPUTS")),
+      queue_(device_.makeQueue()),
       machineService_(document_, engine_, displays_, &known_, [this] { return time(); }, [](auto work) { work(); },
                       {.stats = [this] { return machineStats(); },
                        .thermal =
@@ -305,31 +305,20 @@ Message EngineHarness::machineStats()
 
 Image EngineHarness::paint(const ScreenView& view)
 {
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    gpu::Scope scope;
     const uint32_t width = engine_.config().width;
     const uint32_t height = engine_.config().height;
-    const size_t rowBytes = size_t(width) * 4;
-
-    auto desc = NS::RetainPtr(MTL::TextureDescriptor::texture2DDescriptor(kReadbackFormat, width, height, false));
-    desc->setUsage(MTL::TextureUsageRenderTarget);
-    desc->setStorageMode(MTL::StorageModePrivate);
-    auto target = NS::TransferPtr(device_->newTexture(desc.get()));
-    auto buffer = NS::TransferPtr(device_->newBuffer(rowBytes * height, MTL::ResourceStorageModeShared));
+    const gpu::Texture target = device_.makeTexture(
+        {.format = kReadbackFormat, .width = width, .height = height, .usage = gpu::Usage::RenderTarget});
+    const gpu::Readback readback(device_, target);
 
     const FrameRef frame = engine_.latestFrame();
-    auto* cmd = queue_->commandBuffer();
-    painter_.encode(cmd, frame.get(), view, target.get());
-    auto* blit = cmd->blitCommandEncoder();
-    blit->copyFromTexture(target.get(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), buffer.get(), 0,
-                          rowBytes, rowBytes * height);
-    blit->endEncoding();
-    cmd->commit();
-    cmd->waitUntilCompleted();
-
-    Image image{width, height, std::vector<uint8_t>(rowBytes * height)};
-    std::memcpy(image.rgba.data(), buffer->contents(), image.rgba.size());
-    pool->release();
-    return image;
+    gpu::CommandBuffer cmd = queue_.commandBuffer();
+    painter_.encode(cmd.native(), frame.get(), view, target.native());
+    readback.encode(cmd);
+    cmd.commit();
+    cmd.waitUntilCompleted();
+    return Image{width, height, std::vector<uint8_t>(readback.data(), readback.data() + readback.size())};
 }
 
 } // namespace azl

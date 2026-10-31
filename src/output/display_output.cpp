@@ -34,9 +34,9 @@ void recordShown(OutputStats& stats, double presentedTime, double started)
 
 DisplayOutput::DisplayOutput(Engine& engine, std::string display, VsyncPhase& vsync)
     : engine_(engine), display_(std::move(display)), vsync_(vsync),
-      painter_(engine.device(), kSurfaceFormat, {engine.config().width, engine.config().height},
+      painter_(engine.device(), gpu::metalFormat(kSurfaceFormat), {engine.config().width, engine.config().height},
                engine.config().debugFrameBits, engine.config().opaqueOutputs),
-      queue_(NS::TransferPtr(engine.device()->newCommandQueue())), gpu_(engine.device(), "present ", display_),
+      queue_(engine.gpuDevice().makeQueue()), gpu_(engine.device(), "present ", display_),
       screen_(std::make_shared<const ScreenView>()), thread_([this] {
           setThreadRole(ThreadRole::Frames);
           AZL_THREAD_NAME("present " + display_);
@@ -108,9 +108,8 @@ void DisplayOutput::run()
 
 void DisplayOutput::present(Surface& surface, std::chrono::steady_clock::time_point vsync)
 {
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    gpu::Scope scope;
     presentFrame(surface, vsync);
-    pool->release();
 }
 
 void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::time_point vsync)
@@ -122,7 +121,7 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
         vsync_.refreshed(vsync, refresh);
     AZL_ZONE("present");
     const auto begun = std::chrono::steady_clock::now();
-    MTL::Texture* target = nullptr;
+    const gpu::Texture* target = nullptr;
     {
         AZL_ZONE("next target");
         target = surface.nextTarget();
@@ -144,8 +143,8 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
         std::lock_guard lock(mutex_);
         screen = screen_;
     }
-    auto* cmd = queue_->commandBuffer();
-    painter_.encode(cmd, frame.get(), *screen, target);
+    gpu::CommandBuffer cmd = queue_.commandBuffer();
+    painter_.encode(cmd.native(), frame.get(), *screen, target->native());
     double started = -1.0;
     if (frame && frame->index != lastIndex_) {
         if (!resumed_ && lastIndex_ != UINT64_MAX && frame->index > lastIndex_ + 1)
@@ -160,15 +159,14 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
         mark->fresh = started >= 0.0;
         mark->started = traceSeconds(frame->started);
     }
-    cmd->addCompletedHandler([held = std::move(frame), stats = stats_, mark,
-                              gpu = gpu_](MTL::CommandBuffer* done) mutable {
+    cmd.onCompleted([held = std::move(frame), stats = stats_, mark, gpu = gpu_](const gpu::Completion& done) mutable {
         held.reset();
         AZL_GPU_COLLECT(gpu);
-        stats->gpuMicros += uint64_t(std::max(0.0, done->GPUEndTime() - done->GPUStartTime()) * 1e6);
+        stats->gpuMicros += uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
         stats->gpuFrames++;
         if (mark) {
-            mark->gpuStart = traceFromHost(done->GPUStartTime());
-            mark->gpuEnd = traceFromHost(done->GPUEndTime());
+            mark->gpuStart = traceFromHost(done.gpuStart);
+            mark->gpuEnd = traceFromHost(done.gpuEnd);
         }
     });
     surface.present(cmd, [stats = stats_, started, mark, trace = engine_.config().frameTrace](double presentedTime) {
@@ -180,7 +178,7 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
     });
     if (mark)
         mark->committed = traceNow();
-    cmd->commit();
+    cmd.commit();
     stats_->presents++;
     const auto took = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - begun).count());

@@ -489,9 +489,9 @@ void registerHeavy()
     azl::registerEffect({.type = "testHeavy",
                          .kind = azl::StageKind::Pointwise,
                          .params = {{"loops", 0.0, 1e6, 0.0}},
-                         .metal = R"(
-    float4 a = c;
-    for (int i = 0; i < int(p[0]); ++i)
+                         .glsl = R"(
+    vec4 a = c;
+    for (int i = 0; i < int(pb[p + 0]); ++i)
         a = fract(a * 1.0001 + sin(a.yzwx) * 0.5);
     return mix(c, a, 0.0001);
 )"});

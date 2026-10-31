@@ -38,7 +38,7 @@ ReturnVideoService::ReturnVideoService(DocumentServer& document, Engine& engine)
     : document_(document),
       engine_(engine),
       queue_(NS::TransferPtr(engine.device()->newCommandQueue())),
-      painter_(engine.device(), kFrameFormat, {engine.config().width, engine.config().height}),
+      painter_(engine.device(), gpu::metalFormat(kFrameFormat), {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("return video");
           run();
@@ -212,8 +212,8 @@ MTL::Texture* ReturnVideoService::textureOf(CVPixelBufferRef buffer)
         return nullptr;
     if (auto it = textures_.find(surface); it != textures_.end())
         return it->second.get();
-    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, CVPixelBufferGetWidth(buffer),
-                                                             CVPixelBufferGetHeight(buffer), false);
+    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(
+        gpu::metalFormat(kFrameFormat), CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), false);
     desc->setUsage(MTL::TextureUsageRenderTarget);
     desc->setStorageMode(MTL::StorageModeShared);
     auto texture = NS::TransferPtr(engine_.device()->newTexture(desc, surface, 0));

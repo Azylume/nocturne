@@ -42,8 +42,8 @@ void registerGradient()
         return;
     azl::registerEffect({.type = "testGradient",
                          .kind = azl::StageKind::Pointwise,
-                         .metal = "\n    float2 uv = px / h.size;\n"
-                                  "    return float4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
+                         .glsl = "\n    vec2 uv = px / h.size;\n"
+                                 "    return vec4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
 }
 
 azl::Layer gradientLayer(uint64_t id)
