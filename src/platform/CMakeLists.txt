@@ -28,11 +28,12 @@ elseif(WIN32)
     credentials_win.cpp
     crypto_win.cpp
     process_win.cpp
+    thermal_win.cpp
     thread_priority_win.cpp
     work_queue_std.cpp
   )
   target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32)
+  target_link_libraries(nocturne_platform PUBLIC avrt winmm bcrypt advapi32 powrprof ole32 oleaut32 wbemuuid)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 
@@ -48,6 +49,7 @@ set(platform_tests
   ${repo_root}/tests/platform_paths_test.cpp
   ${repo_root}/tests/platform_process_test.cpp
   ${repo_root}/tests/platform_queue_test.cpp
+  ${repo_root}/tests/platform_thermal_test.cpp
   ${repo_root}/tests/platform_thread_test.cpp
 )
 
