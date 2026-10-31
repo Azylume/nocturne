@@ -10,7 +10,11 @@ int main(int argc, char** argv)
     // NOCTURNE_REAL_AUDIO=1 runs the tests that need a real input.
     const char* real = std::getenv("NOCTURNE_REAL_AUDIO");
     if (!real || std::string(real) != "1")
+#ifdef _WIN32
+        _putenv_s("NOCTURNE_NO_AUDIO_INPUT", "1");
+#else
         setenv("NOCTURNE_NO_AUDIO_INPUT", "1", 1);
+#endif
     doctest::Context context(argc, argv);
     return context.run();
 }

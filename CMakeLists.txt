@@ -3,7 +3,15 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "")
 
-project(nocturne VERSION 0.1.1 LANGUAGES CXX OBJCXX)
+# Off Apple the dependencies in vcpkg.json come from vcpkg (ADR 0016); the macOS build does not use it.
+if(CMAKE_HOST_WIN32 AND DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+endif()
+
+project(nocturne VERSION 0.1.1 LANGUAGES CXX)
+if(APPLE)
+  enable_language(OBJCXX)
+endif()
 
 # ccache, when installed, so a branch switch or a fresh build folder reuses what was compiled before.
 find_program(CCACHE_PROGRAM ccache)
@@ -23,7 +31,13 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-add_compile_options(-Wall -Wextra -Wno-unused-parameter $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+if(MSVC)
+  # clang-cl: /W4 is clang's -Wall -Wextra (its /Wall would be -Weverything).
+  add_compile_options(/W4 -Wno-unused-parameter /utf-8)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+else()
+  add_compile_options(-Wall -Wextra -Wno-unused-parameter $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+endif()
 
 option(NOCTURNE_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if(NOCTURNE_SANITIZE)
@@ -84,10 +98,10 @@ foreach(dep glslang glslang-default-resource-limits spirv-cross-core spirv-cross
   target_compile_options(${dep} PRIVATE -w)
 endforeach()
 
-add_library(nocturne_shader_cross STATIC src/engine/shader_cross.cpp)
+add_library(nocturne_shader_cross STATIC src/engine/shader_cross.cpp src/engine/isf_compiler.cpp)
 target_include_directories(nocturne_shader_cross PUBLIC src)
-target_link_libraries(nocturne_shader_cross PRIVATE glslang::glslang glslang::glslang-default-resource-limits
-  spirv-cross-msl)
+target_link_libraries(nocturne_shader_cross PUBLIC nocturne_protocol PRIVATE glslang::glslang
+  glslang::glslang-default-resource-limits spirv-cross-msl)
 
 file(GLOB isf_files CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/isf/*/*.fs)
 list(SORT isf_files)
@@ -117,8 +131,6 @@ add_library(nocturne_protocol STATIC
   src/document/mapping.cpp
   src/document/cues.cpp
   src/document/lineup.cpp
-  src/net/lan.cpp
-  src/net/pairing.cpp
   src/document/wall_clock.cpp
   src/document/modulation.cpp
   src/document/composition_file.cpp
@@ -131,19 +143,50 @@ add_library(nocturne_protocol STATIC
   src/effects/isf.cpp
   src/effects/preset_service.cpp
   src/import/xml.cpp
-  src/protocol/bundle_push.cpp
   src/protocol/document_mirror.cpp
   src/protocol/document_server.cpp
   src/protocol/messages.cpp
   src/protocol/prepare.cpp
   src/protocol/remote_files.cpp
   src/protocol/return_stream.cpp
-  src/supervisor/crash_guard.cpp
   src/supervisor/rotating_log.cpp
   src/supervisor/state_saver.cpp
 )
 target_include_directories(nocturne_protocol PUBLIC src)
 target_include_directories(nocturne_protocol SYSTEM PUBLIC third_party/nlohmann)
+if(WIN32)
+  target_sources(nocturne_protocol PRIVATE src/document/composition_file_win32.cpp)
+else()
+  target_sources(nocturne_protocol PRIVATE
+    src/document/composition_file_posix.cpp
+    src/net/lan.cpp
+    src/net/pairing.cpp
+    src/protocol/bundle_push.cpp
+    src/supervisor/crash_guard.cpp
+  )
+endif()
+
+# Engine logic with no GPU, media or OS dependency: it builds on every platform.
+add_library(nocturne_engine_logic STATIC
+  src/engine/autopilot_stepper.cpp
+  src/engine/machine_actions.cpp
+  src/engine/transport.cpp
+)
+target_link_libraries(nocturne_engine_logic PUBLIC nocturne_protocol nocturne_profile)
+
+enable_testing()
+# The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
+add_executable(nocturne_tests tests/main.cpp tests/autopilot_stepper_test.cpp tests/isf_test.cpp
+  tests/machine_actions_test.cpp)
+target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
+add_test(NAME nocturne_tests COMMAND nocturne_tests)
+
+# Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
+# platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
+if(NOT APPLE)
+  target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross)
+  return()
+endif()
 
 add_library(nocturne_net STATIC src/net/websocket.mm)
 target_link_libraries(nocturne_net PUBLIC nocturne_protocol nocturne_return_video "-framework Network" objc)
@@ -183,7 +226,6 @@ target_link_libraries(nocturne_media PUBLIC
 )
 
 add_library(nocturne_engine STATIC
-  src/engine/autopilot_stepper.cpp
   src/engine/effect_stepper.cpp
   src/engine/chain_compiler.cpp
   src/engine/clip_effects_preview.cpp
@@ -198,7 +240,6 @@ add_library(nocturne_engine STATIC
   src/engine/frame_trace.cpp
   src/engine/bundle_update.cpp
   src/engine/fsr_upscaler.cpp
-  src/engine/machine_actions.cpp
   src/engine/machine_service.cpp
   src/engine/machine_settings.cpp
   src/engine/metal_impl.cpp
@@ -214,10 +255,8 @@ add_library(nocturne_engine STATIC
   src/engine/static_bake.cpp
   src/engine/switch_log.cpp
   src/engine/gpu_profile.cpp
-  src/engine/isf_compiler.cpp
   src/engine/isf_library.cpp
   src/engine/isf_service.cpp
-  src/engine/transport.cpp
   src/engine/trigger_service.cpp
   src/engine/wall_cue_service.cpp
   src/output/display_output.cpp
@@ -238,6 +277,7 @@ if(NOCTURNE_TRACY)
 endif()
 target_include_directories(nocturne_engine PUBLIC src third_party/metal-cpp)
 target_link_libraries(nocturne_engine PUBLIC
+  nocturne_engine_logic
   nocturne_media
   nocturne_return_video
   nocturne_audio
@@ -351,8 +391,7 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/Nocturne.app.signed"
   VERBATIM)
 add_custom_target(app ALL DEPENDS "${CMAKE_BINARY_DIR}/Nocturne.app.signed")
 
-enable_testing()
-add_executable(nocturne_tests tests/main.cpp tests/harness_test.cpp tests/golden.cpp tests/protocol_test.cpp
+target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp tests/protocol_test.cpp
   tests/media_test.cpp tests/effects_test.cpp tests/transport_test.cpp tests/layers_test.cpp
   tests/jump_reverse_test.cpp tests/trigger_test.cpp tests/screens_test.cpp tests/autopilot_test.cpp tests/column_autopilot_test.cpp
   tests/transition_test.cpp tests/audio_test.cpp tests/audio_service_test.cpp tests/supervisor_test.cpp
@@ -361,13 +400,12 @@ add_executable(nocturne_tests tests/main.cpp tests/harness_test.cpp tests/golden
   tests/mapping_test.cpp tests/cue_test.cpp tests/text_test.cpp tests/preview_test.cpp tests/sync_test.cpp
   tests/generator_test.cpp tests/prototype_gaps_test.cpp tests/continuity_test.cpp
   tests/record_test.mm tests/resilience_test.cpp tests/still_test.cpp tests/colour_test.cpp tests/engine_config_test.cpp
-  tests/autopilot_stepper_test.cpp tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
-  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_actions_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
-  tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
+  tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
+  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.mm tests/palette_steps_test.cpp
+  tests/update_steps_test.cpp tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
   tests/hap_test.cpp tests/hap_codec_test.cpp tests/hap_playback_test.cpp
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
-target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media" NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
@@ -375,7 +413,6 @@ target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_C
 add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
-add_test(NAME nocturne_tests COMMAND nocturne_tests)
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
 target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")

@@ -56,8 +56,13 @@ int systemUtcOffset(int64_t unixSeconds)
 {
     const std::time_t t = std::time_t(unixSeconds);
     std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+    return int(_mkgmtime(&local) - t);
+#else
     localtime_r(&t, &local);
     return int(local.tm_gmtoff);
+#endif
 }
 
 std::optional<int> clockMinutes(std::string_view text)
