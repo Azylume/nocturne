@@ -401,9 +401,10 @@ add_subdirectory(src/ui)
 # Everything below needs Apple frameworks, Objective-C++ or metal-cpp. A target moves above this line once its other
 # platforms' sources exist (ADR 0016). On Apple the harness links the portable libraries into the tests.
 if(NOT APPLE)
-  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp)
+  target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp tests/venues_key_test.cpp tests/record_ffmpeg_test.cpp
+    tests/return_video_encode_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues)
+    nocturne_udp_clock nocturne_discovery nocturne_http nocturne_venues nocturne_record nocturne_return_video)
   return()
 endif()
 
