@@ -1377,8 +1377,7 @@ TEST_CASE("every effect type and variant compiles first in a layer chain on the 
         for (const azl::EffectVariant& variant : azl::findEffect(type)->variants)
             types.push_back(type + "_" + variant.name);
     }
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    azl::ChainCompiler compiler(device.get());
+    azl::ChainCompiler compiler(azl::gpu::Device::systemDefault());
     std::vector<std::string> failures;
     compiler.onFailure([&](const std::vector<std::string>& chain, const std::string& error) {
         failures.push_back(chain.front() + ": " + error.substr(0, 300));

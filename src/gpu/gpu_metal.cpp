@@ -282,10 +282,6 @@ PipelineCache Device::openPipelineCache(const std::string& path) const
     NS::Error* error = nullptr;
     PipelineCache cache;
     cache.handle_ = NS::TransferPtr(handle_->newBinaryArchive(desc.get(), &error));
-    if (!cache && desc->url()) {
-        desc->setUrl(nullptr);
-        cache.handle_ = NS::TransferPtr(handle_->newBinaryArchive(desc.get(), &error));
-    }
     return cache;
 }
 

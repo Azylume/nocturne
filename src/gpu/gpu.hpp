@@ -420,8 +420,9 @@ public:
                                       bool* cached = nullptr, std::string* error = nullptr) const;
     ComputePipeline makeComputePipeline(const ShaderModule& module, std::string_view function,
                                         std::string* error = nullptr) const;
-    // Opens the cache file at `path`, or an empty cache when it is missing or unreadable (a kill mid-write, an OS
-    // update). Whether a device may keep one at all is the caller's call (archivesWork in engine/metal_util.hpp).
+    // Opens the cache file at `path`, or an empty cache when `path` is empty or names no file. Null when the file does
+    // not load (a kill mid-write, an OS update). Whether a device may keep one at all is the caller's call
+    // (archivesWork in engine/metal_util.hpp).
     PipelineCache openPipelineCache(const std::string& path) const;
     // Writes the whole cache to `path`; false with `error` set when it could not.
     bool savePipelineCache(const PipelineCache& cache, const std::string& path, std::string* error = nullptr) const;

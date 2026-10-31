@@ -3,7 +3,7 @@
 #include "document/composition.hpp"
 #include "effects/chain_planner.hpp"
 
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -37,7 +37,7 @@ BlendVariant blendVariant(BlendMode mode);
 struct CompiledPass {
     PlannedPass plan;
     // One pipeline, or for a last pass one per BlendVariant, so switching a blend mode never compiles.
-    std::vector<NS::SharedPtr<MTL::RenderPipelineState>> pipelines;
+    std::vector<gpu::RenderPipeline> pipelines;
 };
 
 // The effects one draw runs, in order, holding the parameter values the shaders read.
@@ -105,7 +105,7 @@ public:
 
     // With `cache`, compiled pipelines persist in that file, so a later compiler on the same file compiles none of
     // them again.
-    explicit ChainCompiler(MTL::Device* device, std::filesystem::path cache = {});
+    explicit ChainCompiler(const gpu::Device& device, std::filesystem::path cache = {});
     ~ChainCompiler();
 
     // Any thread, returns at once: queues every chain of the composition that is not compiled yet (each layer's, each
@@ -147,23 +147,23 @@ private:
     std::shared_ptr<const CompiledChain> compile(const Job& job);
     void fail(const std::vector<std::string>& types, const std::string& error);
     std::vector<CompiledPass> compilePasses(SourceKind source, const std::vector<const EffectDef*>& chain);
-    std::vector<NS::SharedPtr<MTL::RenderPipelineState>> pipelines(const PlannedPass& pass);
+    std::vector<gpu::RenderPipeline> pipelines(const PlannedPass& pass);
     void openArchive();
     void saveArchive();
     void reportFirstIdle();
 
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     CompileStats stats_;
     std::filesystem::path cachePath_;
     // Compile thread only.
-    NS::SharedPtr<MTL::BinaryArchive> archive_;
+    gpu::PipelineCache archive_;
     bool archiveChanged_ = false;
     std::chrono::steady_clock::time_point created_ = std::chrono::steady_clock::now();
     bool reported_ = false;
     uint64_t compiled_ = 0;
     uint64_t cached_ = 0;
     // Compile thread only, by generated source and target.
-    std::map<std::string, std::vector<NS::SharedPtr<MTL::RenderPipelineState>>> pipelines_;
+    std::map<std::string, std::vector<gpu::RenderPipeline>> pipelines_;
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;

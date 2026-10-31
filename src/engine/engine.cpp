@@ -218,7 +218,7 @@ std::unique_ptr<State> outgoing(State& state)
 Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* library)
     : device_(gpuDevice), config_(config), queue_(gpuDevice.makeQueue()),
       gpu_(device(), "render", ""),
-      compiler_(device(), config.pipelineCache ? config.pipelineCache : ""),
+      compiler_(gpuDevice, config.pipelineCache ? config.pipelineCache : ""),
       decoders_(device(), library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
       texts_(device(), config.height),
       sides_(gpuDevice, config.width, config.height),
@@ -1457,7 +1457,7 @@ bool Engine::singlePass(const Draw& draw)
     const CompiledPass& last = draw.passes->back();
     return from.picture && draw.picture && draw.passes->size() == 1 && from.passes->size() == 1 &&
            last.pipelines.size() > kFadeSinglePipelines &&
-           from.passes->back().pipelines.front().get() == last.pipelines.front().get();
+           from.passes->back().pipelines.front().native() == last.pipelines.front().native();
 }
 
 // A draw's last pass, or during a transition the pass that mixes its two pictures.
@@ -1639,7 +1639,7 @@ void Engine::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass
     derive(pass.plan, params_, rates_, header);
     if (params_.empty())
         params_.push_back(0.0f);
-    enc->setRenderPipelineState(pass.pipelines[pipeline].get());
+    enc->setRenderPipelineState(pass.pipelines[pipeline].native());
     enc->setFragmentBytes(&header, sizeof(header), 0);
     enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
     if (mix) {

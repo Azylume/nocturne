@@ -7,7 +7,10 @@
 
 namespace azl {
 
-ClipEffectsPreview::ClipEffectsPreview(MTL::Device* device) : device_(NS::RetainPtr(device)), compiler_(device) {}
+ClipEffectsPreview::ClipEffectsPreview(MTL::Device* device)
+    : device_(NS::RetainPtr(device)), compiler_(gpu::Device::retain(device))
+{
+}
 
 bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<const Composition>& composition,
                               const ClipRef& clip, const std::string& slot, std::vector<uint8_t>& bgra,
@@ -183,7 +186,7 @@ void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const Compil
     derive(pass.plan, params_, rates_, header);
     if (params_.empty())
         params_.push_back(0.0f);
-    enc->setRenderPipelineState(pass.pipelines[size_t(BlendVariant::Normal)].get());
+    enc->setRenderPipelineState(pass.pipelines[size_t(BlendVariant::Normal)].native());
     enc->setFragmentBytes(&header, sizeof(header), 0);
     enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
     enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
