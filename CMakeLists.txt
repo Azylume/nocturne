@@ -217,6 +217,13 @@ if(WIN32)
   target_link_libraries(nocturne_audio PRIVATE ole32 avrt mmdevapi)
 endif()
 
+# The GPU interface everything draws through (ADR 0016): the Metal backend on Apple.
+if(APPLE)
+  add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/gpu_metal.cpp src/gpu/metal_impl.cpp)
+  target_include_directories(nocturne_gpu PUBLIC src third_party/metal-cpp)
+  target_link_libraries(nocturne_gpu PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Foundation" objc)
+endif()
+
 # Media: HAP, the decoders' frame caches, the Media Library and text. Reading and writing movies, stills and text
 # rasterising use AVFoundation and CoreText on Apple, FFmpeg and DirectWrite elsewhere (ADR 0016).
 add_library(nocturne_media STATIC
@@ -242,7 +249,7 @@ if(APPLE)
     src/media/text_renderer_coretext.cpp
     src/media/video_source_avf.mm
   )
-  target_include_directories(nocturne_media PUBLIC third_party/metal-cpp)
+  target_link_libraries(nocturne_media PUBLIC nocturne_gpu)
   target_link_libraries(nocturne_media PUBLIC
     "-framework AVFoundation"
     "-framework CoreMedia"
@@ -319,7 +326,6 @@ add_library(nocturne_engine STATIC
   src/engine/fsr_upscaler.cpp
   src/engine/machine_service.cpp
   src/engine/machine_settings.cpp
-  src/engine/metal_impl.cpp
   src/engine/metal_util.cpp
   src/engine/modulation_plan.cpp
   src/engine/modulation_service.cpp
@@ -354,6 +360,7 @@ if(NOCTURNE_TRACY)
 endif()
 target_include_directories(nocturne_engine PUBLIC src third_party/metal-cpp)
 target_link_libraries(nocturne_engine PUBLIC
+  nocturne_gpu
   nocturne_engine_logic
   nocturne_media
   nocturne_return_video
@@ -468,7 +475,7 @@ add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
-target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp)
+target_sources(nocturne_tests PRIVATE tests/keep_local_test.cpp tests/gpu_test.cpp)
 target_link_libraries(nocturne_tests PRIVATE nocturne_fetch nocturne_desk "-framework WebKit")
 
 option(NOCTURNE_FUZZ "Add the target fuzz: the libFuzzer harnesses in fuzz/, built with Homebrew LLVM" OFF)
