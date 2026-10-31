@@ -27,7 +27,7 @@ struct Settings {
     // "hevc" or "prores".
     std::string codec = "hevc";
     // A .mov file, or a folder that gets a file named after the date and time. Empty: ~/Movies/Nocturne, on Windows
-    // %USERPROFILE%\Videos\Nocturne.
+    // Nocturne in the user's Videos folder.
     std::filesystem::path path;
     // 0: the composition's size.
     uint32_t width = 0;

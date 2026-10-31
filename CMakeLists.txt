@@ -358,6 +358,7 @@ target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
 # encoder and decoder are VideoToolbox and AVFoundation on Apple (added below), FFmpeg elsewhere (ADR 0016).
 add_library(nocturne_record STATIC src/output/recording.cpp)
 target_include_directories(nocturne_record PUBLIC src)
+target_link_libraries(nocturne_record PUBLIC nocturne_platform)
 if(NOT APPLE)
   target_sources(nocturne_record PRIVATE src/output/movie_encoder_ffmpeg.cpp)
   target_sources(nocturne_return_video PRIVATE src/output/h264_encoder_ffmpeg.cpp src/output/h264_decoder_ffmpeg.cpp)
