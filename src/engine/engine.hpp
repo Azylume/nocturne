@@ -22,8 +22,6 @@
 #include "media/text_renderer.hpp"
 #include "platform/profile.hpp"
 
-#include <Metal/Metal.hpp>
-
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -274,7 +272,8 @@ public:
         return ring_->next(shown, time);
     }
     const gpu::Device& gpuDevice() const { return device_; }
-    MTL::Device* device() const { return device_.native(); }
+    // The backend's device, for the call sites not yet on the GPU interface.
+    gpu::NativeDevice device() const { return device_.native(); }
     // The Tracy timeline of the render queue, for encoders that write into the frame's command buffer.
     const profile::GpuTimeline& gpuTimeline() const { return gpu_; }
     const EngineConfig& config() const { return config_; }
