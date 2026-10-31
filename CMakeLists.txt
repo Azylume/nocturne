@@ -268,7 +268,7 @@ else()
 endif()
 if(WIN32)
   target_sources(nocturne_media PRIVATE src/media/text_renderer_dwrite.cpp)
-  target_link_libraries(nocturne_media PUBLIC bcrypt d2d1 dwrite ole32 windowscodecs)
+  target_link_libraries(nocturne_media PUBLIC d2d1 dwrite ole32 windowscodecs)
 endif()
 
 enable_testing()
