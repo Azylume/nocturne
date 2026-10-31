@@ -151,7 +151,7 @@ PreviewService::~PreviewService()
 void PreviewService::setClipLibrary(MediaLibrary* library)
 {
     if (library && !effects_)
-        effects_ = std::make_unique<ClipEffectsPreview>(engine_.device());
+        effects_ = std::make_unique<ClipEffectsPreview>(engine_.gpuDevice());
     library_ = library;
 }
 
@@ -562,7 +562,7 @@ bool PreviewService::drawEffects(const Target& target, const Strip& strip, size_
     picture = strip.pictures[index];
     const TransportState transport = engine_.transport();
     const std::string slot = std::to_string(target.cell->layer) + "/" + std::to_string(target.cell->column);
-    return effects_->draw(queue_.native(), composition, *clip, slot, picture, strip.width, strip.height, transport.time,
+    return effects_->draw(queue_, composition, *clip, slot, picture, strip.width, strip.height, transport.time,
                           transport.beat, engine_.audio());
 }
 

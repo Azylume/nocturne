@@ -7,12 +7,22 @@
 
 namespace azl {
 
-ClipEffectsPreview::ClipEffectsPreview(MTL::Device* device)
-    : device_(NS::RetainPtr(device)), compiler_(gpu::Device::retain(device))
+namespace {
+
+// A pass begins with nothing bound, so a texture that is absent stays unbound.
+void bind(gpu::RenderPass& pass, uint32_t slot, const gpu::Texture* texture)
+{
+    if (texture)
+        pass.setTexture(slot, *texture);
+}
+
+} // namespace
+
+ClipEffectsPreview::ClipEffectsPreview(const gpu::Device& device) : device_(device), compiler_(device)
 {
 }
 
-bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<const Composition>& composition,
+bool ClipEffectsPreview::draw(const gpu::Queue& queue, const std::shared_ptr<const Composition>& composition,
                               const ClipRef& clip, const std::string& slot, std::vector<uint8_t>& bgra,
                               uint32_t width, uint32_t height, double seconds, double beat,
                               const AudioAnalysis* audio)
@@ -27,12 +37,13 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
     if (width != width_ || height != height_) {
         width_ = width;
         height_ = height;
-        sides_ = std::make_unique<SideTargets>(gpu::Device::retain(device_.get()), width, height);
-        source_.reset();
-        target_.reset();
+        sides_ = std::make_unique<SideTargets>(device_, width, height);
+        source_ = {};
+        target_ = {};
+        readback_ = {};
         for (auto& pair : intermediates_)
             for (auto& texture : pair)
-                texture.reset();
+                texture = {};
     }
     if (composition != planned_) {
         auto plan = std::make_unique<ModulationPlan>(*composition);
@@ -50,11 +61,11 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
     sides_->keep({0}, ids);
     sides_->use(0, slot, 0);
 
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    MTL::Texture* source = texture(source_, MTL::PixelFormatBGRA8Unorm, true);
-    source->replaceRegion(MTL::Region(0, 0, width, height), 0, bgra.data(), size_t(width) * 4);
-    MTL::CommandBuffer* cmd = queue->commandBuffer();
-    MTL::Texture* input = source;
+    gpu::Scope scope;
+    const gpu::Texture& source = texture(source_, gpu::Format::BGRA8, gpu::Memory::Upload);
+    device_.upload(source, 0, bgra.data(), size_t(width) * 4);
+    gpu::CommandBuffer cmd = queue.commandBuffer();
+    const gpu::Texture* input = &source;
     size_t written = 0;
     for (size_t i = 0; i + 1 < passes.size(); ++i) {
         const CompiledPass& pass = passes[i];
@@ -69,42 +80,39 @@ bool ClipEffectsPreview::draw(MTL::CommandQueue* queue, const std::shared_ptr<co
             const SideTargets::Target target =
                 sides_->begin(0, effect, side, stage.effect->sidePasses[side], pass.plan.float16);
             if (target.fresh)
-                begin(cmd, target.prev->native(), MTL::LoadActionClear)->endEncoding();
-            auto* enc = begin(cmd, target.write->native(), MTL::LoadActionDontCare);
-            if (target.prev)
-                enc->setFragmentTexture(target.prev->native(), kPrevSlot);
+                cmd.begin({target.prev, gpu::Load::Clear}).end();
+            gpu::RenderPass into = cmd.begin({target.write, gpu::Load::DontCare});
+            bind(into, kPrevSlot, target.prev);
             for (size_t j = 0; j < side; ++j)
-                enc->setFragmentTexture(gpu::native(sides_->output(0, effect, j)), kSideSlot + j);
-            encodePass(enc, pass, effects, input, float(seconds));
-            enc->endEncoding();
+                bind(into, uint32_t(kSideSlot + j), sides_->output(0, effect, j));
+            encodePass(into, pass, effects, *input, float(seconds));
+            into.end();
             continue;
         }
-        const auto format = pass.plan.float16 ? MTL::PixelFormatRGBA16Float : MTL::PixelFormatBGRA8Unorm;
-        MTL::Texture* target = texture(intermediates_[pass.plan.float16][written++ % 2], format, false);
-        auto* enc = begin(cmd, target, MTL::LoadActionDontCare);
-        encodePass(enc, pass, effects, input, float(seconds));
-        enc->endEncoding();
-        input = target;
+        const auto format = pass.plan.float16 ? gpu::Format::RGBA16F : gpu::Format::BGRA8;
+        const gpu::Texture& target =
+            texture(intermediates_[pass.plan.float16][written++ % 2], format, gpu::Memory::Device);
+        gpu::RenderPass into = cmd.begin({&target, gpu::Load::DontCare});
+        encodePass(into, pass, effects, *input, float(seconds));
+        into.end();
+        input = &target;
     }
-    MTL::Texture* target = texture(target_, gpu::metalFormat(kFrameFormat), true);
-    auto* enc = begin(cmd, target, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 1));
-    encodePass(enc, passes.back(), effects, input, float(seconds));
-    enc->endEncoding();
-    if (target->storageMode() == MTL::StorageModeManaged) {
-        auto* blit = cmd->blitCommandEncoder();
-        blit->synchronizeResource(target);
-        blit->endEncoding();
-    }
-    cmd->commit();
-    cmd->waitUntilCompleted();
-    const bool ok = cmd->status() == MTL::CommandBufferStatusCompleted;
-    if (ok) {
-        target->getBytes(bgra.data(), size_t(width) * 4, MTL::Region(0, 0, width, height), 0);
+    const gpu::Texture& target = texture(target_, kFrameFormat, gpu::Memory::Device);
+    if (!readback_)
+        readback_ = gpu::Readback(device_, target);
+    gpu::RenderPass into = cmd.begin({&target, gpu::Load::Clear, {0, 0, 0, 1}});
+    encodePass(into, passes.back(), effects, *input, float(seconds));
+    into.end();
+    readback_.encode(cmd);
+    cmd.commit();
+    cmd.waitUntilCompleted();
+    const gpu::Completion done = cmd.completion();
+    if (done.ok) {
+        std::memcpy(bgra.data(), readback_.data(), bgra.size());
         ++stats_.pictures;
-        stats_.gpuMicros += uint64_t((cmd->GPUEndTime() - cmd->GPUStartTime()) * 1e6);
+        stats_.gpuMicros += uint64_t((done.gpuEnd - done.gpuStart) * 1e6);
     }
-    pool->release();
-    return ok;
+    return done.ok;
 }
 
 void ClipEffectsPreview::release()
@@ -112,11 +120,12 @@ void ClipEffectsPreview::release()
     width_ = 0;
     height_ = 0;
     sides_.reset();
-    source_.reset();
-    target_.reset();
+    source_ = {};
+    target_ = {};
+    readback_ = {};
     for (auto& pair : intermediates_)
         for (auto& texture : pair)
-            texture.reset();
+            texture = {};
     planned_.reset();
     plan_.reset();
 }
@@ -127,41 +136,24 @@ std::map<std::string, size_t> ClipEffectsPreview::sizes() const
     for (const auto* texture : {&source_, &target_, &intermediates_[0][0], &intermediates_[0][1],
                                 &intermediates_[1][0], &intermediates_[1][1]})
         if (*texture)
-            bytes += (*texture)->allocatedSize();
+            bytes += texture->allocatedBytes();
     return {{"previewChains", compiler_.sizes().first},
             {"previewSideTargets", sides_ ? sides_->count() : 0},
             {"previewSideSpares", sides_ ? sides_->spares() : 0},
             {"previewEffectKB", bytes >> 10}};
 }
 
-MTL::Texture* ClipEffectsPreview::texture(NS::SharedPtr<MTL::Texture>& texture, MTL::PixelFormat format, bool cpu)
+const gpu::Texture& ClipEffectsPreview::texture(gpu::Texture& texture, gpu::Format format, gpu::Memory memory)
 {
-    if (texture)
-        return texture.get();
-    auto* desc = MTL::TextureDescriptor::texture2DDescriptor(format, width_, height_, false);
-    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    desc->setStorageMode(!cpu                         ? MTL::StorageModePrivate
-                         : device_->hasUnifiedMemory() ? MTL::StorageModeShared
-                                                       : MTL::StorageModeManaged);
-    texture = NS::TransferPtr(device_->newTexture(desc));
-    return texture.get();
-}
-
-MTL::RenderCommandEncoder* ClipEffectsPreview::begin(MTL::CommandBuffer* cmd, MTL::Texture* target,
-                                                     MTL::LoadAction load, MTL::ClearColor clear)
-{
-    auto* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
-    auto* color = desc->colorAttachments()->object(0);
-    color->setTexture(target);
-    color->setLoadAction(load);
-    color->setClearColor(clear);
-    color->setStoreAction(MTL::StoreActionStore);
-    return cmd->renderCommandEncoder(desc);
+    if (!texture)
+        texture = device_.makeTexture(
+            {format, width_, height_, 1, gpu::Usage::Sampled | gpu::Usage::RenderTarget, memory});
+    return texture;
 }
 
 // Mirrors Engine::encodePass for a group source at full opacity, blending Normal in fixed function.
-void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass,
-                                    const EffectList& effects, MTL::Texture* input, float seconds)
+void ClipEffectsPreview::encodePass(gpu::RenderPass& into, const CompiledPass& pass, const EffectList& effects,
+                                    const gpu::Texture& input, float seconds)
 {
     PassHeader header{};
     header.size[0] = float(width_);
@@ -170,13 +162,12 @@ void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const Compil
     header.dt = float(dt_);
     header.opacity = 1.0f;
     header.blend = uint32_t(BlendMode::Normal);
-    enc->setFragmentTexture(input, 0);
+    into.setTexture(0, input);
     const std::vector<size_t> combined = combinedStages(pass.plan);
     for (size_t j = 0; j < combined.size(); ++j) {
         const PlannedStage& stage = pass.plan.stages[combined[j]];
-        enc->setFragmentTexture(
-            gpu::native(sides_->output(0, effects[stage.chainIndex]->id, stage.effect->sidePasses.size() - 1)),
-            kAuxSlot + j);
+        bind(into, uint32_t(kAuxSlot + j),
+             sides_->output(0, effects[stage.chainIndex]->id, stage.effect->sidePasses.size() - 1));
     }
     paramsOf(pass.plan, effects, params_);
     plan_->apply(pass.plan, effects, params_);
@@ -186,10 +177,10 @@ void ClipEffectsPreview::encodePass(MTL::RenderCommandEncoder* enc, const Compil
     derive(pass.plan, params_, rates_, header);
     if (params_.empty())
         params_.push_back(0.0f);
-    enc->setRenderPipelineState(pass.pipelines[size_t(BlendVariant::Normal)].native());
-    enc->setFragmentBytes(&header, sizeof(header), 0);
-    enc->setFragmentBytes(params_.data(), params_.size() * sizeof(float), 1);
-    enc->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
+    into.setPipeline(pass.pipelines[size_t(BlendVariant::Normal)]);
+    into.setBytes(0, &header, sizeof(header));
+    into.setBytes(1, params_.data(), params_.size() * sizeof(float));
+    into.draw(3);
 }
 
 } // namespace azl
