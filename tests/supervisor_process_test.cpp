@@ -1,5 +1,6 @@
 // nocturne-supervisor around the fake engine (tests/fake_engine.cpp), on every platform: restarts, hangs, crash
-// counting, safe mode, the skip list and stopping, with no GPU or display. supervisor_test.cpp runs the real engine.
+// counting, safe mode, the skip list and stopping, with no GPU or display. supervisor_test.cpp runs the real engine;
+// on Windows the last case here does, offscreen.
 #include "temp_folder.hpp"
 
 #include "document/composition_file.hpp"
@@ -301,12 +302,13 @@ std::string helpThroughPipe(const char* program)
 
 } // namespace
 
-TEST_CASE("supervisor: on Windows the supervisor and the desk open no console window, and their output reaches a pipe")
+TEST_CASE("supervisor: on Windows the supervisor, the desk and the engine open no console window, and their output "
+          "reaches a pipe")
 {
-    for (const char* program : {NOCTURNE_SUPERVISOR, NOCTURNE_DESK}) {
+    for (const char* program : {NOCTURNE_SUPERVISOR, NOCTURNE_DESK, NOCTURNE_ENGINE}) {
         INFO(program);
         CHECK(subsystem(program) == IMAGE_SUBSYSTEM_WINDOWS_GUI);
-        CHECK(contains(helpThroughPipe(program), "usage: nocturne-"));
+        CHECK(contains(helpThroughPipe(program), "usage: nocturne"));
     }
 }
 
@@ -319,5 +321,15 @@ TEST_CASE("supervisor: on Windows it runs and stops with no standard handles, as
     REQUIRE(eventually([&] { return contains(supervised.log(), "desk started"); }, 10.0));
     CHECK(supervised.stop() == 0);
     CHECK(contains(supervised.log(), "supervisor stopped"));
+}
+
+TEST_CASE("supervisor: on Windows the real engine runs under it with no standard handles and logs to engine.log")
+{
+    Supervised supervised({"--engine", NOCTURNE_ENGINE, "--", "--offscreen", "--port", "7492", "--loopback"},
+                          azl::Stdio::to(INVALID_HANDLE_VALUE));
+    INFO(supervised.log());
+    CHECK(supervised.stop() == 0);
+    CHECK(contains(supervised.log(), "engine exited with status 0"));
+    CHECK(contains(supervised.engineLog(), "stopped"));
 }
 #endif
