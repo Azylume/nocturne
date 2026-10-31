@@ -242,18 +242,20 @@ inline void RenderPass::setScissor(const Scissor& s)
 {
     pass_->setScissorRect(MTL::ScissorRect{s.x, s.y, s.width, s.height});
 }
-inline void RenderPass::draw(uint32_t vertices, uint32_t instances)
+inline void RenderPass::draw(uint32_t vertices, uint32_t instances, uint32_t firstInstance)
 {
-    if (instances == 1)
+    if (instances == 1 && firstInstance == 0)
         pass_->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(vertices));
     else
         pass_->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(vertices),
-                              NS::UInteger(instances));
+                              NS::UInteger(instances), NS::UInteger(firstInstance));
 }
-inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances)
+inline void RenderPass::drawIndexed(const Buffer& indices, uint32_t count, size_t offset, uint32_t instances,
+                                    uint32_t firstInstance)
 {
     pass_->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(count), MTL::IndexTypeUInt32,
-                                 indices.native(), NS::UInteger(offset), NS::UInteger(instances));
+                                 indices.native(), NS::UInteger(offset), NS::UInteger(instances), NS::Integer(0),
+                                 NS::UInteger(firstInstance));
 }
 inline void RenderPass::writeTimestamp(const TimestampQueries& queries, uint32_t index)
 {

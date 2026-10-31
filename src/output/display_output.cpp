@@ -34,7 +34,7 @@ void recordShown(OutputStats& stats, double presentedTime, double started)
 
 DisplayOutput::DisplayOutput(Engine& engine, std::string display, VsyncPhase& vsync)
     : engine_(engine), display_(std::move(display)), vsync_(vsync),
-      painter_(engine.device(), gpu::metalFormat(kSurfaceFormat), {engine.config().width, engine.config().height},
+      painter_(engine.gpuDevice(), kSurfaceFormat, {engine.config().width, engine.config().height},
                engine.config().debugFrameBits, engine.config().opaqueOutputs),
       queue_(engine.gpuDevice().makeQueue()), gpu_(engine.device(), "present ", display_),
       screen_(std::make_shared<const ScreenView>()), thread_([this] {
@@ -144,7 +144,7 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
         screen = screen_;
     }
     gpu::CommandBuffer cmd = queue_.commandBuffer();
-    painter_.encode(cmd.native(), frame.get(), *screen, target->native());
+    painter_.encode(cmd, frame.get(), *screen, *target);
     double started = -1.0;
     if (frame && frame->index != lastIndex_) {
         if (!resumed_ && lastIndex_ != UINT64_MAX && frame->index > lastIndex_ + 1)

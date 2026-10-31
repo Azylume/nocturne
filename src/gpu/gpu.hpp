@@ -289,9 +289,11 @@ public:
     void setBuffer(uint32_t index, const Buffer& buffer, size_t offset = 0);
     void setVertexBuffer(uint32_t index, const Buffer& buffer, size_t offset = 0);
     void setScissor(const Scissor& scissor);
-    void draw(uint32_t vertices, uint32_t instances = 1);
+    // Triangles; the shader's instance index counts from `firstInstance`.
+    void draw(uint32_t vertices, uint32_t instances = 1, uint32_t firstInstance = 0);
     // `count` uint32 indices from byte `offset` of `indices`.
-    void drawIndexed(const Buffer& indices, uint32_t count, size_t offset = 0, uint32_t instances = 1);
+    void drawIndexed(const Buffer& indices, uint32_t count, size_t offset = 0, uint32_t instances = 1,
+                     uint32_t firstInstance = 0);
     // A timestamp between draws: for TimestampMode::DrawBoundary.
     void writeTimestamp(const TimestampQueries& queries, uint32_t index);
     void end();
