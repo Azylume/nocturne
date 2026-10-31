@@ -2,6 +2,7 @@
 
 #include "net/lan.hpp"
 #include "platform/app_paths.hpp"
+#include "platform/crypto.hpp"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -24,7 +25,7 @@ constexpr size_t kTokenBytes = 32;
 std::string randomToken()
 {
     unsigned char bytes[kTokenBytes];
-    arc4random_buf(bytes, sizeof bytes);
+    randomBytes(bytes, sizeof bytes);
     static constexpr char kHex[] = "0123456789abcdef";
     std::string text;
     for (unsigned char b : bytes) {
