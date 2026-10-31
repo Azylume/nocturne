@@ -1265,8 +1265,8 @@ void Engine::encodeInputs(FrameEncoding& frame, Draw& draw)
         auto& pool = intermediates_[pass.plan.float16];
         const auto format = pass.plan.float16 ? gpu::Format::RGBA16F : gpu::Format::BGRA8;
         const gpu::Texture* target = bake.action == StaticBake::Action::Bake && bake.kept == i
-                                   ? bake.texture
-                                   : poolTexture(pool, ordinal * 2 + written++ % 2, format, sizeOf(draw));
+                                         ? bake.texture
+                                         : poolTexture(pool, ordinal * 2 + written++ % 2, format, sizeOf(draw));
         label(frame, draw, &pass);
         auto* enc = beginPass(frame, target, gpu::Load::DontCare);
         encodePass(enc, pass, 0, draw, draw.input, nullptr, frame.seconds, 1.0f);
@@ -1461,8 +1461,8 @@ bool Engine::singlePass(const Draw& draw)
 }
 
 // A draw's last pass, or during a transition the pass that mixes its two pictures.
-void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, const gpu::Texture* below,
-                        float seconds, float opacity) const
+void Engine::encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+                        const gpu::Texture* below, float seconds, float opacity) const
 {
     if (draw.from.empty())
         return encodePass(enc, draw.passes->back(), size_t(variant), draw, draw.input, below, seconds, opacity);

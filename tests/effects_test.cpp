@@ -305,7 +305,8 @@ TEST_CASE("the planner fuses pointwise and remap stages and cuts before a neighb
     auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
     for (const azl::PlannedPass& pass : cut)
         CHECK_NOTHROW(azl::makePipeline(device.get(), azl::passMsl(pass).c_str(), azl::mslFunction("fullscreen").c_str(),
-                                        azl::mslFunction("passMain").c_str(), azl::gpu::metalFormat(azl::kFrameFormat)));
+                                        azl::mslFunction("passMain").c_str(),
+                                        azl::gpu::metalFormat(azl::kFrameFormat)));
 }
 
 TEST_CASE("a neighbourhood effect reads a materialised 8-bit intermediate")
