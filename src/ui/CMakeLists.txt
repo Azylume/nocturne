@@ -26,16 +26,9 @@ if(APPLE)
   target_sources(nocturne_ui_client PRIVATE client/return_audio_output_apple.cpp)
 endif()
 
-# Local previews run a follower engine in this process, so they need the engine's GPU path; elsewhere the engine
-# paints them.
-add_library(nocturne_ui_local STATIC client/director_media.cpp)
-target_link_libraries(nocturne_ui_local PUBLIC nocturne_ui_client nocturne_fetch)
-if(APPLE)
-  target_sources(nocturne_ui_local PRIVATE client/local_previews.cpp)
-  target_link_libraries(nocturne_ui_local PUBLIC nocturne_sync)
-else()
-  target_sources(nocturne_ui_local PRIVATE client/local_previews_none.cpp)
-endif()
+# Local previews run a follower engine in this process, on the engine's GPU path.
+add_library(nocturne_ui_local STATIC client/director_media.cpp client/local_previews.cpp)
+target_link_libraries(nocturne_ui_local PUBLIC nocturne_ui_client nocturne_fetch nocturne_sync)
 
 set(NOCTURNE_UI_SOURCES
   app/alert_strip.cpp
@@ -105,27 +98,22 @@ if(APPLE)
     VERBATIM)
 endif()
 
-# The UI suite. Its cases without an engine build everywhere; the ones that drive the in-process engine
-# (EngineHarness) need its GPU path, so they build where it does.
+# The UI suite, most of it against an in-process engine (EngineHarness).
 add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_SOURCE_DIR}/tests/ui/params_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/map_geometry_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/engine_launcher_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/return_audio_test.cpp)
+  ${CMAKE_SOURCE_DIR}/tests/ui/return_audio_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/client_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/smoke_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/panels_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/map_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/monitor_handles_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/parity_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/tooltip_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/local_previews_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/scroll_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots" NOCTURNE_FAKE_ENGINE="$<TARGET_FILE:nocturne_fake_engine>")
 add_dependencies(nocturne_ui_tests nocturne_fake_engine)
-target_link_libraries(nocturne_ui_tests PRIVATE nocturne_ui_components nocturne_upload
+target_link_libraries(nocturne_ui_tests PRIVATE nocturne_ui_components nocturne_upload nocturne_harness
   juce::juce_recommended_config_flags)
-if(APPLE)
-  target_sources(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/ui/client_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/smoke_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/panels_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/map_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/monitor_handles_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/parity_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/tooltip_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/local_previews_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/scroll_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp
-    ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
-  target_link_libraries(nocturne_ui_tests PRIVATE nocturne_harness)
-endif()
 add_test(NAME nocturne_ui_tests COMMAND nocturne_ui_tests)

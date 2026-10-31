@@ -7,6 +7,7 @@
 #include "ui/app/midi_settings.hpp"
 
 #include <functional>
+#include <thread>
 
 namespace {
 
@@ -222,6 +223,44 @@ TEST_CASE("midi: notes and pads fire columns and decks, macros follow a fader, a
     CHECK(session.midi().bindings()[1].source == MidiSource{MidiSource::Kind::PitchBend, 3, 0});
 }
 
+#ifdef _WIN32
+// Windows MIDI cannot make a virtual controller, so this twin of the CoreMIDI case opens the inputs the machine has and
+// feeds messages from another thread, as an input's callback does.
+TEST_CASE("midi: Windows MIDI inputs open on start and close on off; messages from an input's thread arrive")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180});
+    Client client(harness.document());
+    const uint64_t layer = harness.document().document().layers[0].id;
+    azl::WebSocketServer server(harness.document(), 0);
+    azl::ui::Session session("127.0.0.1", server.port());
+    REQUIRE(runUntil(harness, [&] { return session.client().synced(); }));
+    azl::ui::MidiControl& midi = session.midi();
+    CHECK(midi.openInputs().isEmpty());
+
+    juce::StringArray available;
+    for (const juce::MidiDeviceInfo& device : juce::MidiInput::getAvailableDevices())
+        available.add(device.name);
+    MESSAGE("MIDI inputs on this machine: " << available.joinIntoString(", ").toStdString());
+    midi.start();
+    REQUIRE(runUntil(harness, [&] { return midi.openInputs().size() == available.size(); }, 10.0));
+    for (const juce::String& name : available)
+        CHECK(midi.openInputs().contains(name));
+
+    midi.learn({.kind = MidiTarget::Kind::Param, .param = {layer, 0, "opacity"}});
+    const auto fromInput = [&](const juce::MidiMessage& message) { std::thread([&] { midi.receive(message); }).join(); };
+    fromInput(cc(11, 127));
+    REQUIRE(runUntil(harness, [&] { return midi.bindings().size() == 1; }, 10.0));
+    fromInput(cc(11, 127));
+    settle(harness);
+    fromInput(cc(11, 30));
+    REQUIRE(runUntil(harness, [&] { return std::abs(harness.document().document().layers[0].opacity - 30 / 127.0) < 1e-9; }));
+
+    midi.setInput("off");
+    CHECK(midi.openInputs().isEmpty());
+    midi.setInput("");
+    REQUIRE(runUntil(harness, [&] { return midi.openInputs().size() == available.size(); }, 10.0));
+}
+#else
 TEST_CASE("midi: a controller's messages arrive through CoreMIDI, and it is followed as it comes and goes")
 {
     azl::EngineHarness harness({.width = 320, .height = 180});
@@ -257,3 +296,4 @@ TEST_CASE("midi: a controller's messages arrive through CoreMIDI, and it is foll
     controller.reset();
     REQUIRE(runUntil(harness, [&] { return !midi.openInputs().contains(name); }, 10.0));
 }
+#endif
