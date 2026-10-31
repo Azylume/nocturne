@@ -79,23 +79,21 @@ if [ -z "$failed" ]; then
     echo "== $name: failed without a failed case in the report" >&2
     exit 1
 fi
-# The report names a subcase as "case/subcase" (a name may hold a slash itself): the whole case reruns, found by
-# taking "/..." off the end until the filter runs something.
+# The report names a subcase as "case/subcase" (a name may hold a slash itself), and a filter matches only whole
+# cases: the rerun takes the longest "/"-cut of the name that is a test case of this shard.
+cases=$("$binary" ${filters[@]+"${filters[@]}"} --list-test-cases | grep -v -e '^\[doctest\]' -e '^====' | tr -d '\r')
 status=0
 while IFS= read -r case; do
     name_=$case
-    while :; do
-        echo "== $name: rerunning '$name_'"
-        if run "$name-rerun" --test-case="$(printf '%s' "$name_" | sed 's/,/\\,/g')"; then
-            echo "::warning::flaky: '$case' failed once and passed on its rerun ($name)"
-            break
-        fi
-        if grep -q '<testcase' "$REPORTS/$name-rerun.xml" || [[ $name_ != */* ]]; then
-            echo "::error::'$case' failed twice ($name)"
-            status=1
-            break
-        fi
+    while [[ $name_ == */* ]] && ! grep -qxF -- "$name_" <<< "$cases"; do
         name_=${name_%/*}
     done
+    echo "== $name: rerunning '$name_'"
+    if run "$name-rerun" --test-case="$(printf '%s' "$name_" | sed 's/,/\\,/g')"; then
+        echo "::warning::flaky: '$case' failed once and passed on its rerun ($name)"
+    else
+        echo "::error::'$case' failed twice ($name)"
+        status=1
+    fi
 done <<< "$failed"
 exit $status
