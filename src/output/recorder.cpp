@@ -1,10 +1,34 @@
 #include "output/recorder_session.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <utility>
 
 namespace azl {
+
+std::optional<uint64_t> screenOf(const std::string& target, const Composition& composition)
+{
+    if (target == "composition")
+        return std::nullopt;
+    if (target.rfind("screen:", 0) == 0) {
+        const uint64_t id = std::strtoull(target.c_str() + 7, nullptr, 10);
+        for (const Screen& screen : composition.screens)
+            if (screen.id == id)
+                return id;
+    }
+    throw std::runtime_error("unknown recording target " + target + " (composition or screen:N)");
+}
+
+ScreenView recordedView(std::optional<uint64_t> screen, const Composition& composition)
+{
+    Screen shown{.slices = {Slice{}}};
+    if (screen)
+        for (const Screen& s : composition.screens)
+            if (s.id == *screen)
+                shown = s;
+    return screenView(composition, shown, false, std::nullopt);
+}
 
 Recorder::Recorder(Engine& engine, double fps, OnEnded onEnded, OnSpace onSpace)
     : engine_(engine), fps_(fps), onEnded_(std::move(onEnded)), onSpace_(std::move(onSpace)),

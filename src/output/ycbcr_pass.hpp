@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gpu/gpu.hpp"
+#include "output/ycbcr_picture.hpp"
 
 #include <array>
 #include <cstdint>
@@ -44,8 +45,15 @@ struct YCbCrCalibration {
 // The block average, and 8-bit codes scaled by 4 into 10 bits.
 YCbCrCalibration averageCalibration(const YCbCrFormat& format);
 
+// The planes an encoder's picture layout takes from the pass.
+YCbCrFormat ycbcrFormat(YCbCrLayout layout);
+// Copies planes the pass wrote, read back in `format`'s order, into `picture` of the same size. Not on the render
+// thread.
+void copyPlanes(const YCbCrFormat& format, std::span<const gpu::Readback> planes, YCbCrPicture& picture);
+
 // One compute pass that reads a BGRA picture once and writes its Y'CbCr planes. The planes are storage textures of
-// `format.planes`, each the picture's size divided by the plane's `across` and `down`.
+// `format.planes`, each the picture's size divided by the plane's `across` and `down`, rounded up; samples past the
+// picture's edge read transparent black.
 class YCbCrPass {
 public:
     // Not on the render thread: compiles its pipeline. Throws std::runtime_error when it cannot.
