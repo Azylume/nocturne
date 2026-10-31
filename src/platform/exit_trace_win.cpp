@@ -17,7 +17,8 @@ constexpr int kMaxFrames = 32;
 // Fatal exceptions reported when raised; a library that keeps faulting and handling it must not flood the log.
 constexpr int kMaxRaised = 8;
 
-std::atomic<bool> expected{false};
+// Until traceExits, every exit is expected: a process that links this file but never traces leaves nothing.
+std::atomic<bool> expected{true};
 std::atomic<int> raised{0};
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 
@@ -270,6 +271,7 @@ namespace azl {
 
 void traceExits()
 {
+    expected = false;
     ULONG guarantee = 64 * 1024;
     SetThreadStackGuarantee(&guarantee);
     AddVectoredExceptionHandler(1, onRaised);
