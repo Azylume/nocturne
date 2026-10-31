@@ -173,9 +173,10 @@ jobs:
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
           New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
           "image=$env:ImageVersion" >> $env:GITHUB_OUTPUT
-      - name: Cache the vcpkg packages (FFmpeg, opus, pocketfft)
+      - name: Restore the vcpkg packages (FFmpeg, opus, pocketfft)
         # A new runner image brings a new compiler, which vcpkg's package hashes include, so its key starts over.
-        uses: actions/cache@v4
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: C:\vcpkg-archives
           key: vcpkg-${{ steps.vcpkg.outputs.image }}-${{ hashFiles('vcpkg.json') }}
@@ -197,6 +198,13 @@ jobs:
           "CXX=clang-cl" >> $env:GITHUB_ENV
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Save the vcpkg packages
+        # Saved once configuring has built them all, so a later failure does not throw the FFmpeg build away.
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\vcpkg-archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Build
         run: cmake --build build
       - name: Run the engine tests
