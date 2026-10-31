@@ -13,7 +13,9 @@ int main(int argc, char** argv)
     setenv("NOCTURNE_NO_AUDIO_INPUT", "1", 1);
 #endif
     juce::ScopedJuceInitialiser_GUI gui;
+#if JUCE_MAC
     juce::Process::setDockIconVisible(false);
+#endif
     doctest::Context context(argc, argv);
     return context.run();
 }

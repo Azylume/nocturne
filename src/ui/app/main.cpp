@@ -94,9 +94,11 @@ public:
             localRender = azl::ui::Session::LocalRender::Off;
         else if (args.contains("--local-previews"))
             localRender = azl::ui::Session::LocalRender::On;
+#if JUCE_MAC
         // The bundle starts as a background app, so a hidden run never flashes a Dock icon.
         if (!hidden)
             juce::Process::setDockIconVisible(true);
+#endif
         const bool interactive = !hidden && snapshot.isEmpty();
         // The single-bundle app owns its engine: if nothing answers on the local port, start the nocturne engine that
         // sits beside this binary in Contents/MacOS (loopback only), and watch it (EngineKeepalive). It reuses an
