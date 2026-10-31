@@ -309,6 +309,17 @@ elseif(WIN32)
   target_link_libraries(nocturne_discovery PUBLIC nocturne_protocol dnsapi)
 endif()
 
+# Blocking HTTP(S) for uploads: NSURLSession on Apple, WinHTTP on Windows.
+add_library(nocturne_http STATIC)
+target_include_directories(nocturne_http PUBLIC src)
+if(APPLE)
+  target_sources(nocturne_http PRIVATE src/upload/http.mm)
+  target_link_libraries(nocturne_http PUBLIC "-framework Foundation")
+elseif(WIN32)
+  target_sources(nocturne_http PRIVATE src/upload/http_win.cpp)
+  target_link_libraries(nocturne_http PUBLIC winhttp)
+endif()
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -316,7 +327,7 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
   tests/media_files_test.cpp tests/video_decoder_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
-  tests/udp_clock_test.cpp ${NOCTURNE_PLATFORM_TESTS})
+  tests/udp_clock_test.cpp tests/http_test.cpp ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media"
@@ -337,7 +348,7 @@ target_link_libraries(nocturne-hap-encode PRIVATE nocturne_media)
 if(NOT APPLE)
   target_sources(nocturne_tests PRIVATE tests/discovery_test.cpp)
   target_link_libraries(nocturne_tests PRIVATE nocturne_engine_logic nocturne_shader_cross nocturne_media nocturne_net
-    nocturne_udp_clock nocturne_discovery)
+    nocturne_udp_clock nocturne_discovery nocturne_http)
   return()
 endif()
 
@@ -421,10 +432,6 @@ target_link_libraries(nocturne_import PUBLIC nocturne_media)
 
 add_executable(nocturne-import src/app/import.cpp)
 target_link_libraries(nocturne-import PRIVATE nocturne_import)
-
-add_library(nocturne_http STATIC src/upload/http.mm)
-target_include_directories(nocturne_http PUBLIC src)
-target_link_libraries(nocturne_http PUBLIC "-framework Foundation")
 
 add_library(nocturne_upload STATIC src/upload/media_sync.cpp src/upload/media_upload.cpp src/upload/s3.cpp
   src/upload/upload_states.cpp)
