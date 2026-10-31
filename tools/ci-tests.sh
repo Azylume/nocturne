@@ -67,14 +67,14 @@ if run "$name"; then
     exit 0
 fi
 
-# The failed cases, from the JUnit report, rerun one by one.
+# The failed cases, from the JUnit report, rerun one by one. Python on Windows ends its lines with "\r\n".
 failed=$("$PYTHON" -c '
 import sys, xml.etree.ElementTree as ET
 tree = ET.parse(sys.argv[1])
 for case in tree.iter("testcase"):
     if case.find("failure") is not None or case.find("error") is not None:
         print(case.get("name"))
-' "$REPORTS/$name.xml")
+' "$REPORTS/$name.xml" | tr -d '\r')
 if [ -z "$failed" ]; then
     echo "== $name: failed without a failed case in the report" >&2
     exit 1
