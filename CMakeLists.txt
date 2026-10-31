@@ -362,6 +362,10 @@ target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
 add_executable(nocturne_fake_engine tests/fake_engine.cpp)
 target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
 
+# Recording's settings, file naming, disk reserve, rollover and audio timing; the encoder is per platform (ADR 0016).
+add_library(nocturne_record STATIC src/output/recording.cpp)
+target_include_directories(nocturne_record PUBLIC src)
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -459,6 +463,7 @@ target_include_directories(nocturne_engine PUBLIC src third_party/metal-cpp)
 target_link_libraries(nocturne_engine PUBLIC
   nocturne_engine_logic
   nocturne_media
+  nocturne_record
   nocturne_return_video
   nocturne_audio
   nocturne_shader_cross
