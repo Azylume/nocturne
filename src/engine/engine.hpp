@@ -507,10 +507,10 @@ private:
     void encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                      std::vector<Draw>& draws);
     static bool timesPreview(const FrameEncoding& frame);
-    MTL::RenderCommandEncoder* composite(FrameEncoding& frame, const gpu::Texture* target,
-                                         MTL::RenderCommandEncoder* enc, const Draw& draw, bool opaque);
+    gpu::RenderPass composite(FrameEncoding& frame, const gpu::Texture* target, gpu::RenderPass enc, const Draw& draw,
+                              bool opaque);
     bool addsOnly(const Draw& draw, bool opaque) const;
-    std::optional<MTL::ScissorRect> textScissor(const Draw& draw, bool opaque) const;
+    std::optional<gpu::Scissor> textScissor(const Draw& draw, bool opaque) const;
     void lastPassParams(const Draw& draw) const;
     bool keepsBlack(const Draw& draw) const;
     uint32_t blankStage(const Draw& draw, bool opaque) const;
@@ -530,20 +530,20 @@ private:
     void guardBudget(std::vector<Draw>& draws, std::vector<std::shared_ptr<const CompiledChain>>& chains, bool enabled);
     static bool singlePass(const Draw& draw);
     PassHeader passHeader(const Draw& draw, float seconds, float opacity) const;
-    void encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, const gpu::Texture* below,
+    void encodeLast(gpu::RenderPass& enc, const Draw& draw, BlendVariant variant, const gpu::Texture* below,
                     float seconds, float opacity) const;
     // A reduced draw's picture scaled up to the composition size.
-    void encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+    void encodeUpscaled(gpu::RenderPass& enc, const Draw& draw, BlendVariant variant,
                         const gpu::Texture* below,
                         float seconds, float opacity, Size into) const;
     void encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Draw& draw);
-    MTL::RenderCommandEncoder* beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
-                                         gpu::ClearColor clear = {}) const;
-    void endPass(FrameEncoding& frame, MTL::RenderCommandEncoder* enc) const;
+    gpu::RenderPass beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
+                              gpu::ClearColor clear = {}) const;
+    void endPass(FrameEncoding& frame, gpu::RenderPass enc) const;
     // While profiling, names the passes that follow: "L3", "L3 in", "L3 out", "G7" or "comp", then the pass's effects.
     void label(FrameEncoding& frame, const Draw& draw, const CompiledPass* pass, const char* what = nullptr) const;
     const gpu::Texture* copyBelow(FrameEncoding& frame, const gpu::Texture* target);
-    void encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
+    void encodePass(gpu::RenderPass& enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
                     const gpu::Texture* input, const gpu::Texture* below, float seconds, float opacity,
                     const TransitionMix* mix = nullptr, const gpu::Texture* from = nullptr) const;
     // The pools are deques: a texture handed out this frame keeps its address while the pool grows.

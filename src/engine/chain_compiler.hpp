@@ -17,6 +17,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -54,6 +55,10 @@ ChainKind chainKind(const ClipRef* clip);
 EffectList effectList(const std::vector<Effect>& effects);
 // A layer holding a text clip compiles its chains for text pictures too.
 bool holdsText(const Layer& layer);
+
+// Whether the device can keep a pipeline cache. Apple's Paravirtual device (a macOS VM, as on CI runners) traps inside
+// Metal's compiler adding to an archive after an engine on it was killed (issue #29), so there it runs without one.
+bool archivesWork(std::string_view deviceName);
 
 // The pass's entry points and the fullscreen vertex shader as one Metal source, each function named
 // mslFunction(entry). Throws with the compiler's error when the GLSL does not compile. Any thread.
