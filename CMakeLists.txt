@@ -465,8 +465,9 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
-  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
-add_dependencies(nocturne_tests app nocturne-hap-encode)
+  NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>"
+  NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>")
+add_dependencies(nocturne_tests app nocturne-hap-encode nocturne_platform_child)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"
   "-framework CoreFoundation")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
