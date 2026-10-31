@@ -218,8 +218,8 @@ Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* 
     : device_(gpuDevice), config_(config), queue_(gpuDevice.makeQueue()),
       gpu_(device(), "render", ""),
       compiler_(gpuDevice, config.pipelineCache ? config.pipelineCache : ""),
-      decoders_(device(), library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
-      texts_(device(), config.height),
+      decoders_(device_, library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
+      texts_(&device_, config.height),
       sides_(gpuDevice, config.width, config.height),
       ring_(std::make_shared<FrameRing>(gpuDevice, config.width, config.height, config.frameCount)),
       autopilots_(clock_, cues_, seed_, [this](const Layer& layer, uint64_t column) { return playable(layer, column); }),
@@ -1131,9 +1131,9 @@ std::optional<gpu::Scissor> Engine::textScissor(const Draw& draw, bool opaque) c
     const double left = std::clamp(std::floor(draw.text[8]) - 1.0, 0.0, width);
     const double top = std::clamp(std::floor(draw.text[9]) - 1.0, 0.0, height);
     const double right =
-        std::clamp(std::ceil(draw.text[8] + double(draw.picture->luma->width()) / step) + 1.0, 0.0, width);
+        std::clamp(std::ceil(draw.text[8] + double(draw.picture->luma.width()) / step) + 1.0, 0.0, width);
     const double bottom =
-        std::clamp(std::ceil(draw.text[9] + double(draw.picture->luma->height()) / step) + 1.0, 0.0, height);
+        std::clamp(std::ceil(draw.text[9] + double(draw.picture->luma.height()) / step) + 1.0, 0.0, height);
     if (right <= left || bottom <= top)
         return std::nullopt;
     return gpu::Scissor{uint32_t(left), uint32_t(top), uint32_t(right - left), uint32_t(bottom - top)};
@@ -1289,7 +1289,8 @@ Engine::BakePlan Engine::planBake(const Draw& draw, float seconds)
     }
     Baked& baked = bakes_[draw.layer];
     const VideoFrame* picture = draw.picture;
-    const StaticBake::Source source{picture, picture ? picture->luma : nullptr, picture ? picture->chroma : nullptr,
+    const StaticBake::Source source{picture, picture ? picture->luma.native() : nullptr,
+                                    picture ? picture->chroma.native() : nullptr,
                                     picture ? picture->resources.get() : nullptr};
     BakePlan plan{baked.state.step(prefix, bakeInputs(draw, prefix, seconds), source), prefix};
     if (plan.action == StaticBake::Action::Live)
@@ -1473,8 +1474,8 @@ void Engine::encodeLast(gpu::RenderPass& enc, const Draw& draw, BlendVariant var
         derive(from.passes->back().plan, fromParams_, rates_, header);
         if (fromParams_.empty())
             fromParams_.push_back(0.0f);
-        enc.native()->setFragmentTexture(from.picture->luma, kFromLumaSlot);
-        enc.native()->setFragmentTexture(from.picture->chroma, kFromChromaSlot);
+        enc.setTexture(kFromLumaSlot, from.picture->luma);
+        enc.setTexture(kFromChromaSlot, from.picture->chroma);
         enc.setBytes(3, &header, sizeof(header));
         enc.setBytes(4, fromParams_.data(), fromParams_.size() * sizeof(float));
         return encodePass(enc, draw.passes->back(), kFadeSinglePipelines + size_t(variant), draw, draw.input, below,
@@ -1593,21 +1594,21 @@ void Engine::encodePass(gpu::RenderPass& enc, const CompiledPass& pass, size_t p
     if (pass.plan.intoComposition)
         header.blank = blankStage_;
     if (pass.plan.source == SourceKind::Yuv || pass.plan.source == SourceKind::YuvFade) {
-        enc.native()->setFragmentTexture(draw.picture->luma, 0);
-        enc.native()->setFragmentTexture(draw.picture->chroma, 1);
+        enc.setTexture(0, draw.picture->luma);
+        enc.setTexture(1, draw.picture->chroma);
     }
     if (pass.plan.source == SourceKind::YuvFade) {
         PassHeader from = header;
         std::memcpy(from.yuvToRgb, draw.fadeFrom->yuvToRgb.data(), sizeof(from.yuvToRgb));
         from.turns = draw.fadeFrom->headerTurns();
-        enc.native()->setFragmentTexture(draw.fadeFrom->luma, kFadeLumaSlot);
-        enc.native()->setFragmentTexture(draw.fadeFrom->chroma, kFadeChromaSlot);
+        enc.setTexture(kFadeLumaSlot, draw.fadeFrom->luma);
+        enc.setTexture(kFadeChromaSlot, draw.fadeFrom->chroma);
         enc.setBytes(2, &draw.mix, sizeof(draw.mix));
         enc.setBytes(3, &from, sizeof(from));
     }
     if (pass.plan.source == SourceKind::Text) {
         std::memcpy(header.yuvToRgb, draw.text.data(), sizeof(header.yuvToRgb));
-        enc.native()->setFragmentTexture(draw.picture->luma, 0);
+        enc.setTexture(0, draw.picture->luma);
     }
     if (pass.plan.source == SourceKind::Texture || pass.plan.source == SourceKind::Group)
         enc.setTexture(0, input);

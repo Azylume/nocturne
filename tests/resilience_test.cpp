@@ -706,7 +706,7 @@ TEST_CASE("the odd-media corpus plays or is refused, never crashing or stalling 
 TEST_CASE("a thousand clip switches leave memory and asset readers where they were")
 {
     TempDir media;
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     azl::MediaLibrary library(media.path / "library");
     const std::string a = library.add(copyMedia("count_240.mp4", media.path / "a.mp4")).hash;
     const std::string b = library.add(copyMedia("count_100.mp4", media.path / "b.mp4")).hash;
@@ -716,7 +716,7 @@ TEST_CASE("a thousand clip switches leave memory and asset readers where they we
         return double(stats.size_in_use) / 1048576.0;
     };
     const int64_t readers = azl::liveAssetReaders();
-    azl::ClipDecoders decoders(device.get(), &library, size_t(64) << 20, size_t(64) << 20);
+    azl::ClipDecoders decoders(device, &library, size_t(64) << 20, size_t(64) << 20);
     double warm = 0.0;
     for (int i = 0; i < 1000; ++i) {
         if (i == 100)
@@ -759,7 +759,7 @@ std::optional<bool> promptly(const std::function<bool()>& done)
 TEST_CASE("preloads open and unwanted decoders close spread out; a playing clip opens at once")
 {
     TempDir media;
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
     azl::MediaLibrary library(media.path / "library");
     const std::string a = library.add(copyMedia("count_240.mp4", media.path / "a.mp4")).hash;
     std::vector<azl::Preload> column;
@@ -769,7 +769,7 @@ TEST_CASE("preloads open and unwanted decoders close spread out; a playing clip 
 
     bool seen = false;
     for (int attempt = 1; attempt <= 2 && !seen; ++attempt) {
-        azl::ClipDecoders decoders(device.get(), &library, size_t(64) << 20, size_t(64) << 20);
+        azl::ClipDecoders decoders(device, &library, size_t(64) << 20, size_t(64) << 20);
         const azl::DecodeStats& stats = decoders.stats();
         const auto start = Clock::now();
         decoders.want({}, column);

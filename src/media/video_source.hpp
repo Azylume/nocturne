@@ -74,7 +74,7 @@ public:
 };
 
 // Opens the file's first video track. Blocking; throws MediaError.
-std::unique_ptr<VideoSource> openVideoSource(MediaDevice* device, const std::string& path);
+std::unique_ptr<VideoSource> openVideoSource(const MediaDevice* device, const std::string& path);
 
 // Runs a read on a worker thread and returns at once. A read that blocks for good keeps only its own worker.
 void runRead(std::function<void()> read);
