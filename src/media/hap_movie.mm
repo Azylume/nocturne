@@ -15,12 +15,6 @@ namespace azl {
 
 namespace {
 
-constexpr uint32_t fourcc(const char (&code)[5])
-{
-    return uint32_t(uint8_t(code[0])) << 24 | uint32_t(uint8_t(code[1])) << 16 | uint32_t(uint8_t(code[2])) << 8 |
-           uint32_t(uint8_t(code[3]));
-}
-
 std::string describe(NSError* error)
 {
     return error ? std::string(error.localizedDescription.UTF8String) : "unknown error";
@@ -39,31 +33,6 @@ NSString* formatName(HapCodec codec)
 }
 
 } // namespace
-
-HapCodec hapCodecOf(uint32_t code)
-{
-    if (code == fourcc("Hap1"))
-        return HapCodec::Hap;
-    if (code == fourcc("Hap5"))
-        return HapCodec::HapAlpha;
-    if (code == fourcc("HapY"))
-        return HapCodec::HapQ;
-    if (code == fourcc("HapM"))
-        return HapCodec::HapQAlpha;
-    return HapCodec::None;
-}
-
-uint32_t fourccOf(HapCodec codec)
-{
-    switch (codec) {
-    case HapCodec::Hap: return fourcc("Hap1");
-    case HapCodec::HapAlpha: return fourcc("Hap5");
-    case HapCodec::HapQ: return fourcc("HapY");
-    case HapCodec::HapQAlpha: return fourcc("HapM");
-    case HapCodec::None: break;
-    }
-    return 0;
-}
 
 struct HapMovieWriter::Impl {
     AVAssetWriter* writer = nil;

@@ -1,7 +1,14 @@
 #include "media/media_library.hpp"
 
-#include <CommonCrypto/CommonDigest.h>
+#ifdef _WIN32
+#include <windows.h>
 
+#include <bcrypt.h>
+#else
+#include <CommonCrypto/CommonDigest.h>
+#endif
+
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -50,6 +57,47 @@ bool hasContent(const fs::path& path, const std::string& hash)
     }
 }
 
+// SHA-256 over a file read in parts.
+#ifdef _WIN32
+class FileDigest {
+public:
+    FileDigest()
+    {
+        if (!BCRYPT_SUCCESS(BCryptCreateHash(BCRYPT_SHA256_ALG_HANDLE, &hash_, nullptr, 0, nullptr, 0, 0)))
+            throw std::runtime_error("cannot start a SHA-256 hash");
+    }
+    ~FileDigest() { BCryptDestroyHash(hash_); }
+    void update(const char* data, size_t size)
+    {
+        BCryptHashData(hash_, reinterpret_cast<PUCHAR>(const_cast<char*>(data)), ULONG(size), 0);
+    }
+    std::array<unsigned char, 32> finish()
+    {
+        std::array<unsigned char, 32> digest{};
+        BCryptFinishHash(hash_, digest.data(), ULONG(digest.size()), 0);
+        return digest;
+    }
+
+private:
+    BCRYPT_HASH_HANDLE hash_ = nullptr;
+};
+#else
+class FileDigest {
+public:
+    FileDigest() { CC_SHA256_Init(&ctx_); }
+    void update(const char* data, size_t size) { CC_SHA256_Update(&ctx_, data, CC_LONG(size)); }
+    std::array<unsigned char, 32> finish()
+    {
+        std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> digest{};
+        CC_SHA256_Final(digest.data(), &ctx_);
+        return digest;
+    }
+
+private:
+    CC_SHA256_CTX ctx_;
+};
+#endif
+
 MediaStatus statusFromName(const std::string& name)
 {
     for (MediaStatus s : {MediaStatus::Ok, MediaStatus::Unsupported, MediaStatus::Corrupt, MediaStatus::Missing})
@@ -93,17 +141,15 @@ std::string sha256File(const fs::path& file)
     std::ifstream in(file, std::ios::binary);
     if (!in)
         throw std::runtime_error("cannot read " + file.string());
-    CC_SHA256_CTX ctx;
-    CC_SHA256_Init(&ctx);
+    FileDigest hash;
     std::vector<char> buffer(1 << 20);
     while (in) {
         in.read(buffer.data(), std::streamsize(buffer.size()));
-        CC_SHA256_Update(&ctx, buffer.data(), CC_LONG(in.gcount()));
+        hash.update(buffer.data(), size_t(in.gcount()));
     }
     if (in.bad())
         throw std::runtime_error("cannot read " + file.string());
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256_Final(digest, &ctx);
+    const std::array<unsigned char, 32> digest = hash.finish();
 
     static constexpr char kHex[] = "0123456789abcdef";
     std::string hex;
@@ -249,7 +295,8 @@ void MediaLibrary::load()
             media_[entry.hash] = std::move(entry);
         }
     } catch (const nlohmann::json::exception& e) {
-        std::fprintf(stderr, "media library: unreadable index %s (%s), starting empty\n", index.c_str(), e.what());
+        std::fprintf(stderr, "media library: unreadable index %s (%s), starting empty\n", index.string().c_str(),
+                     e.what());
         media_.clear();
         folders_.clear();
         std::error_code ec;
@@ -273,14 +320,14 @@ void MediaLibrary::save() const
         std::ofstream out(temp);
         out << j.dump(2);
         if (!out) {
-            std::fprintf(stderr, "media library: cannot write %s\n", temp.c_str());
+            std::fprintf(stderr, "media library: cannot write %s\n", temp.string().c_str());
             return;
         }
     }
     std::error_code ec;
     fs::rename(temp, index, ec);
     if (ec)
-        std::fprintf(stderr, "media library: cannot replace %s: %s\n", index.c_str(), ec.message().c_str());
+        std::fprintf(stderr, "media library: cannot replace %s: %s\n", index.string().c_str(), ec.message().c_str());
 }
 
 } // namespace azl

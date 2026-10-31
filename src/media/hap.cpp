@@ -10,7 +10,9 @@
 #include "../../third_party/stb/stb_dxt.h"
 #pragma clang diagnostic pop
 
+#ifdef __APPLE__
 #include <dispatch/dispatch.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -18,10 +20,45 @@
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <thread>
+#include <vector>
 
 namespace azl {
 
 namespace {
+
+// Who waits for the work: playback for a decode, nobody in particular for an encode.
+enum class Urgency { Decode, Encode };
+
+// Calls body(i) for every i below count, spread over the cores, and returns when every call has returned.
+template <class Body>
+void parallelFor(size_t count, Urgency urgency, Body& body)
+{
+#ifdef __APPLE__
+    Body* run = &body;
+    const dispatch_qos_class_t qos = urgency == Urgency::Decode ? QOS_CLASS_USER_INITIATED : QOS_CLASS_UTILITY;
+    dispatch_apply(count, dispatch_get_global_queue(qos, 0), ^(size_t i) { (*run)(i); });
+#else
+    std::atomic<size_t> next{0};
+    auto work = [&] {
+        for (size_t i = next++; i < count; i = next++)
+            body(i);
+    };
+    const size_t threads = std::min<size_t>(count, std::max(1u, std::thread::hardware_concurrency()));
+    std::vector<std::thread> helpers(threads > 0 ? threads - 1 : 0);
+    for (std::thread& helper : helpers)
+        helper = std::thread(work);
+    work();
+    for (std::thread& helper : helpers)
+        helper.join();
+#endif
+}
+
+constexpr uint32_t fourcc(const char (&code)[5])
+{
+    return uint32_t(uint8_t(code[0])) << 24 | uint32_t(uint8_t(code[1])) << 16 | uint32_t(uint8_t(code[2])) << 8 |
+           uint32_t(uint8_t(code[3]));
+}
 
 constexpr uint8_t kNone = 0x0a;
 constexpr uint8_t kSnappy = 0x0b;
@@ -159,8 +196,7 @@ std::string decodeChunked(const Section& s, size_t expected, std::vector<uint8_t
     if (chunks.size() == 1) {
         decode(0);
     } else {
-        dispatch_apply(chunks.size(), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
-                       ^(size_t i) { decode(i); });
+        parallelFor(chunks.size(), Urgency::Decode, decode);
     }
     return failed ? "a chunk's Snappy data is malformed" : "";
 }
@@ -310,24 +346,25 @@ std::vector<uint8_t> encodeTexture(const uint8_t* rgba, int width, int height, H
     const size_t blockBytes = texture == HapTexture::BC1 || texture == HapTexture::BC4 ? 8 : 16;
     std::vector<uint8_t> out(size_t(bw) * bh * blockBytes);
     uint8_t* const base = out.data();
-    dispatch_apply(size_t(bh), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^(size_t by) {
-      for (int bx = 0; bx < bw; ++bx) {
-          const std::array<uint8_t, 64> block = blockAt(rgba, width, height, bx, int(by));
-          uint8_t* dest = base + (by * size_t(bw) + size_t(bx)) * blockBytes;
-          switch (texture) {
-          case HapTexture::BC1: stb_compress_dxt_block(dest, block.data(), 0, STB_DXT_HIGHQUAL); break;
-          case HapTexture::BC3: stb_compress_dxt_block(dest, block.data(), 1, STB_DXT_HIGHQUAL); break;
-          case HapTexture::YCoCgBC3: encodeYCoCgBlock(block, dest); break;
-          case HapTexture::BC4: {
-              std::array<uint8_t, 16> alpha{};
-              for (size_t i = 0; i < 16; ++i)
-                  alpha[i] = block[i * 4 + 3];
-              stb_compress_bc4_block(dest, alpha.data());
-              break;
-          }
-          }
-      }
-    });
+    auto encodeRow = [&](size_t by) {
+        for (int bx = 0; bx < bw; ++bx) {
+            const std::array<uint8_t, 64> block = blockAt(rgba, width, height, bx, int(by));
+            uint8_t* dest = base + (by * size_t(bw) + size_t(bx)) * blockBytes;
+            switch (texture) {
+            case HapTexture::BC1: stb_compress_dxt_block(dest, block.data(), 0, STB_DXT_HIGHQUAL); break;
+            case HapTexture::BC3: stb_compress_dxt_block(dest, block.data(), 1, STB_DXT_HIGHQUAL); break;
+            case HapTexture::YCoCgBC3: encodeYCoCgBlock(block, dest); break;
+            case HapTexture::BC4: {
+                std::array<uint8_t, 16> alpha{};
+                for (size_t i = 0; i < 16; ++i)
+                    alpha[i] = block[i * 4 + 3];
+                stb_compress_bc4_block(dest, alpha.data());
+                break;
+            }
+            }
+        }
+    };
+    parallelFor(size_t(bh), Urgency::Encode, encodeRow);
     return out;
 }
 
@@ -416,6 +453,31 @@ std::array<uint8_t, 16> alphaBlock(const uint8_t* block)
 }
 
 } // namespace
+
+HapCodec hapCodecOf(uint32_t code)
+{
+    if (code == fourcc("Hap1"))
+        return HapCodec::Hap;
+    if (code == fourcc("Hap5"))
+        return HapCodec::HapAlpha;
+    if (code == fourcc("HapY"))
+        return HapCodec::HapQ;
+    if (code == fourcc("HapM"))
+        return HapCodec::HapQAlpha;
+    return HapCodec::None;
+}
+
+uint32_t fourccOf(HapCodec codec)
+{
+    switch (codec) {
+    case HapCodec::Hap: return fourcc("Hap1");
+    case HapCodec::HapAlpha: return fourcc("Hap5");
+    case HapCodec::HapQ: return fourcc("HapY");
+    case HapCodec::HapQAlpha: return fourcc("HapM");
+    case HapCodec::None: break;
+    }
+    return 0;
+}
 
 size_t hapTextureBytes(HapTexture texture, int width, int height)
 {

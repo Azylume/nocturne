@@ -1,6 +1,10 @@
 #pragma once
 
+#include "media/decoded_picture.hpp"
+
+#ifdef __APPLE__
 #include <Metal/Metal.hpp>
+#endif
 
 #include <array>
 #include <atomic>
@@ -14,17 +18,30 @@
 
 namespace azl {
 
+#ifdef __APPLE__
+// The GPU decoders make their textures on.
+using MediaDevice = MTL::Device;
+#else
+// Off Apple decoders hand system-memory pictures to the GPU backend, which uploads them: they take no device.
+struct MediaDevice;
+#endif
+
 // How a video picture's two textures make its colour: Y'CbCr planes, or a HAP frame's compressed textures (the colour
 // in `luma`; for YCoCgAlpha the alpha in `chroma`, else `chroma` repeats `luma`).
 enum class PictureFormat : uint32_t { YCbCr, Rgb, Rgba, YCoCg, YCoCgAlpha };
 
 // One decoded picture as two zero-copy textures over the decoder's IOSurface: luma (R8) and interleaved chroma (RG8)
 // at half resolution, or a HAP frame's textures (`format`). `resources` keeps the pixel buffer, the Metal textures and
-// the producer's texture cache alive, so a frame stays valid on the GPU after its decoder is gone.
+// the producer's texture cache alive, so a frame stays valid on the GPU after its decoder is gone. Off Apple a frame
+// carries its picture in system memory instead, for the GPU backend to upload.
 struct VideoFrame {
     int index = 0;
+#ifdef __APPLE__
     MTL::Texture* luma = nullptr;
     MTL::Texture* chroma = nullptr;
+#else
+    std::shared_ptr<const DecodedPicture> picture;
+#endif
     // Rows of the affine Y'CbCr -> R'G'B' transform for the stream's matrix and range: rgb[i] = dot(row.xyz, yuv) + w.
     std::array<float, 12> yuvToRgb{};
     // Clockwise quarter turns that show the picture upright, from the track's rotation metadata (phone videos).
@@ -46,11 +63,8 @@ struct VideoFrame {
 };
 using VideoFrameRef = std::shared_ptr<const VideoFrame>;
 
-enum class YuvMatrix { Rec601, Rec709, Rec2020 };
-std::array<float, 12> yuvToRgbRows(YuvMatrix matrix, bool fullRange);
-
-// AVAssetReaders alive in the process, readers that probe files included. Every closed decoder must free its
-// readers, or what the frameworks keep for them piles up over a long show.
+// Readers alive in the process (AVAssetReaders on Apple), readers that probe files included. Every closed decoder must
+// free its readers, or what the frameworks keep for them piles up over a long show.
 int64_t liveAssetReaders();
 
 struct ClipLength {
@@ -88,8 +102,8 @@ struct DecodeStats {
 };
 
 // Decodes one video file around a playhead into a bounded frame cache. One background thread reads with VideoToolbox
-// (through AVAssetReader; a HAP track's frames are only Snappy-decompressed and uploaded as compressed textures) and
-// owns up to two readers, so one can follow the playhead while the other waits parked at a
+// (through AVAssetReader; a HAP track's frames are only Snappy-decompressed and uploaded as compressed textures), or
+// with FFmpeg off Apple, and owns up to two readers, so one can follow the playhead while the other waits parked at a
 // prefetched target.
 //
 // Playing forward it decodes one second ahead and keeps a few frames behind. Playing backward it works in units of a
@@ -105,7 +119,7 @@ struct DecodeStats {
 // The frame count is the number of frames the file actually delivers: a stream that ends early shortens it, so the
 // last frame is always one that exists.
 //
-// AVFoundation can block in a read for good (seen on the Mac mini: copyNextSampleBuffer waiting inside MediaToolbox).
+// A read can block for good (AVFoundation, seen on the Mac mini: copyNextSampleBuffer waiting inside MediaToolbox).
 // Each read runs on a worker thread and the decode thread waits for it up to a deadline. A reader whose read outlasts
 // it is given up on (the read cancels it if it ever returns), and decoding goes on with a new reader; kMaxStalls such
 // reads in a row with no frame in between break the file. Closing stops waiting for a read at once, and waits for the
@@ -132,7 +146,7 @@ public:
     };
 
     // Opens the file (blocking: call it off the render thread). Throws std::runtime_error when it cannot be played.
-    VideoDecoder(MTL::Device* device, const std::string& path, Options options);
+    VideoDecoder(MediaDevice* device, const std::string& path, Options options);
     ~VideoDecoder();
 
     ClipLength length() const;
@@ -172,7 +186,7 @@ public:
     struct Impl;
 
 private:
-    void open(MTL::Device* device, const std::string& path, Options options);
+    void open(MediaDevice* device, const std::string& path, Options options);
 
     std::shared_ptr<Impl> impl_;
 };
