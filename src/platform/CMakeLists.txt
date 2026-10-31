@@ -14,18 +14,22 @@ add_library(nocturne_platform STATIC)
 if(APPLE)
   target_sources(nocturne_platform PRIVATE
     clock_apple.cpp
+    thread_priority_apple.cpp
   )
 elseif(WIN32)
   target_sources(nocturne_platform PRIVATE
     clock_win.cpp
+    thread_priority_win.cpp
   )
   target_compile_definitions(nocturne_platform PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  target_link_libraries(nocturne_platform PUBLIC avrt winmm)
 endif()
 target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 
 # Built into nocturne_tests as well.
 set(platform_tests
   ${repo_root}/tests/platform_clock_test.cpp
+  ${repo_root}/tests/platform_thread_test.cpp
 )
 
 if(NOT platform_standalone)

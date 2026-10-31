@@ -3,7 +3,7 @@
 #include "engine/frame_ring.hpp"
 #include "engine/isf_compiler.hpp"
 #include "engine/metal_util.hpp"
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 

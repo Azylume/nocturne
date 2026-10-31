@@ -2,10 +2,8 @@
 
 #include "document/composition_file.hpp"
 #include "media/keep_local.hpp"
+#include "platform/thread_priority.hpp"
 #include "upload/media_upload.hpp"
-
-#include <pthread/qos.h>
-#include <sys/resource.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -237,8 +235,7 @@ void MediaSync::handle(const Message& message, const DocumentServer::Sink& reply
 
 void MediaSync::run()
 {
-    pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
-    setiopolicy_np(IOPOL_TYPE_DISK, IOPOL_SCOPE_THREAD, IOPOL_THROTTLE);
+    setThreadRole(ThreadRole::Idle);
     std::unique_lock lock(mutex_);
     while (running_) {
         woken_ = false;

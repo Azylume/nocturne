@@ -1,6 +1,6 @@
 #include "document/composition_file.hpp"
 #include "document/screen_roles.hpp"
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "golden.hpp"
 #include "net/websocket.hpp"
 #include "platform/mac_displays.hpp"

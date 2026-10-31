@@ -19,7 +19,7 @@
 #include "engine/render_thread.hpp"
 #include "engine/settings_service.hpp"
 #include "engine/switch_log.hpp"
-#include "engine/thread_priority.hpp"
+#include "platform/thread_priority.hpp"
 #include "engine/trigger_service.hpp"
 #include "engine/wall_cue_service.hpp"
 #include "media/composition_media.hpp"
