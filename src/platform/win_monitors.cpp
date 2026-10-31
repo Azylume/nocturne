@@ -1,5 +1,7 @@
 #include "platform/win_monitors.hpp"
 
+#include "platform/thread_priority.hpp"
+
 #include <windows.h>
 
 #include <dbt.h>
@@ -357,7 +359,7 @@ struct VblankWaiter::Impl {
     {
         const auto now = std::chrono::steady_clock::now();
         next = next + period > now ? next + period : now + period;
-        std::this_thread::sleep_until(next);
+        sleepUntil(next);
         return next;
     }
 };

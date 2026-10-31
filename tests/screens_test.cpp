@@ -565,7 +565,7 @@ TEST_CASE("with --realtime-frames, render and present threads wake on time from 
         auto next = std::chrono::steady_clock::now();
         for (int i = 0; i < 60; ++i) {
             next += std::chrono::microseconds(16667);
-            std::this_thread::sleep_until(next);
+            azl::sleepUntil(next);
             lateMs.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - next).count());
         }
     });
