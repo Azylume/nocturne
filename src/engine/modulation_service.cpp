@@ -1,6 +1,7 @@
 #include "engine/modulation_service.hpp"
 
 #include "document/modulation_edits.hpp"
+#include "platform/app_paths.hpp"
 #include "protocol/messages.hpp"
 
 #include <algorithm>
@@ -206,8 +207,7 @@ ModulationService::~ModulationService()
 
 std::filesystem::path ModulationService::defaultFile()
 {
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/MacroSets.json";
+    return appDataFolder() / "MacroSets.json";
 }
 
 void ModulationService::handle(const Message& message, const DocumentServer::Sink& reply)

@@ -13,12 +13,14 @@ set(repo_root ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 add_library(nocturne_platform STATIC)
 if(APPLE)
   target_sources(nocturne_platform PRIVATE
+    app_paths_apple.cpp
     clock_apple.cpp
     thread_priority_apple.cpp
     work_queue_apple.cpp
   )
 elseif(WIN32)
   target_sources(nocturne_platform PRIVATE
+    app_paths_win.cpp
     clock_win.cpp
     thread_priority_win.cpp
     work_queue_std.cpp
@@ -31,6 +33,7 @@ target_include_directories(nocturne_platform PUBLIC ${repo_root}/src)
 # Built into nocturne_tests as well.
 set(platform_tests
   ${repo_root}/tests/platform_clock_test.cpp
+  ${repo_root}/tests/platform_paths_test.cpp
   ${repo_root}/tests/platform_queue_test.cpp
   ${repo_root}/tests/platform_thread_test.cpp
 )
