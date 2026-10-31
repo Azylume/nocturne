@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -13,7 +13,7 @@
 namespace azl {
 
 // Every surface takes this format.
-inline constexpr MTL::PixelFormat kSurfaceFormat = MTL::PixelFormatBGRA8Unorm;
+inline constexpr gpu::Format kSurfaceFormat = gpu::Format::BGRA8;
 
 // An attached display. The id is stable across reconnects and reboots, unlike the display's index, except for a display
 // without a serial number, whose id names its port (unit), which a splitter or another socket changes.
@@ -48,10 +48,10 @@ public:
 
     // Runs on the calling thread until `running` turns false, calling `onRefresh` once per refresh of the display.
     virtual void runRefreshes(const std::atomic<bool>& running, const Refresh& onRefresh) = 0;
-    // Present thread: the texture to draw this refresh's picture into, or null when none is free.
-    virtual MTL::Texture* nextTarget() = 0;
+    // Present thread: the texture to draw this refresh's picture into, valid until present; null when none is free.
+    virtual const gpu::Texture* nextTarget() = 0;
     // Present thread: schedules the target from nextTarget for display once `cmd` completes. The caller commits.
-    virtual void present(MTL::CommandBuffer* cmd, Shown shown) = 0;
+    virtual void present(gpu::CommandBuffer& cmd, Shown shown) = 0;
 };
 
 // The machine's displays as outputs see them. Only the thread that owns the displays (the main thread in the app)
@@ -61,7 +61,7 @@ public:
     virtual ~Displays() = default;
     virtual std::vector<DisplayInfo> attached() const = 0;
     // Null when no display with that id is attached.
-    virtual std::unique_ptr<Surface> open(const std::string& id, MTL::Device* device) = 0;
+    virtual std::unique_ptr<Surface> open(const std::string& id, const gpu::Device& device) = 0;
     // Ends mirroring among these displays, so each shows its own picture again. False when the system refused.
     virtual bool unmirror(const std::vector<std::string>& ids) = 0;
     // Called after displays were attached, detached or reconfigured (mirrored, moved).
