@@ -276,17 +276,9 @@ if(WIN32)
   target_link_libraries(nocturne_media PUBLIC d2d1 dwrite ole32 windowscodecs)
 endif()
 
-# Return video's packet rules; Apple adds its H.264 encoder below.
+# Return video's packet rules; its H.264 encoder and decoder are added with recording's encoder below.
 add_library(nocturne_return_video STATIC src/output/return_video.cpp)
 target_link_libraries(nocturne_return_video PUBLIC nocturne_protocol)
-
-# Return video's decoder off Apple; Apple's VideoToolbox encoder and decoder are added below.
-if(NOT APPLE)
-  target_sources(nocturne_return_video PRIVATE src/output/h264_decoder_ffmpeg.cpp)
-  target_include_directories(nocturne_return_video PRIVATE ${FFMPEG_INCLUDE_DIRS})
-  target_link_directories(nocturne_return_video PUBLIC ${FFMPEG_LIBRARY_DIRS})
-  target_link_libraries(nocturne_return_video PUBLIC ${FFMPEG_LIBRARIES})
-endif()
 
 # The protocol's WebSocket: Network.framework on Apple, plain sockets elsewhere.
 add_library(nocturne_net STATIC src/net/websocket_frames.cpp src/net/websocket_rules.cpp)
@@ -362,9 +354,19 @@ target_link_libraries(nocturne_engine_launcher PUBLIC nocturne_protocol)
 add_executable(nocturne_fake_engine tests/fake_engine.cpp)
 target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
 
-# Recording's settings, file naming, disk reserve, rollover and audio timing; the encoder is per platform (ADR 0016).
+# Recording's settings, file naming, disk reserve, rollover and audio timing. Its encoder and return video's H.264
+# encoder and decoder are VideoToolbox and AVFoundation on Apple (added below), FFmpeg elsewhere (ADR 0016).
 add_library(nocturne_record STATIC src/output/recording.cpp)
 target_include_directories(nocturne_record PUBLIC src)
+if(NOT APPLE)
+  target_sources(nocturne_record PRIVATE src/output/movie_encoder_ffmpeg.cpp)
+  target_sources(nocturne_return_video PRIVATE src/output/h264_encoder_ffmpeg.cpp src/output/h264_decoder_ffmpeg.cpp)
+  foreach(target nocturne_record nocturne_return_video)
+    target_include_directories(${target} PUBLIC ${FFMPEG_INCLUDE_DIRS})
+    target_link_directories(${target} PUBLIC ${FFMPEG_LIBRARY_DIRS})
+    target_link_libraries(${target} PUBLIC ${FFMPEG_LIBRARIES})
+  endforeach()
+endif()
 
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
