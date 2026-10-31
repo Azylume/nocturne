@@ -86,6 +86,9 @@ powershell -ExecutionPolicy Bypass -File tools\make-installer.ps1
 ```
 
 The first configure builds FFmpeg through vcpkg (about half an hour; later configures reuse vcpkg's binary cache).
+CI's `windows` job does the same on `windows-2025`, runs the engine suite through `tools/ci-tests.sh engine 0 1`
+without the cases listed in `.github/realtime-tests.txt` and `.github/windows-ci-tests.txt`, and uploads the
+installer.
 
 ## What a good change looks like
 

@@ -41,5 +41,7 @@ Two doctest binaries: `build/nocturne_tests` (engine, `tests/*_test.cpp` and `*_
 - `tools/ci-tests.sh` skips the wildcard patterns in `.github/realtime-tests.txt` (real GPU, displays, encoder,
   real-time scheduling, supervisor-started engines). They still run in local `ctest`. A new entry needs a reviewer's
   OK, and a new case name must not match an existing pattern by accident.
+- On Windows CI also skips `.github/windows-ci-tests.txt` (cases that need the Credential Manager, which a runner
+  session lacks); they run in a Windows desktop session. Same rule for a new entry.
 - A failed case is rerun once and reported as flaky if it then passes. A flaky case is a bug to report, not noise.
 - Cases that print GPU or compile timings are reports, not gates; do not "fix" them by changing thresholds.
