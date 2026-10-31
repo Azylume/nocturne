@@ -121,3 +121,35 @@ TEST_CASE("off Apple, the return video of moving noise stays inside its share of
     CHECK(kbps > plan.kbps * 0.25);
     CHECK(pictures >= int(frames * 0.8));
 }
+
+// 426 pixels of BGRA is a row swscale does not end on a block of; under a checking heap (page heap, ASan) a write past
+// the picture faults here.
+TEST_CASE("off Apple, the H.264 decoder returns 426-wide pictures without writing past them")
+{
+    const rv::Plan plan = rv::plan({640, 360}, 1);
+    REQUIRE(plan.width == 426);
+    azl::H264Encoder encoder(plan.width, plan.height, plan.fps, plan.kbps);
+    azl::H264Decoder decoder;
+    int decoded = 0;
+    for (int i = 0; i < 10; ++i) {
+        CAPTURE(i);
+        std::shared_ptr<azl::YCbCrPicture> picture = encoder.newBuffer();
+        REQUIRE(picture);
+        const Rgb shown = card(plan.width, plan.height, i);
+        fill(*picture, shown);
+        const std::optional<rv::Packet> packet = encoder.encode(*picture, i / plan.fps, i == 0);
+        REQUIRE(packet);
+        const std::optional<azl::H264Decoder::Picture> back = decoder.decode(*packet);
+        if (!back)
+            continue;
+        ++decoded;
+        REQUIRE(back->width == plan.width);
+        REQUIRE(back->height == plan.height);
+        REQUIRE(back->bgra.size() == size_t(plan.width) * plan.height * 4);
+        Rgb rgb{back->width, back->height, {}};
+        for (size_t p = 0; p < back->bgra.size(); p += 4)
+            rgb.rgb.insert(rgb.rgb.end(), {back->bgra[p + 2], back->bgra[p + 1], back->bgra[p]});
+        CHECK(meanError(rgb, shown) < 8.0);
+    }
+    CHECK(decoded == 10);
+}
