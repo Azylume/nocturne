@@ -1,16 +1,8 @@
 #include "media/media_library.hpp"
 
 #include "platform/app_paths.hpp"
+#include "platform/crypto.hpp"
 
-#ifdef _WIN32
-#include <windows.h>
-
-#include <bcrypt.h>
-#else
-#include <CommonCrypto/CommonDigest.h>
-#endif
-
-#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -59,47 +51,6 @@ bool hasContent(const fs::path& path, const std::string& hash)
     }
 }
 
-// SHA-256 over a file read in parts.
-#ifdef _WIN32
-class FileDigest {
-public:
-    FileDigest()
-    {
-        if (!BCRYPT_SUCCESS(BCryptCreateHash(BCRYPT_SHA256_ALG_HANDLE, &hash_, nullptr, 0, nullptr, 0, 0)))
-            throw std::runtime_error("cannot start a SHA-256 hash");
-    }
-    ~FileDigest() { BCryptDestroyHash(hash_); }
-    void update(const char* data, size_t size)
-    {
-        BCryptHashData(hash_, reinterpret_cast<PUCHAR>(const_cast<char*>(data)), ULONG(size), 0);
-    }
-    std::array<unsigned char, 32> finish()
-    {
-        std::array<unsigned char, 32> digest{};
-        BCryptFinishHash(hash_, digest.data(), ULONG(digest.size()), 0);
-        return digest;
-    }
-
-private:
-    BCRYPT_HASH_HANDLE hash_ = nullptr;
-};
-#else
-class FileDigest {
-public:
-    FileDigest() { CC_SHA256_Init(&ctx_); }
-    void update(const char* data, size_t size) { CC_SHA256_Update(&ctx_, data, CC_LONG(size)); }
-    std::array<unsigned char, 32> finish()
-    {
-        std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> digest{};
-        CC_SHA256_Final(digest.data(), &ctx_);
-        return digest;
-    }
-
-private:
-    CC_SHA256_CTX ctx_;
-};
-#endif
-
 MediaStatus statusFromName(const std::string& name)
 {
     for (MediaStatus s : {MediaStatus::Ok, MediaStatus::Unsupported, MediaStatus::Corrupt, MediaStatus::Missing})
@@ -143,7 +94,7 @@ std::string sha256File(const fs::path& file)
     std::ifstream in(file, std::ios::binary);
     if (!in)
         throw std::runtime_error("cannot read " + file.string());
-    FileDigest hash;
+    Sha256 hash;
     std::vector<char> buffer(1 << 20);
     while (in) {
         in.read(buffer.data(), std::streamsize(buffer.size()));
@@ -151,7 +102,7 @@ std::string sha256File(const fs::path& file)
     }
     if (in.bad())
         throw std::runtime_error("cannot read " + file.string());
-    const std::array<unsigned char, 32> digest = hash.finish();
+    const Sha256Digest digest = hash.finish();
 
     static constexpr char kHex[] = "0123456789abcdef";
     std::string hex;
