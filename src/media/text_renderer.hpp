@@ -15,7 +15,7 @@ namespace azl {
 
 // Rasterises text clips on its own thread (CoreText on Apple, DirectWrite on Windows), once per layout, so the render
 // thread never waits for text layout. A font that is not installed falls back to the system font with a logged
-// warning.
+// warning; on Windows a name the system substitutes takes its substitute first (Helvetica is Arial).
 class TextRenderer {
 public:
     // Text sizes are fractions of `height`, the composition's height in pixels.
