@@ -1,6 +1,7 @@
 #include "net/pairing.hpp"
 
 #include "net/lan.hpp"
+#include "platform/app_paths.hpp"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -42,8 +43,7 @@ bool tokenText(const std::string& text)
 
 fs::path defaultStateFolder()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/State";
+    return appDataFolder() / "State";
 }
 
 fs::path tokenFile(const fs::path& state)

@@ -10,6 +10,7 @@
 #include "net/pairing.hpp"
 #include "net/websocket.hpp"
 #include "output/return_video.hpp"
+#include "platform/app_paths.hpp"
 #include "protocol/bundle_push.hpp"
 #include "protocol/return_stream.hpp"
 #include "sync/discovery.hpp"
@@ -1944,9 +1945,7 @@ int watch(azl::WebSocketClient& client, Queue& queue, const azl::Message& snapsh
 
 std::filesystem::path preparePath(const Options& opt)
 {
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/Prepare" /
-           (opt.host + "-" + std::to_string(opt.port) + ".json");
+    return azl::appDataFolder() / "Prepare" / (opt.host + "-" + std::to_string(opt.port) + ".json");
 }
 
 // The copy while Prepare is on for this engine.

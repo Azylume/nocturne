@@ -2,6 +2,7 @@
 
 #include "effects/classic_presets.hpp"
 #include "effects/effect_registry.hpp"
+#include "platform/app_paths.hpp"
 #include "protocol/messages.hpp"
 
 #include <cstdio>
@@ -87,8 +88,7 @@ PresetService::~PresetService()
 
 std::filesystem::path PresetService::defaultFile()
 {
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/Presets.json";
+    return appDataFolder() / "Presets.json";
 }
 
 void PresetService::handle(const Message& message, const DocumentServer::Sink& reply)

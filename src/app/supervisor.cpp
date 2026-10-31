@@ -1,4 +1,5 @@
 #include "document/composition_file.hpp"
+#include "platform/app_paths.hpp"
 #include "supervisor/crash_guard.hpp"
 #include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
@@ -83,12 +84,6 @@ struct Options {
     std::exit(code);
 }
 
-fs::path home()
-{
-    const char* h = std::getenv("HOME");
-    return h ? h : "/tmp";
-}
-
 fs::path ownDirectory()
 {
     std::array<char, PATH_MAX> path{};
@@ -103,8 +98,8 @@ Options parse(int argc, char** argv)
     Options o;
     o.engine = ownDirectory() / "nocturne";
     o.desk = ownDirectory() / "nocturne-desk";
-    o.state = home() / "Library/Application Support/Nocturne/State";
-    o.logs = home() / "Library/Logs/Nocturne";
+    o.state = azl::appDataFolder() / "State";
+    o.logs = azl::appLogsFolder();
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         auto value = [&] {

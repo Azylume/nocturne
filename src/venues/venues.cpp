@@ -1,5 +1,6 @@
 #include "venues/venues.hpp"
 
+#include "platform/app_paths.hpp"
 #include "protocol/messages.hpp"
 
 #include <algorithm>
@@ -59,8 +60,7 @@ std::string keyHelp(const fs::path& path)
 
 fs::path defaultVenuesConfigPath()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/venues.json";
+    return appDataFolder() / "venues.json";
 }
 
 std::string systemTailscaleKey()

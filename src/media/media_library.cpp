@@ -1,5 +1,7 @@
 #include "media/media_library.hpp"
 
+#include "platform/app_paths.hpp"
+
 #ifdef _WIN32
 #include <windows.h>
 
@@ -168,8 +170,7 @@ MediaLibrary::MediaLibrary(fs::path root) : root_(std::move(root))
 
 fs::path MediaLibrary::defaultRoot()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/MediaLibrary";
+    return appDataFolder() / "MediaLibrary";
 }
 
 MediaEntry MediaLibrary::add(const fs::path& file)

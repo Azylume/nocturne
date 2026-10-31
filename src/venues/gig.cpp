@@ -1,6 +1,7 @@
 #include "venues/gig.hpp"
 
 #include "document/cue_edits.hpp"
+#include "platform/app_paths.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -130,8 +131,7 @@ void checkGig(const Gig& gig)
 
 fs::path defaultGigsFolder()
 {
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/Gigs";
+    return appDataFolder() / "Gigs";
 }
 
 fs::path gigPath(const fs::path& folder, const std::string& venue, const std::string& date)
