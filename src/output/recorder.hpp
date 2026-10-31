@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/engine.hpp"
+#include "output/recording.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -42,40 +43,10 @@ namespace azl {
 // inside a Gig window, at the window's end plus a grace, whichever comes first.
 class Recorder {
 public:
-    struct Settings {
-        // "composition" or "screen:N".
-        std::string target = "composition";
-        // "hevc" or "prores".
-        std::string codec = "hevc";
-        // A .mov file, or a folder that gets a file named after the date and time. Empty: ~/Movies/Nocturne.
-        std::filesystem::path path;
-        // 0: the composition's size.
-        uint32_t width = 0;
-        uint32_t height = 0;
-        // The reserve is the larger of the two: below it a recording stops, and none starts.
-        uint64_t reserveBytes = uint64_t(20) << 30;
-        double reservePercent = 10.0;
-        // Past either (0: no limit), the recording goes on in the next file.
-        uint64_t maxBytes = 0;
-        double maxSeconds = 0.0;
-        // Past this length in all its files (0: no limit), the recording finishes.
-        double maxTotalSeconds = 8 * 3600.0;
-        // A recording started inside a Gig window finishes this long after the window ends.
-        double gigGraceSeconds = 15 * 60.0;
-        // An audio track of the analysis's input, when there is one.
-        bool audio = true;
-        // Off: 8-bit input, HEVC Main from '420v' and ProRes from '2vuy', cheaper on the GPU. On: the encoders' own
-        // precision, HEVC Main10 from 'x420' and ProRes from 'v216'.
-        bool precise = false;
-    };
-
-    struct Space {
-        uint64_t free = UINT64_MAX;
-        uint64_t total = 0;
-    };
-    using SpaceProvider = std::function<Space(const std::filesystem::path& folder)>;
-    // Low: less than twice the reserve free. Full: less than the reserve; the recording stopped.
-    enum class SpaceLevel { Unknown, Ok, Low, Full };
+    using Settings = recording::Settings;
+    using Space = recording::Space;
+    using SpaceProvider = recording::SpaceProvider;
+    using SpaceLevel = recording::SpaceLevel;
 
     struct Status {
         bool recording = false;
@@ -104,26 +75,14 @@ public:
         std::string stopsFor;
     };
 
-    struct Ended {
-        std::filesystem::path file;
-        uint64_t frames = 0;
-        uint64_t dropped = 0;
-        // "stopped", "disk full", "max length", "gig over" or "failed: ...".
-        std::string reason;
-        // The movie is complete at `file`; otherwise nothing was left there.
-        bool kept = false;
-    };
+    using Ended = recording::Ended;
     // The input a recording would take its audio from now: a name, or empty with the reason there is none.
     struct AudioSource {
         std::string name;
         std::string reason;
     };
     using AudioSourceOf = std::function<AudioSource()>;
-    struct AudioPlan {
-        std::string state = "off";
-        std::string reason;
-        std::string source;
-    };
+    using AudioPlan = recording::AudioPlan;
 
     // Called once per recording, on the thread that ended it.
     using OnEnded = std::function<void(const Ended&)>;
@@ -141,13 +100,8 @@ public:
     void stop();
     Status status() const;
 
-    // Where the frame at `engineTime` lands while recording: the movie file and its time in that movie (0 for a time
-    // before the first frame). `settled` once the writer has passed that time, so a later rollover cannot move it.
-    struct Position {
-        std::filesystem::path file;
-        double mediaTime = 0.0;
-        bool settled = false;
-    };
+    // Where the frame at `engineTime` lands while recording.
+    using Position = recording::Position;
     std::optional<Position> position(double engineTime) const;
 
     // For the harness: wait until every frame rendered so far is written or dropped.
@@ -180,7 +134,6 @@ private:
     struct Session;
 
     void ended(Session& session, const Ended& ended);
-    void spaceChanged();
     static void removeAudioTap(Session& session);
 
     Engine& engine_;
