@@ -1,6 +1,7 @@
 #include "harness/fake_displays.hpp"
 
 #include "engine/frame_trace.hpp"
+#include "platform/thread_priority.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -68,7 +69,7 @@ public:
             next += period;
             if (Clock::now() > next)
                 next = Clock::now();
-            std::this_thread::sleep_until(next + late());
+            sleepUntil(next + late());
             if (running) {
                 refresh_ = next;
                 onRefresh(next);

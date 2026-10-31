@@ -5,7 +5,9 @@
 #include <avrt.h>
 #include <timeapi.h>
 
+#include <algorithm>
 #include <mutex>
+#include <thread>
 
 namespace azl {
 
@@ -39,6 +41,27 @@ void joinMultimediaScheduler()
         AvSetMmThreadPriority(handle, AVRT_PRIORITY_HIGH);
 }
 
+// A high-resolution waitable timer for the thread that waits on it, closed when the thread ends.
+struct WaitTimer {
+    HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    ~WaitTimer()
+    {
+        if (handle)
+            CloseHandle(handle);
+    }
+};
+
+// False when the timer could not be set: the caller waits another way.
+bool waitOn(HANDLE timer, std::chrono::steady_clock::duration span)
+{
+    using Ticks = std::chrono::duration<LONGLONG, std::ratio<1, 10'000'000>>;
+    LARGE_INTEGER due;
+    // Negative: relative to now.
+    due.QuadPart = -std::max<LONGLONG>(1, std::chrono::duration_cast<Ticks>(span).count());
+    return timer && SetWaitableTimerEx(timer, &due, 0, nullptr, nullptr, nullptr, 0) &&
+           WaitForSingleObject(timer, INFINITE) == WAIT_OBJECT_0;
+}
+
 } // namespace
 
 void setThreadRole(ThreadRole role)
@@ -51,6 +74,16 @@ void setThreadRole(ThreadRole role)
     fineTimerResolution();
     if (realtimeFrames())
         joinMultimediaScheduler();
+}
+
+void sleepUntil(std::chrono::steady_clock::time_point deadline)
+{
+    thread_local const WaitTimer timer;
+    const auto span = deadline - std::chrono::steady_clock::now();
+    if (span.count() <= 0)
+        return;
+    if (!waitOn(timer.handle, span))
+        std::this_thread::sleep_until(deadline);
 }
 
 } // namespace azl
