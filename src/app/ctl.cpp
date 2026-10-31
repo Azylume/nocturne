@@ -40,8 +40,13 @@
 #include <set>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -1266,7 +1271,7 @@ int showMedia(const std::vector<std::string>& c)
         const auto [source, destination] = path.is_absolute() ? std::pair(path, path.filename())
                                                               : std::pair(root / path, path);
         if (seen.insert(source.string()).second)
-            std::printf("%s\t%s\n", source.c_str(), destination.c_str());
+            std::printf("%s\t%s\n", source.string().c_str(), destination.string().c_str());
     });
     return 0;
 }
@@ -2331,7 +2336,11 @@ int audio(azl::WebSocketClient& client, Queue& queue, const azl::Message& reques
 {
     const std::string op = request["op"];
     client.send(request);
+#ifdef _WIN32
+    const bool tty = _isatty(_fileno(stdout)) && !json;
+#else
     const bool tty = isatty(STDOUT_FILENO) && !json;
+#endif
     const auto timeout = op == "subscribe" ? std::chrono::seconds(3600) : std::chrono::seconds(10);
     while (const auto reply = queue.pop(timeout)) {
         const azl::Message& m = *reply;
@@ -2616,7 +2625,7 @@ int keepLocal(const Options& opt, const std::vector<std::string>& c)
         azl::S3Client client(azl::loadR2Config(azl::defaultR2ConfigPath()));
         const std::filesystem::path file = azl::fetchedFile(azl::defaultFetchFolder(), hash);
         azl::fetchObject(client, hash, file);
-        std::printf("%s\n", file.c_str());
+        std::printf("%s\n", file.string().c_str());
         return 0;
     }
     if (c[2] == "show" && c[1] != "follow") {
