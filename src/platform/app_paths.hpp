@@ -18,6 +18,9 @@ std::filesystem::path homeFolder();
 // The user's videos: ~/Movies on Apple, the Videos known folder on Windows. Not created.
 std::filesystem::path videosFolder();
 
+// The user's documents: ~/Documents on Apple, the Documents known folder on Windows. Not created.
+std::filesystem::path documentsFolder();
+
 // The running program's own file, links resolved. Empty when the system does not say.
 std::filesystem::path executablePath();
 
