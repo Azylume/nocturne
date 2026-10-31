@@ -289,7 +289,8 @@ enable_testing()
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
-  tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/picture_upload_test.cpp)
+  tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
+  tests/picture_upload_test.cpp)
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media")

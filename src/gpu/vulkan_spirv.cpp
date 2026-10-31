@@ -117,9 +117,9 @@ bool renumber(std::vector<uint32_t>& code, SpirvInterface& out, std::string& err
             return false;
         }
         Binding b{kResourceSet, 0, kind};
-        if (oldSet == kBufferSet && oldBinding < kSlots)
+        if (oldSet == kBufferSet && oldBinding < kBufferSlots)
             b.binding = oldBinding + (out.stage == VK_SHADER_STAGE_VERTEX_BIT ? kVertexBuffers : 0);
-        else if (oldSet == kTextureSet && oldBinding < kSlots)
+        else if (oldSet == kTextureSet && oldBinding < kTextureSlots)
             b.binding = kTextures + oldBinding;
         else if (oldSet == azl::kSamplerSet && oldBinding < kSamplerKinds && kind == VK_DESCRIPTOR_TYPE_SAMPLER)
             b = {vk::kSamplerSet, oldBinding, kind};

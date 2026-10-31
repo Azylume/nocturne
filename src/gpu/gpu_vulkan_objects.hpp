@@ -18,10 +18,11 @@ namespace azl::gpu::vk {
 // fragment or compute stage at their index, the vertex stage's from kVertexBuffers, set 1 textures from kTextures.
 // Its set 2 samplers become set 1, one fixed descriptor set per device. The backend renumbers each SPIR-V module so,
 // as on Metal, vertex and fragment buffer indices never clash.
-inline constexpr uint32_t kSlots = 16;
-inline constexpr uint32_t kVertexBuffers = kSlots;
-inline constexpr uint32_t kTextures = 2 * kSlots;
-inline constexpr uint32_t kBindings = 3 * kSlots;
+inline constexpr uint32_t kBufferSlots = 16;
+inline constexpr uint32_t kTextureSlots = 32;
+inline constexpr uint32_t kVertexBuffers = kBufferSlots;
+inline constexpr uint32_t kTextures = 2 * kBufferSlots;
+inline constexpr uint32_t kBindings = kTextures + kTextureSlots;
 inline constexpr uint32_t kResourceSet = 0;
 inline constexpr uint32_t kSamplerSet = 1;
 
@@ -166,7 +167,7 @@ struct CommandObject {
     bool dirty = false;
     // By binding: the fragment or compute stage's buffers, then the vertex stage's.
     std::array<VkDescriptorBufferInfo, kTextures> buffers{};
-    std::array<TextureObject*, kSlots> textures{};
+    std::array<TextureObject*, kTextureSlots> textures{};
     // Storage images a compute pass wrote, returned to their resting layout at its end.
     std::vector<TextureObject*> written;
     bool dispatched = false;
