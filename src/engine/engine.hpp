@@ -507,8 +507,8 @@ private:
     void encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                      std::vector<Draw>& draws);
     static bool timesPreview(const FrameEncoding& frame);
-    MTL::RenderCommandEncoder* composite(FrameEncoding& frame, const gpu::Texture* target, MTL::RenderCommandEncoder* enc,
-                                         const Draw& draw, bool opaque);
+    MTL::RenderCommandEncoder* composite(FrameEncoding& frame, const gpu::Texture* target,
+                                         MTL::RenderCommandEncoder* enc, const Draw& draw, bool opaque);
     bool addsOnly(const Draw& draw, bool opaque) const;
     std::optional<MTL::ScissorRect> textScissor(const Draw& draw, bool opaque) const;
     void lastPassParams(const Draw& draw) const;

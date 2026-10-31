@@ -439,8 +439,8 @@ class Readback {
 public:
     Readback() = default;
     Readback(const Device& device, const Texture& texture)
-        : rowBytes_(gpu::rowBytes(texture.format(), texture.width())), rows_(rowCount(texture.format(), texture.height())),
-          buffer_(device.makeBuffer(rowBytes_ * rows_, Memory::Shared)), texture_(texture)
+        : rowBytes_(gpu::rowBytes(texture.format(), texture.width())),
+          rows_(rowCount(texture.format(), texture.height())), buffer_(device.makeBuffer(rowBytes_ * rows_, Memory::Shared)), texture_(texture)
     {
     }
     explicit operator bool() const { return bool(buffer_); }
