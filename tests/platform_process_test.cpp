@@ -128,6 +128,17 @@ TEST_CASE("platform: a spawned child can be polled and killed")
     CHECK(child->poll());
 }
 
+TEST_CASE("platform: a process id reads as running until that process has ended")
+{
+    CHECK(azl::processRunning(azl::currentProcessId()));
+    std::optional<azl::Process> child = azl::spawnProcess({.program = NOCTURNE_PLATFORM_CHILD, .args = {"sleep"}});
+    REQUIRE(child);
+    CHECK(azl::processRunning(child->pid()));
+    child->kill();
+    child->wait();
+    CHECK_FALSE(azl::processRunning(child->pid()));
+}
+
 TEST_CASE("platform: a program is found on PATH, and a missing one reports why it did not start")
 {
 #ifdef _WIN32

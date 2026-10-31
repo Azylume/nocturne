@@ -256,4 +256,9 @@ bool waitForStop(double seconds, std::optional<NativeHandle> readable)
     return stopAsked;
 }
 
+bool processRunning(int pid)
+{
+    return ::kill(pid, 0) == 0 || errno != ESRCH;
+}
+
 } // namespace azl

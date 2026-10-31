@@ -6,8 +6,6 @@
 #include "platform/credentials.hpp"
 #include "platform/process.hpp"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -439,7 +437,7 @@ nlohmann::json runUpload(S3Client* client, const std::vector<fs::path>& sources,
     UploadStates states(options.states);
     for (const fs::path& source : sources) {
         nlohmann::json entry = {{"source", fs::absolute(source).string()}};
-        UploadState state{.source = entry["source"], .pid = getpid()};
+        UploadState state{.source = entry["source"], .pid = currentProcessId()};
         try {
             const Conversion conversion = convertForPlayback(source, options.convertDir, options.convert);
             entry["converted"] = conversion.file.string();

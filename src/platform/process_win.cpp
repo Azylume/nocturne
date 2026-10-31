@@ -405,4 +405,15 @@ bool waitForStop(double seconds, std::optional<NativeHandle> readable)
     return stopAsked(0);
 }
 
+bool processRunning(int pid)
+{
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
+    if (!process)
+        return GetLastError() != ERROR_INVALID_PARAMETER;
+    DWORD code = 0;
+    const bool running = !GetExitCodeProcess(process, &code) || code == STILL_ACTIVE;
+    CloseHandle(process);
+    return running;
+}
+
 } // namespace azl

@@ -105,5 +105,7 @@ bool watchStopRequests();
 // Blocks up to `seconds` until a stop is asked for or `readable` (a pipe's read end) has data or reaches its end. True
 // once a stop was asked for, and from then on.
 bool waitForStop(double seconds, std::optional<NativeHandle> readable = std::nullopt);
+// False only once no process of that id exists; a process this one may not look at counts as running.
+bool processRunning(int pid);
 
 } // namespace azl
