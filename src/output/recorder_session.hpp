@@ -1,11 +1,20 @@
 #pragma once
 
+#include "engine/screen_painter.hpp"
 #include "output/recorder.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace azl {
+
+// The screen a recording's target names, none for the whole composition; throws std::runtime_error for an unknown
+// target.
+std::optional<uint64_t> screenOf(const std::string& target, const Composition& composition);
+// What a recording of `screen` (none: the whole composition) paints, through the screen's mapping.
+ScreenView recordedView(std::optional<uint64_t> screen, const Composition& composition);
 
 // One recording: the writer, and the platform's way of filling its pictures from the engine's frames on each frame's
 // command buffer (Recorder::PlatformSession in recorder.mm, recorder_ffmpeg.cpp).

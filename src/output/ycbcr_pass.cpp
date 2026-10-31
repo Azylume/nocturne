@@ -3,6 +3,8 @@
 #include "effects/shader_layout.hpp"
 #include "gpu/glsl.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -130,6 +132,36 @@ YCbCrCalibration averageCalibration(const YCbCrFormat& format)
     return {weights, format.top == 255.0f ? 1.0f : format.top == 1023.0f ? 4.0f : 256.0f};
 }
 
+YCbCrFormat ycbcrFormat(YCbCrLayout layout)
+{
+    using enum gpu::Format;
+    switch (layout) {
+    case YCbCrLayout::NV12:
+        return {YCbCrPacking::BiPlanar420, {{RGBA8, 4, 1}, {RGBA8, 4, 2}}, 255.0f, 1.0f / 255.0f};
+    // 10 bits in the high bits of 16.
+    case YCbCrLayout::P010:
+        return {YCbCrPacking::BiPlanar420, {{RGBA16, 4, 1}, {RGBA16, 4, 2}}, 1023.0f, 64.0f / 65535.0f};
+    // 10 bits in the low bits of 16.
+    case YCbCrLayout::Planar422P10:
+        return {YCbCrPacking::Planar422, {{R16, 1, 1}, {R16, 2, 1}, {R16, 2, 1}}, 1023.0f, 1.0f / 65535.0f};
+    }
+    return {};
+}
+
+void copyPlanes(const YCbCrFormat& format, std::span<const gpu::Readback> planes, YCbCrPicture& picture)
+{
+    for (size_t i = 0; i < format.planes.size(); ++i) {
+        const YCbCrPlane& plane = format.planes[i];
+        const gpu::Readback& readback = planes[i];
+        const size_t pictureRow =
+            (size_t(picture.width) * gpu::unitBytes(plane.format) + plane.across - 1) / plane.across;
+        const size_t row = std::min({pictureRow, readback.rowBytes(), picture.strides[i]});
+        const uint32_t rows = (picture.height + plane.down - 1) / plane.down;
+        for (uint32_t y = 0; y < rows; ++y)
+            std::memcpy(picture.planes[i] + y * picture.strides[i], readback.data() + y * readback.rowBytes(), row);
+    }
+}
+
 YCbCrPass::YCbCrPass(const gpu::Device& device, YCbCrFormat format, YCbCrCalibration calibration)
     : format_(std::move(format)), params_{calibration.weights, calibration.steps, format_.step}
 {
@@ -148,8 +180,8 @@ std::vector<gpu::Texture> YCbCrPass::makePlanes(const gpu::Device& device, uint3
     std::vector<gpu::Texture> planes;
     for (const YCbCrPlane& plane : format_.planes) {
         gpu::Texture texture = device.makeTexture({.format = plane.format,
-                                                   .width = width / plane.across,
-                                                   .height = height / plane.down,
+                                                   .width = (width + plane.across - 1) / plane.across,
+                                                   .height = (height + plane.down - 1) / plane.down,
                                                    .usage = gpu::Usage::Storage});
         if (!texture)
             return {};

@@ -301,6 +301,8 @@ void recover(const std::filesystem::path& folder, const std::function<bool(const
 // Why a recording to the settings' path cannot start: its folder is missing or not writable. Empty when it can, and for
 // the default folder, which a start creates.
 std::string folderProblem(const std::filesystem::path& path);
+// Whether this process may create files in `folder`.
+bool writable(const std::filesystem::path& folder);
 // The movie a settings' path names at this moment.
 std::filesystem::path movieFile(const std::filesystem::path& path);
 // Throws std::runtime_error for a codec other than "hevc" or "prores".

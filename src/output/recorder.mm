@@ -42,19 +42,6 @@ Codec codecOf(const std::string& name)
     throw std::runtime_error("unknown codec " + name + " (hevc or prores)");
 }
 
-std::optional<uint64_t> screenOf(const std::string& target, const Composition& composition)
-{
-    if (target == "composition")
-        return std::nullopt;
-    if (target.rfind("screen:", 0) == 0) {
-        const uint64_t id = std::strtoull(target.c_str() + 7, nullptr, 10);
-        for (const Screen& screen : composition.screens)
-            if (screen.id == id)
-                return id;
-    }
-    throw std::runtime_error("unknown recording target " + target + " (composition or screen:N)");
-}
-
 bool diskFull(NSError* error)
 {
     for (NSError* e = error; e; e = e.userInfo[NSUnderlyingErrorKey]) {
@@ -617,14 +604,8 @@ bool Recorder::PlatformSession::encodeBGRA(MTL::CommandBuffer* cmd, const Frame&
 void Recorder::PlatformSession::paint(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
                               MTL::Texture* target)
 {
-    Screen shown{.slices = {Slice{}}};
-    if (screen)
-        for (const Screen& s : composition.screens)
-            if (s.id == *screen)
-                shown = s;
     gpu::CommandBuffer painting = gpu::CommandBuffer::wrap(cmd);
-    painter->encode(painting, &frame, screenView(composition, shown, false, std::nullopt),
-                    gpu::Texture::retain(target));
+    painter->encode(painting, &frame, recordedView(screen, composition), gpu::Texture::retain(target));
 }
 
 std::string Recorder::PlatformSession::pixels() const

@@ -78,6 +78,8 @@ std::filesystem::path moviesFolder()
     return videosFolder() / "Nocturne";
 }
 
+} // namespace
+
 bool writable(const std::filesystem::path& folder)
 {
 #ifdef _WIN32
@@ -86,8 +88,6 @@ bool writable(const std::filesystem::path& folder)
     return ::access(folder.c_str(), W_OK) == 0;
 #endif
 }
-
-} // namespace
 
 // Converts the input's chunks to kTrackRate through a windowed-sinc low-pass below both rates' Nyquist, so a faster
 // input does not alias. The stream is taken as continuous until the rate changes or a chunk's time leaves it.
