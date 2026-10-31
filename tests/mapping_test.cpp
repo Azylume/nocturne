@@ -27,9 +27,9 @@ void registerTestEffects()
     // Red is x, green is y, blue a soft wave: smooth, so warped goldens stay stable across GPUs.
     azl::registerEffect({.type = "mapGradient",
                          .kind = azl::StageKind::Pointwise,
-                         .metal = "\n    float2 uv = px / h.size;\n"
-                                  "    return float4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
-    azl::registerEffect({.type = "mapWhite", .kind = azl::StageKind::Pointwise, .metal = "\n    return float4(1.0);\n"});
+                         .glsl = "\n    vec2 uv = px / h.size;\n"
+                                 "    return vec4(uv, 0.5 + 0.5 * sin(px.x * 0.12) * sin(px.y * 0.12), 1.0);\n"});
+    azl::registerEffect({.type = "mapWhite", .kind = azl::StageKind::Pointwise, .glsl = "\n    return vec4(1.0);\n"});
 }
 
 azl::Layer effectLayer(uint64_t id, const char* effect)

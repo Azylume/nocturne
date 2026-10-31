@@ -1,6 +1,7 @@
 #include "effects/chain_planner.hpp"
 
 #include "effects/isf.hpp"
+#include "effects/shader_layout.hpp"
 
 #include <algorithm>
 #include <set>
@@ -9,35 +10,50 @@ namespace azl {
 
 namespace {
 
-constexpr const char* kPrelude = R"(#include <metal_stdlib>
-using namespace metal;
+constexpr const char* kVersion = "#version 450\n";
 
-struct VOut { float4 position [[position]]; };
+constexpr const char* kExtensions = R"(#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_samplerless_texture_functions : require
+)";
 
-vertex VOut fullscreen(uint vid [[vertex_id]]) {
-    float2 p = float2((vid << 1) & 2, vid & 2);
-    VOut o;
-    o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
-    return o;
-}
+constexpr const char* kPrelude = R"(
 
 struct Header {
-    float4 yuv[3]; float2 size; float time; float opacity; uint blend; uint turns; float beat; uint blank; float dt;
+    vec4 yuv[3]; vec2 size; float time; float opacity; uint blend; uint turns; float beat; uint blank; float dt;
 };
 
-constexpr sampler lin(filter::linear, address::clamp_to_edge);
-constexpr sampler pix(coord::pixel, filter::linear, address::clamp_to_edge);
+layout(set = 0, binding = 0, scalar) uniform HeaderBlock { Header h; };
+
+layout(location = 0) out vec4 fragColour;
+
+const float M_PI_F = 3.14159265358979323846;
+
+float saturate(float x) { return clamp(x, 0.0, 1.0); }
+vec2 saturate(vec2 x) { return clamp(x, 0.0, 1.0); }
+vec3 saturate(vec3 x) { return clamp(x, 0.0, 1.0); }
+vec4 saturate(vec4 x) { return clamp(x, 0.0, 1.0); }
+
+float distanceSquared(vec2 a, vec2 b)
+{
+    vec2 d = a - b;
+    return dot(d, d);
+}
+
+// A texture read at pixel coordinates, filtered between pixels.
+vec4 samplePixel(texture2D t, vec2 px) { return textureLod(sampler2D(t, pix), px, 0.0); }
 
 // 60 Hz frames since the previous rendered frame, in 1/256 steps so a steady 60 frames per second is exactly 1.
-float frames60(constant Header& h) { return round(h.dt * 15360.0) / 256.0; }
+float frames60(Header h) { return round(h.dt * 15360.0) / 256.0; }
 
 // A factor per 60 Hz frame over this frame's elapsed time.
-float perFrame(float x, constant Header& h) {
+float perFrame(float x, Header h)
+{
     float n = frames60(h);
     return n == 1.0 ? x : pow(x, n);
 }
 
-uint pcg(uint n) {
+uint pcg(uint n)
+{
     n = n * 747796405u + 2891336453u;
     n = ((n >> ((n >> 28u) + 4u)) ^ n) * 277803737u;
     return (n >> 22u) ^ n;
@@ -46,305 +62,225 @@ uint pcg(uint n) {
 
 // Alignment test card: a square grid, colour bars, a grey ramp, a circle for aspect, a centre cross, a white edge,
 // and a marker that sweeps the bottom row every two seconds to make dropped or repeated frames visible.
-constexpr const char* kTestCardSource = R"(
-constant float3 kBars[8] = {
-    float3(0.75), float3(0.75, 0.75, 0.0), float3(0.0, 0.75, 0.75), float3(0.0, 0.75, 0.0),
-    float3(0.75, 0.0, 0.75), float3(0.75, 0.0, 0.0), float3(0.0, 0.0, 0.75), float3(0.0)};
+constexpr const char* kTestCardGlobals = R"(
+const vec3 kBars[8] = vec3[](
+    vec3(0.75), vec3(0.75, 0.75, 0.0), vec3(0.0, 0.75, 0.75), vec3(0.0, 0.75, 0.0),
+    vec3(0.75, 0.0, 0.75), vec3(0.75, 0.0, 0.0), vec3(0.0, 0.0, 0.75), vec3(0.0));
+)";
 
-float4 s0(float2 px, ARGS) {
+constexpr const char* kTestCardSource = R"(
     // Integer pixel math: float division at exact cell edges rounds differently on Intel and Apple GPUs.
-    uint2 ipx = uint2(px);
-    px = float2(ipx);
-    float2 size = h.size;
+    uvec2 ipx = uvec2(px);
+    px = vec2(ipx);
+    vec2 size = h.size;
     uint cell = uint(size.y) / 9u;
     float line = max(1.0, floor(size.y / 540.0));
-    uint2 c = ipx / cell;
-    float3 col = float3(0.08);
+    uvec2 c = ipx / cell;
+    vec3 col = vec3(0.08);
 
     if (float(ipx.x % cell) < line || float(ipx.y % cell) < line)
-        col = float3(0.5);
+        col = vec3(0.5);
     if (c.y == 1u && c.x >= 2u && c.x < 14u)
         col = kBars[(ipx.x - 2u * cell) * 2u / (3u * cell)];
     if (c.y == 7u && c.x >= 2u && c.x < 14u)
-        col = float3(float(c.x - 2u) / 11.0);
+        col = vec3(float(c.x - 2u) / 11.0);
 
-    float2 center = size * 0.5;
+    vec2 center = size * 0.5;
     if (abs(length(px + 0.5 - center) - 0.45 * size.y) < line)
-        col = float3(1.0);
+        col = vec3(1.0);
     if (abs(px.x + 0.5 - center.x) < line || abs(px.y + 0.5 - center.y) < line)
-        col = float3(1.0);
-    if (any(px < 2.0 * line) || any(px >= size - 2.0 * line))
-        col = float3(1.0);
+        col = vec3(1.0);
+    if (any(lessThan(px, vec2(2.0 * line))) || any(greaterThanEqual(px, size - 2.0 * line)))
+        col = vec3(1.0);
 
     float markerX = fract(h.time * 0.5) * size.x;
     if (c.y == 8u && px.x >= markerX && px.x < markerX + cell)
-        col = float3(1.0);
-    return float4(col, 1.0);
-}
+        col = vec3(1.0);
+    return vec4(col, 1.0);
 )";
 
 // `turns` carries the picture's quarter turns in bits 0-1 and its format (PictureFormat) above them: 0 is Y'CbCr
 // planes, the others a HAP frame's compressed textures (scaled YCoCg after van Waveren and Castano).
 constexpr const char* kYuvAt = R"(
-float4 hapAt(texture2d<float> t0, texture2d<float> t1, float2 uv, uint format) {
-    float4 c = t0.sample(lin, uv);
-    if (format == 1u) return float4(c.rgb, 1.0);
+vec4 hapAt(texture2D t0, texture2D t1, vec2 uv, uint format)
+{
+    vec4 c = texture(sampler2D(t0, lin), uv);
+    if (format == 1u) return vec4(c.rgb, 1.0);
     if (format == 2u) return c;
     float scale = c.b * (255.0 / 8.0) + 1.0;
     float co = (c.r - 128.0 / 255.0) / scale;
     float cg = (c.g - 128.0 / 255.0) / scale;
-    float3 rgb = saturate(float3(c.a + co - cg, c.a + cg, c.a - co - cg));
-    return float4(rgb, format == 4u ? t1.sample(lin, uv).r : 1.0);
+    vec3 rgb = saturate(vec3(c.a + co - cg, c.a + cg, c.a - co - cg));
+    return vec4(rgb, format == 4u ? texture(sampler2D(t1, lin), uv).r : 1.0);
 }
 
-float4 yuvAt(texture2d<float> t0, texture2d<float> t1, float2 px, constant Header& h) {
-    float2 uv = px / h.size;
+vec4 yuvAt(texture2D t0, texture2D t1, vec2 px, Header h)
+{
+    vec2 uv = px / h.size;
     uint turns = h.turns & 3u;
-    if (turns == 1u) uv = float2(uv.y, 1.0 - uv.x);
+    if (turns == 1u) uv = vec2(uv.y, 1.0 - uv.x);
     else if (turns == 2u) uv = 1.0 - uv;
-    else if (turns == 3u) uv = float2(1.0 - uv.y, uv.x);
+    else if (turns == 3u) uv = vec2(1.0 - uv.y, uv.x);
     if (h.turns > 3u) return hapAt(t0, t1, uv, h.turns >> 2);
-    float3 yuv = float3(t0.sample(lin, uv).r, t1.sample(lin, uv).rg);
-    float3 rgb = float3(dot(h.yuv[0].xyz, yuv), dot(h.yuv[1].xyz, yuv), dot(h.yuv[2].xyz, yuv));
-    rgb += float3(h.yuv[0].w, h.yuv[1].w, h.yuv[2].w);
-    return float4(saturate(rgb), 1.0);
+    vec3 yuv = vec3(texture(sampler2D(t0, lin), uv).r, texture(sampler2D(t1, lin), uv).rg);
+    vec3 rgb = vec3(dot(h.yuv[0].xyz, yuv), dot(h.yuv[1].xyz, yuv), dot(h.yuv[2].xyz, yuv));
+    rgb += vec3(h.yuv[0].w, h.yuv[1].w, h.yuv[2].w);
+    return vec4(saturate(rgb), 1.0);
 }
-)";
-
-constexpr const char* kYuvSource = R"(
-float4 s0(float2 px, ARGS) { return yuvAt(t0, t1, px, h); }
 )";
 
 constexpr const char* kYuvFadeSource = R"(
-float4 s0(float2 px, ARGS) {
-    float4 c = yuvAt(t0, t1, px, h);
-    if (fadeMix.weight >= 256u)
+    vec4 c = yuvAt(t0, t1, px, h);
+    if (m.weight >= 256u)
         return c;
-    float4 from = yuvAt(fadeY, fadeUv, px, fadeHeader);
-    return fadeMix.weight == 0u ? from : mix(from, c, float(fadeMix.weight) / 256.0);
-}
-)";
-
-// TransitionMix as the shaders read it.
-const std::string kFadeMix = "\nstruct FadeMix { uint type; uint weight; uint edge; uint side; float params[" +
-                             std::to_string(kMaxTransitionParams) + "]; };\n";
-
-constexpr const char* kTextureSource = R"(
-float4 s0(float2 px, ARGS) { return t0.sample(pix, px); }
+    vec4 from = yuvAt(fadeY, fadeUv, px, hf);
+    return m.weight == 0u ? from : mix(from, c, float(m.weight) / 256.0);
 )";
 
 // A text drawn smaller than it was rasterised reads the mip level of its scale, so its edges do not alias.
 constexpr const char* kTextSource = R"(
-constexpr sampler textSampler(filter::linear, mip_filter::linear, address::clamp_to_zero);
-
-float4 s0(float2 px, ARGS) {
-    float2 at = (px - h.yuv[2].xy) * h.yuv[2].z;
-    float2 coverage = t0.sample(textSampler, at / float2(t0.get_width(), t0.get_height()),
-                                level(max(0.0, log2(h.yuv[2].z)))).rg;
+    vec2 at = (px - h.yuv[2].xy) * h.yuv[2].z;
+    vec2 coverage = textureLod(sampler2D(t0, textSampler), at / vec2(textureSize(t0, 0)),
+                               max(0.0, log2(h.yuv[2].z))).rg;
     float fill = coverage.r * h.yuv[0].a;
     float line = coverage.g * h.yuv[1].a * (1.0 - fill);
     float a = fill + line;
-    return a > 0.0 ? float4((h.yuv[0].rgb * fill + h.yuv[1].rgb * line) / a, a) : float4(0.0);
-}
+    return a > 0.0 ? vec4((h.yuv[0].rgb * fill + h.yuv[1].rgb * line) / a, a) : vec4(0.0);
 )";
 
 constexpr const char* kGroupSource = R"(
-float4 s0(float2 px, ARGS) {
-    float4 c = t0.sample(pix, px * float2(t0.get_width(), t0.get_height()) / h.size);
-    return c.a > 0.0 ? float4(c.rgb / c.a, c.a) : float4(0.0);
-}
+    vec4 c = samplePixel(t0, px * vec2(textureSize(t0, 0)) / h.size);
+    return c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0);
 )";
+
+// TransitionMix as the shaders read it, at buffer 2, and the outgoing clip's header at buffer 3.
+const std::string kFadeMix =
+    "\nstruct FadeMix { uint type; uint weight; uint edge; uint side; float params[" +
+    std::to_string(kMaxTransitionParams) +
+    "]; };\nlayout(set = 0, binding = 2, scalar) uniform FadeMixBlock { FadeMix m; };\n";
+constexpr const char* kFromHeader = "layout(set = 0, binding = 3, scalar) uniform FromHeaderBlock { Header hf; };\n";
 
 // The last pass of a chain has two entry points into the composition: passMain writes premultiplied colour for
 // fixed-function blending, passBlend composites over a copy of the composition so far for the other blend modes
 // (separable blend modes of the W3C Compositing spec, numbered as BlendMode).
 constexpr const char* kIntoComposition = R"(
-float3 hardLight(float3 b, float3 s) {
-    return select(b + (2.0 * s - 1.0) - b * (2.0 * s - 1.0), b * 2.0 * s, s <= 0.5);
+vec3 hardLight(vec3 b, vec3 s)
+{
+    return mix(b + (2.0 * s - 1.0) - b * (2.0 * s - 1.0), b * 2.0 * s, lessThanEqual(s, vec3(0.5)));
 }
 
-float3 softLight(float3 b, float3 s) {
-    float3 d = select(sqrt(b), ((16.0 * b - 12.0) * b + 4.0) * b, b <= 0.25);
-    return select(b + (2.0 * s - 1.0) * (d - b), b - (1.0 - 2.0 * s) * b * (1.0 - b), s <= 0.5);
+vec3 softLight(vec3 b, vec3 s)
+{
+    vec3 d = mix(sqrt(b), ((16.0 * b - 12.0) * b + 4.0) * b, lessThanEqual(b, vec3(0.25)));
+    return mix(b + (2.0 * s - 1.0) * (d - b), b - (1.0 - 2.0 * s) * b * (1.0 - b), lessThanEqual(s, vec3(0.5)));
 }
 
-float3 blendRgb(float3 b, float3 s, uint mode) {
+vec3 blendRgb(vec3 b, vec3 s, uint mode)
+{
     switch (mode) {
-    case 4: return abs(b - s);
-    case 5: return max(b - s, float3(0.0));
-    case 6: return b + s - 2.0 * b * s;
-    case 7: return max(b, s);
-    case 8: return min(b, s);
-    case 9: return hardLight(s, b);
-    case 10: return hardLight(b, s);
-    case 11: return softLight(b, s);
-    case 12: return select(select(b / max(1.0 - s, float3(1e-6)), float3(1.0), s >= 1.0), float3(0.0), b <= 0.0);
-    case 13: return select(select(1.0 - (1.0 - b) / max(s, float3(1e-6)), float3(0.0), s <= 0.0), float3(1.0),
-                           b >= 1.0);
+    case 4u: return abs(b - s);
+    case 5u: return max(b - s, vec3(0.0));
+    case 6u: return b + s - 2.0 * b * s;
+    case 7u: return max(b, s);
+    case 8u: return min(b, s);
+    case 9u: return hardLight(s, b);
+    case 10u: return hardLight(b, s);
+    case 11u: return softLight(b, s);
+    case 12u:
+        return mix(mix(b / max(1.0 - s, vec3(1e-6)), vec3(1.0), greaterThanEqual(s, vec3(1.0))), vec3(0.0),
+                   lessThanEqual(b, vec3(0.0)));
+    case 13u:
+        return mix(mix(1.0 - (1.0 - b) / max(s, vec3(1e-6)), vec3(0.0), lessThanEqual(s, vec3(0.0))), vec3(1.0),
+                   greaterThanEqual(b, vec3(1.0)));
     }
     return s;
 }
 
-float4 composite(float4 below, float4 c, uint mode) {
-    float3 b = below.a > 0.0 ? below.rgb / below.a : float3(0.0);
-    float3 s = mix(c.rgb, saturate(blendRgb(b, c.rgb, mode)), below.a);
-    return float4(s * c.a + below.rgb * (1.0 - c.a), c.a + below.a * (1.0 - c.a));
+vec4 composite(vec4 below, vec4 c, uint mode)
+{
+    vec3 b = below.a > 0.0 ? below.rgb / below.a : vec3(0.0);
+    vec3 s = mix(c.rgb, saturate(blendRgb(b, c.rgb, mode)), below.a);
+    return vec4(s * c.a + below.rgb * (1.0 - c.a), c.a + below.a * (1.0 - c.a));
+}
+
+vec4 belowHere() { return texelFetch(below, ivec2(gl_FragCoord.xy), 0); }
+)";
+
+// During a transition the incoming clip's last pass mixes in the outgoing picture itself, exactly as a separate mix
+// pass over both pictures did: the incoming colour is rounded to 8 bits as that picture's target stored it.
+constexpr const char* kFade = R"(
+uint fadeRank(uvec2 p)
+{
+    uint x = p.x * 0x8da6b343u ^ p.y * 0xd8163841u;
+    x ^= x >> 13;
+    x *= 0x5bd1e995u;
+    x ^= x >> 15;
+    return x & 255u;
+}
+
+vec4 fadeQuantise(vec4 c)
+{
+    return floor(saturate(vec4(c.rgb * c.a, c.a)) * 255.0 + 0.5) / 255.0;
+}
+
+// For a wipe, dissolve or push, the one picture shown at p, 1 incoming or -1 outgoing, and where each is read; 0 when
+// both are mixed. Each picture is then evaluated in one place, so its chain is inlined once.
+int fadeSide(uvec2 p, uint width, out uvec2 inAt, out uvec2 outAt)
+{
+    inAt = p;
+    outAt = p;
+    switch (m.type) {
+    case 1u: return p.x < m.edge ? 1 : -1;
+    case 2u: return fadeRank(p) < m.weight ? 1 : -1;
+    case 3u:
+        inAt = uvec2(p.x - m.edge, p.y);
+        outAt = uvec2(p.x + width - m.edge, p.y);
+        return p.x < m.edge ? -1 : 1;
+    }
+    return 0;
+}
+
+vec4 fadeWeighed(vec4 o, vec4 i)
+{
+    uvec4 a = uvec4(o * 255.0 + 0.5);
+    uvec4 b = uvec4(i * 255.0 + 0.5);
+    return vec4((a * (256u - m.weight) + b * m.weight + 128u) >> 8) / 255.0;
 }
 )";
 
-// Integer pixel math throughout, so a transition frame is the same on Intel and Apple GPUs: textures are read at whole
-// pixels and the crossfade weighs 8-bit values in 1/256 steps.
-std::string sourceFunction(SourceKind source)
+const char* sourceGlobals(SourceKind source)
+{
+    switch (source) {
+    case SourceKind::TestCard: return kTestCardGlobals;
+    case SourceKind::Yuv:
+    case SourceKind::YuvFade: return kYuvAt;
+    default: return "";
+    }
+}
+
+std::string sourceBody(SourceKind source)
 {
     switch (source) {
     case SourceKind::TestCard: return kTestCardSource;
-    case SourceKind::Yuv: return std::string(kYuvAt) + kYuvSource;
-    case SourceKind::YuvFade: return std::string(kYuvAt) + kYuvFadeSource;
-    case SourceKind::Texture: return kTextureSource;
+    case SourceKind::Yuv: return "\n    return yuvAt(t0, t1, px, h);\n";
+    case SourceKind::YuvFade: return kYuvFadeSource;
+    case SourceKind::Texture: return "\n    return samplePixel(t0, px);\n";
     case SourceKind::Group: return kGroupSource;
     case SourceKind::Text: return kTextSource;
-    case SourceKind::Generator: return "\nfloat4 s0(float2 px, ARGS) { return float4(0.0); }\n";
+    case SourceKind::Generator: return "\n    return vec4(0.0);\n";
     }
     return "";
 }
 
-
-std::string textureList(const std::string& name, size_t count, const char* separator)
+std::string texture(const std::string& name, size_t slot)
 {
-    std::string out;
-    for (size_t i = 0; i < count; ++i)
-        out += "texture2d<float> " + name + std::to_string(i) + separator;
-    return out;
+    return "layout(set = 1, binding = " + std::to_string(slot) + ") uniform texture2D " + name + ";\n";
 }
 
-std::string nameList(const std::string& name, size_t count)
+std::string params(const char* name, size_t binding, size_t count)
 {
-    std::string out;
-    for (size_t i = 0; i < count; ++i)
-        out += name + std::to_string(i) + ", ";
-    return out;
-}
-
-// ARGS and PASS thread the pass's textures, header and parameters through every stage function, and for a YuvFade
-// source the outgoing clip's planes, header and the mix, named so that no stage's locals take their names.
-std::string argsMacros(size_t aux, SourceKind source)
-{
-    const bool fade = source == SourceKind::YuvFade;
-    return (fade ? kFadeMix : std::string()) + std::string("\n#define ARGS texture2d<float> t0, texture2d<float> t1, ") +
-           textureList("a", aux, ", ") + "constant Header& h, constant float* pb" +
-           (fade ? ", texture2d<float> fadeY, texture2d<float> fadeUv, constant Header& fadeHeader, constant FadeMix& fadeMix"
-                 : "") +
-           "\n#define PASS t0, t1, " + nameList("a", aux) + "h, pb" + (fade ? ", fadeY, fadeUv, fadeHeader, fadeMix" : "") +
-           "\n";
-}
-
-std::string effectSignature(const EffectDef& effect)
-{
-    const std::string name = "fx_" + effect.type;
-    switch (effect.kind) {
-    case StageKind::Pointwise:
-        return "float4 " + name + "(float4 c, float2 px, constant Header& h, constant float* p" +
-               (effect.mask.empty() ? ")" : ", float m)");
-    case StageKind::Remap:
-        return "float2 " + name + "(float2 px, constant Header& h, constant float* p" +
-               (effect.derived > 0 ? ", constant float* q)" : ")");
-    case StageKind::Neighbourhood:
-        return "float4 " + name + "(texture2d<float> t, float2 px, constant Header& h, constant float* p" +
-               (effect.derived > 0 ? ", constant float* q)" : ")");
-    case StageKind::MultiPass:
-        return "float4 " + name + "(float4 c, float2 px, constant Header& h, texture2d<float> a, constant float* p)";
-    }
-    return "";
-}
-
-std::string maskFunction(const EffectDef& effect)
-{
-    if (effect.mask.empty())
-        return "";
-    return "\nfloat mask_" + effect.type + "(float2 px, constant Header& h, constant float* p, constant float* q) {" +
-           effect.mask + "}\n";
-}
-
-std::string effectFunctions(const std::vector<PlannedStage>& stages)
-{
-    std::string out;
-    std::set<const EffectDef*> written;
-    for (const PlannedStage& stage : stages)
-        if (written.insert(stage.effect).second)
-            out += stage.effect->globals + maskFunction(*stage.effect) + "\n" + effectSignature(*stage.effect) + " {" +
-                   stage.effect->metal + "}\n";
-    return out;
-}
-
-// A pointwise stage with a mask takes it first: where the last pass's header names it as blank and the mask is 0, the
-// pixel gets no colour (the engine checked), so it is discarded before the stages under it are evaluated.
-std::string maskedStage(const EffectDef& effect, size_t k, const std::string& prev, const std::string& params,
-                        const std::string& wet, size_t derivedAt)
-{
-    return "    if (" + wet + " == 0.0) return " + prev + "(px, PASS);\n"
-           "    float m = mask_" + effect.type + "(px, h, " + params + ", pb + " + std::to_string(derivedAt) + ");\n"
-           "    if (h.blank == " + std::to_string(k) + "u && m == 0.0) discard_fragment();\n"
-           "    float4 c = " + prev + "(px, PASS);\n"
-           "    return mix(c, fx_" + effect.type + "(c, px, h, " + params + ", m), " + wet + ");\n}\n";
-}
-
-// Stage k wraps stage k-1 and mixes its result with its input by the effect's dry/wet, its last parameter. At dry/wet
-// 0 (or bypassed) it returns its input without evaluating the effect, which is what the mix gives.
-std::string stageFunction(const EffectDef& effect, size_t k, size_t offset, size_t aux, size_t derivedAt)
-{
-    const std::string prev = "s" + std::to_string(k - 1);
-    const std::string fx = "fx_" + effect.type;
-    const std::string params = "pb + " + std::to_string(offset);
-    const std::string wet = "pb[" + std::to_string(offset + effect.params.size() - 1) + "]";
-    const std::string dry = "    if (" + wet + " == 0.0) return c;\n";
-    std::string out = "\nfloat4 s" + std::to_string(k) + "(float2 px, ARGS) {\n";
-    if (!effect.mask.empty())
-        return out + maskedStage(effect, k, prev, params, wet, derivedAt);
-    switch (effect.kind) {
-    case StageKind::Pointwise:
-        out += "    float4 c = " + prev + "(px, PASS);\n" + dry +
-               "    return mix(c, " + fx + "(c, px, h, " + params + "), " + wet + ");\n";
-        break;
-    case StageKind::Remap:
-        // Outside the input is transparent, with a one-pixel soft edge instead of a hard cut.
-        out += "    if (" + wet + " == 0.0) return " + prev + "(px, PASS);\n"
-               "    float2 q = " + fx + "(px, h, " + params +
-               (effect.derived > 0 ? ", pb + " + std::to_string(derivedAt) : std::string()) + ");\n"
-               "    float2 d = min(q, h.size - q);\n"
-               "    float4 o = " + prev + "(clamp(q, float2(0.0), h.size - 0.001), PASS);\n"
-               "    o.a *= saturate(min(d.x, d.y) + 0.5);\n"
-               "    if (" + wet + " >= 1.0) return o;\n"
-               "    return mix(" + prev + "(px, PASS), o, " + wet + ");\n";
-        break;
-    case StageKind::Neighbourhood:
-        out += "    float4 c = " + prev + "(px, PASS);\n" + dry + "    return mix(c, " + fx + "(t0, px, h, " + params +
-               (effect.derived > 0 ? ", pb + " + std::to_string(derivedAt) : std::string()) + "), " + wet + ");\n";
-        break;
-    case StageKind::MultiPass:
-        out += "    float4 c = " + prev + "(px, PASS);\n" + dry +
-               "    float4 o = " + fx + "(c, px, h, a" + std::to_string(aux) + ", " + params + ");\n"
-               "    if (" + wet + " >= 1.0) return o;\n"
-               "    return mix(c, o, " + wet + ");\n";
-        break;
-    }
-    return out + "}\n";
-}
-
-// The stage functions s1..sN over `stages`, the first of the pass's stages, whose parameters fill `total` values before
-// the derived ones; returns the parameter offset after them.
-size_t stageFunctions(const std::vector<PlannedStage>& stages, std::string& out, size_t total)
-{
-    size_t offset = 0;
-    size_t aux = 0;
-    size_t derivedAt = total;
-    for (size_t k = 1; k <= stages.size(); ++k) {
-        const EffectDef& effect = *stages[k - 1].effect;
-        out += stageFunction(effect, k, offset, aux, derivedAt);
-        aux += effect.kind == StageKind::MultiPass;
-        offset += effect.params.size();
-        derivedAt += effect.derived;
-    }
-    return offset;
+    return "layout(set = 0, binding = " + std::to_string(binding) + ", scalar) uniform " + name + "Block { float " +
+           name + "[" + std::to_string(std::max<size_t>(count, 1)) + "]; };\n";
 }
 
 size_t paramCount(const std::vector<PlannedStage>& stages)
@@ -355,197 +291,260 @@ size_t paramCount(const std::vector<PlannedStage>& stages)
     return count;
 }
 
-std::string fragmentHead(const char* name, size_t aux, const std::string& extraTextures,
-                         SourceKind source = SourceKind::Yuv)
+size_t valueCount(const std::vector<PlannedStage>& stages)
 {
-    std::string out = "\nfragment float4 " + std::string(name) +
-                      "(VOut in [[stage_in]], texture2d<float> t0 [[texture(0)]], texture2d<float> t1 [[texture(1)]],\n";
-    for (size_t j = 0; j < aux; ++j)
-        out += "    texture2d<float> a" + std::to_string(j) + " [[texture(" + std::to_string(kAuxSlot + j) + ")]],\n";
-    if (source != SourceKind::YuvFade)
-        return out + extraTextures + "    constant Header& h [[buffer(0)]], constant float* pb [[buffer(1)]]) {\n";
-    return out + extraTextures + "    texture2d<float> fadeY [[texture(" + std::to_string(kFadeLumaSlot) +
-           ")]], texture2d<float> fadeUv [[texture(" + std::to_string(kFadeChromaSlot) + ")]],\n" +
-           "    constant Header& h [[buffer(0)]], constant float* pb [[buffer(1)]],\n"
-           "    constant FadeMix& fadeMix [[buffer(2)]], constant Header& fadeHeader [[buffer(3)]]) {\n";
+    size_t count = paramCount(stages);
+    for (const PlannedStage& stage : stages)
+        count += stage.effect->derived;
+    return count;
 }
 
-// During a transition the incoming clip's last pass mixes in the outgoing picture itself, exactly as a separate mix
-// pass over both pictures did: the incoming colour is rounded to 8 bits as that picture's target stored it.
-constexpr const char* kFade = R"(
-uint fadeRank(uint2 p) {
-    uint x = p.x * 0x8da6b343u ^ p.y * 0xd8163841u;
-    x ^= x >> 13;
-    x *= 0x5bd1e995u;
-    x ^= x >> 15;
-    return x & 255u;
-}
-
-float4 fadeQuantise(float4 c) {
-    return floor(saturate(float4(c.rgb * c.a, c.a)) * 255.0 + 0.5) / 255.0;
-}
-
-// For a wipe, dissolve or push, the one picture shown at p, 1 incoming or -1 outgoing, and where each is read; 0 when
-// both are mixed. Each picture is then evaluated in one place, so its chain is inlined once.
-int fadeSide(uint2 p, uint width, constant FadeMix& m, thread uint2& inAt, thread uint2& outAt) {
-    inAt = p;
-    outAt = p;
-    switch (m.type) {
-    case 1: return p.x < m.edge ? 1 : -1;
-    case 2: return fadeRank(p) < m.weight ? 1 : -1;
-    case 3:
-        inAt = uint2(p.x - m.edge, p.y);
-        outAt = uint2(p.x + width - m.edge, p.y);
-        return p.x < m.edge ? -1 : 1;
+std::string effectSignature(const EffectDef& effect, const std::string& suffix)
+{
+    const std::string name = "fx_" + effect.type + suffix;
+    const std::string derived = effect.derived > 0 ? ", int q)" : ")";
+    switch (effect.kind) {
+    case StageKind::Pointwise:
+        return "vec4 " + name + "(vec4 c, vec2 px, int p" + (effect.mask.empty() ? ")" : ", float m)");
+    case StageKind::Remap: return "vec2 " + name + "(vec2 px, int p" + derived;
+    case StageKind::Neighbourhood: return "vec4 " + name + "(texture2D t, vec2 px, int p" + derived;
+    case StageKind::MultiPass: return "vec4 " + name + "(vec4 c, vec2 px, texture2D a, int p)";
     }
-    return 0;
+    return "";
 }
-)";
+
+std::string maskFunction(const EffectDef& effect, const std::string& suffix)
+{
+    if (effect.mask.empty())
+        return "";
+    return "\nfloat mask_" + effect.type + suffix + "(vec2 px, int p, int q)\n{" + effect.mask + "}\n";
+}
+
+// Each effect's file-scope GLSL, once.
+std::string effectGlobals(const std::vector<PlannedStage>& stages)
+{
+    std::string out;
+    std::set<const EffectDef*> written;
+    for (const PlannedStage& stage : stages)
+        if (written.insert(stage.effect).second)
+            out += stage.effect->globals;
+    return out;
+}
+
+std::string effectFunctions(const std::vector<PlannedStage>& stages, const std::string& suffix)
+{
+    std::string out;
+    std::set<const EffectDef*> written;
+    for (const PlannedStage& stage : stages)
+        if (written.insert(stage.effect).second)
+            out += maskFunction(*stage.effect, suffix) + "\n" + effectSignature(*stage.effect, suffix) + "\n{" +
+                   stage.effect->glsl + "}\n";
+    return out;
+}
+
+std::string at(size_t index)
+{
+    return "pb[" + std::to_string(index) + "]";
+}
+
+// A pointwise stage with a mask takes it first: where the last pass's header names it as blank and the mask is 0, the
+// pixel gets no colour (the engine checked), so it is discarded before the stages under it are evaluated.
+std::string maskedStage(const EffectDef& effect, size_t k, const std::string& prev, size_t offset,
+                        const std::string& wet, size_t derivedAt, const std::string& suffix)
+{
+    return "    if (" + wet + " == 0.0) return " + prev + "(px);\n"
+           "    float m = mask_" + effect.type + suffix + "(px, " + std::to_string(offset) + ", " +
+           std::to_string(derivedAt) + ");\n"
+           "    if (h.blank == " + std::to_string(k) + "u && m == 0.0) discard;\n"
+           "    vec4 c = " + prev + "(px);\n"
+           "    return mix(c, fx_" + effect.type + suffix + "(c, px, " + std::to_string(offset) + ", m), " + wet +
+           ");\n}\n";
+}
+
+// Stage k wraps stage k-1 and mixes its result with its input by the effect's dry/wet, its last parameter. At dry/wet
+// 0 (or bypassed) it returns its input without evaluating the effect, which is what the mix gives.
+std::string stageFunction(const EffectDef& effect, size_t k, size_t offset, size_t aux, size_t derivedAt,
+                          const std::string& suffix)
+{
+    const std::string prev = "s" + std::to_string(k - 1) + suffix;
+    const std::string fx = "fx_" + effect.type + suffix;
+    const std::string p = std::to_string(offset);
+    const std::string q = effect.derived > 0 ? ", " + std::to_string(derivedAt) : std::string();
+    // An effect registered without the dry/wet parameter, as a test's may be, is always wet.
+    const std::string wet = effect.params.empty() ? "1.0" : at(offset + effect.params.size() - 1);
+    const std::string dry = "    if (" + wet + " == 0.0) return c;\n";
+    std::string out = "\nvec4 s" + std::to_string(k) + suffix + "(vec2 px)\n{\n";
+    if (!effect.mask.empty())
+        return out + maskedStage(effect, k, prev, offset, wet, derivedAt, suffix);
+    switch (effect.kind) {
+    case StageKind::Pointwise:
+        out += "    vec4 c = " + prev + "(px);\n" + dry + "    return mix(c, " + fx + "(c, px, " + p + "), " + wet +
+               ");\n";
+        break;
+    case StageKind::Remap:
+        // Outside the input is transparent, with a one-pixel soft edge instead of a hard cut.
+        out += "    if (" + wet + " == 0.0) return " + prev + "(px);\n"
+               "    vec2 q = " + fx + "(px, " + p + q + ");\n"
+               "    vec2 d = min(q, h.size - q);\n"
+               "    vec4 o = " + prev + "(clamp(q, vec2(0.0), h.size - 0.001));\n"
+               "    o.a *= saturate(min(d.x, d.y) + 0.5);\n"
+               "    if (" + wet + " >= 1.0) return o;\n"
+               "    return mix(" + prev + "(px), o, " + wet + ");\n";
+        break;
+    case StageKind::Neighbourhood:
+        out += "    vec4 c = " + prev + "(px);\n" + dry + "    return mix(c, " + fx + "(t0, px, " + p + q + "), " +
+               wet + ");\n";
+        break;
+    case StageKind::MultiPass:
+        out += "    vec4 c = " + prev + "(px);\n" + dry + "    vec4 o = " + fx + "(c, px, a" + std::to_string(aux) +
+               ", " + p + ");\n"
+               "    if (" + wet + " >= 1.0) return o;\n"
+               "    return mix(c, o, " + wet + ");\n";
+        break;
+    }
+    return out + "}\n";
+}
+
+// The stage functions s1..sN over `stages`, the first of the pass's stages, whose parameters fill `total` values before
+// the derived ones; returns the parameter offset after them.
+size_t stageFunctions(const std::vector<PlannedStage>& stages, std::string& out, size_t total,
+                      const std::string& suffix)
+{
+    size_t offset = 0;
+    size_t aux = 0;
+    size_t derivedAt = total;
+    for (size_t k = 1; k <= stages.size(); ++k) {
+        const EffectDef& effect = *stages[k - 1].effect;
+        out += stageFunction(effect, k, offset, aux, derivedAt, suffix);
+        aux += effect.kind == StageKind::MultiPass;
+        offset += effect.params.size();
+        derivedAt += effect.derived;
+    }
+    return offset;
+}
+
+// The source and stage functions, suffixed by `suffix`: s0 the source, sN the picture after N stages. They read the
+// header `h`, the values `pb` and the source textures t0 and t1.
+std::string chainFunctions(SourceKind source, const std::vector<PlannedStage>& stages, const std::string& suffix)
+{
+    std::string out = "\nvec4 s0" + suffix + "(vec2 px)\n{" + sourceBody(source) + "}\n" +
+                      effectFunctions(stages, suffix);
+    stageFunctions(stages, out, paramCount(stages), suffix);
+    return out;
+}
+
+// The same functions over the outgoing clip of a single-pass fade, from its own textures, header and values.
+std::string outgoingChainFunctions(SourceKind source, const std::vector<PlannedStage>& stages)
+{
+    return "\n#define t0 f0\n#define t1 f1\n#define h hf\n#define pb pbf\n" + chainFunctions(source, stages, "_out") +
+           "#undef t0\n#undef t1\n#undef h\n#undef pb\n";
+}
 
 std::string isfTransitionFunctions(const IsfTransitions& transitions)
 {
     std::string out;
     for (const IsfTransition& t : transitions)
         if (!t.function.empty())
-            out += t.globals + "\nfloat4 isfTransition" + std::to_string(uint32_t(t.mode)) +
-                   "(float4 from, float4 to, uint2 p, constant Header& h, float progress, constant float* tp) {" +
-                   t.function + "}\n";
+            out += t.globals + "\nvec4 isfTransition" + std::to_string(uint32_t(t.mode)) +
+                   "(vec4 from, vec4 to, uvec2 p, float progress)\n{" + t.function + "}\n";
     return out;
 }
 
 // A case of the transition switch per ISF transition, over the outgoing and incoming pictures at p.
-std::string isfTransitionCases(const IsfTransitions& transitions, const std::string& from, const std::string& to)
+std::string isfTransitionCases(const IsfTransitions& transitions)
 {
     std::string out;
     for (const IsfTransition& t : transitions) {
         if (t.function.empty())
             continue;
         const std::string n = std::to_string(uint32_t(t.mode));
-        out += "    case " + n + ": return isfTransition" + n + "(" + from + ", " + to +
-               ", p, h, float(m.weight) / 256.0, m.params);\n";
+        out += "    case " + n + "u: return isfTransition" + n + "(o, i, p, float(m.weight) / 256.0);\n";
     }
     return out;
 }
 
-// fadeIncoming is the incoming clip's last pass at q; fadeMixed mixes it with the outgoing picture as the transition
-// type says (TransitionMix).
-std::string fadeFunction(size_t stages, const IsfTransitions& transitions)
+// fadeMixed mixes the incoming picture at q, the pass's last stage, with the outgoing one as the transition type says
+// (TransitionMix): read from its picture, or for the single-pass fade (fadeMixedSingle) evaluated here.
+std::string fadeFunctions(size_t stages, bool single, const IsfTransitions& transitions)
 {
-    return "\nfloat4 fadeIncoming(float2 q, ARGS) { return fadeQuantise(s" + std::to_string(stages) + "(q, PASS)); }\n" +
-           isfTransitionFunctions(transitions) + R"(
-#define FADE_IN(q) (m.side == 2u ? float4(0.0) : fadeIncoming(float2(q) + 0.5, PASS))
-#define FADE_OUT(q) (m.side == 1u ? float4(0.0) : from.read(q))
-float4 fadeMixed(uint2 p, texture2d<float> from, constant FadeMix& m, ARGS) {
-    uint2 inAt, outAt;
-    int side = fadeSide(p, uint(h.size.x), m, inAt, outAt);
-    float4 o = side == 1 ? float4(0.0) : FADE_OUT(outAt);
-    float4 i = side == -1 ? float4(0.0) : FADE_IN(inAt);
+    const std::string last = "s" + std::to_string(stages);
+    std::string out = "\nvec4 fadeIncoming(vec2 q) { return fadeQuantise(" + last + "(q)); }\n";
+    const std::string mixed = R"(
+    uvec2 inAt, outAt;
+    int side = fadeSide(p, uint(h.size.x), inAt, outAt);
+    vec4 o = side == 1 ? vec4(0.0) : OUTGOING(outAt);
+    vec4 i = side == -1 ? vec4(0.0) : INCOMING(inAt);
     if (side != 0)
         return side == 1 ? i : o;
     switch (m.type) {
-)" + isfTransitionCases(transitions, "o", "i") + R"(    }
-    uint4 a = uint4(o * 255.0 + 0.5);
-    uint4 b = uint4(i * 255.0 + 0.5);
-    return float4((a * (256u - m.weight) + b * m.weight + 128u) >> 8) / 255.0;
+)" + isfTransitionCases(transitions) + R"(    }
+    return fadeWeighed(o, i);
 }
 )";
+    out += "\n#define OUTGOING(q) (m.side == 1u ? vec4(0.0) : texelFetch(from, ivec2(q), 0))\n"
+           "#define INCOMING(q) (m.side == 2u ? vec4(0.0) : fadeIncoming(vec2(q) + 0.5))\n"
+           "vec4 fadeMixed(uvec2 p)\n{" + mixed + "#undef OUTGOING\n#undef INCOMING\n";
+    if (!single)
+        return out;
+    return out + "\nvec4 fadeOutgoing(vec2 q) { return fadeQuantise(" + last + "_out(q)); }\n"
+                 "#define OUTGOING(q) fadeOutgoing(vec2(q) + 0.5)\n"
+                 "#define INCOMING(q) fadeIncoming(vec2(q) + 0.5)\n"
+                 "vec4 fadeMixedSingle(uvec2 p)\n{" + mixed + "#undef OUTGOING\n#undef INCOMING\n";
 }
 
-// A last pass's entry point during a transition: the pass's own arguments, the outgoing picture and the mix.
-std::string fadeHead(const char* name, size_t aux, const std::string& below)
+std::string entry(const std::string& name, const std::string& body)
 {
-    const std::string from = "    texture2d<float> from [[texture(" + std::to_string(kFromSlot) + ")]],\n";
-    const std::string head = fragmentHead(name, aux, below + from);
-    const std::string end = "constant float* pb [[buffer(1)]]) {\n";
-    return head.substr(0, head.rfind(end)) + "constant float* pb [[buffer(1)]], constant FadeMix& m [[buffer(2)]]) {\n";
+    return "\n#ifdef ENTRY_" + name + "\nvoid main()\n{\n" + body + "}\n#endif\n";
 }
 
-// The single-pass fade: the outgoing clip through the same pass from its own textures, header and parameters,
-// rounded to 8 bits as the outgoing picture used to store it, then mixed as fadeMixed does.
-std::string fadeSingleFunction(size_t stages, const IsfTransitions& transitions)
+// A last pass's two entry points for one way of working out its colour `c`: premultiplied for fixed-function blending
+// (MAIN) and composited over the target's copy (BLEND). `faded` says `c` is premultiplied already.
+std::string intoEntries(const std::string& main, const std::string& blend, const std::string& colour, bool faded)
 {
-    return "\nfloat4 fadeOutgoing(float2 q, texture2d<float> f0, texture2d<float> f1, constant Header& hf, "
-           "constant float* pbf) { return fadeQuantise(s" + std::to_string(stages) + "(q, f0, f1, hf, pbf)); }\n" +
-           R"(
-#define FROM(q) fadeOutgoing(float2(q) + 0.5, f0, f1, hf, pbf)
-float4 fadeMixedSingle(uint2 p, texture2d<float> f0, texture2d<float> f1, constant Header& hf, constant float* pbf,
-                       constant FadeMix& m, ARGS) {
-    uint2 inAt, outAt;
-    int side = fadeSide(p, uint(h.size.x), m, inAt, outAt);
-    float4 o = side == 1 ? float4(0.0) : FROM(outAt);
-    float4 i = side == -1 ? float4(0.0) : fadeIncoming(float2(inAt) + 0.5, PASS);
-    if (side != 0)
-        return side == 1 ? i : o;
-    switch (m.type) {
-)" + isfTransitionCases(transitions, "o", "i") + R"(    }
-    uint4 a = uint4(o * 255.0 + 0.5);
-    uint4 b = uint4(i * 255.0 + 0.5);
-    return float4((a * (256u - m.weight) + b * m.weight + 128u) >> 8) / 255.0;
-}
-)";
+    const std::string c = "    vec4 c = " + colour + ";\n";
+    if (!faded)
+        return entry(main, c + "    float a = c.a * h.opacity;\n    fragColour = vec4(c.rgb * a, a);\n") +
+               entry(blend, c + "    fragColour = composite(belowHere(), vec4(c.rgb, c.a * h.opacity), h.blend);\n");
+    return entry(main, c + "    fragColour = c * h.opacity;\n") +
+           entry(blend, c + "    vec4 straight = c.a > 0.0 ? vec4(c.rgb / c.a, c.a * h.opacity) : vec4(0.0);\n"
+                            "    fragColour = composite(belowHere(), straight, h.blend);\n");
 }
 
-std::string fadeSingleHead(const char* name, const std::string& below);
-
-std::string fadeSingle(size_t stages, const std::string& below, const IsfTransitions& transitions)
+// Header, values, textures and helpers every pass of this source with these stages declares.
+std::string passHead(const PlannedPass& pass, size_t aux)
 {
-    const std::string faded = "    float4 c = fadeMixedSingle(uint2(in.position.xy), f0, f1, hf, pbf, m, PASS);\n";
-    return fadeSingleFunction(stages, transitions) + fadeSingleHead("fadeSingleMain", "") + faded +
-           "    return c * h.opacity;\n}\n" + fadeSingleHead("fadeSingleBlend", below) + faded +
-           "    float4 straight = c.a > 0.0 ? float4(c.rgb / c.a, c.a * h.opacity) : float4(0.0);\n"
-           "    return composite(below.read(uint2(in.position.xy)), straight, h.blend);\n"
-           "}\n";
+    std::string out = std::string(kVersion) + kExtensions + kGlslSamplers + kPrelude +
+                      params("pb", 1, valueCount(pass.stages)) + texture("t0", 0) + texture("t1", 1);
+    for (size_t j = 0; j < aux; ++j)
+        out += texture("a" + std::to_string(j), kAuxSlot + j);
+    if (pass.source == SourceKind::YuvFade)
+        out += kFadeMix + kFromHeader + texture("fadeY", kFadeLumaSlot) + texture("fadeUv", kFadeChromaSlot);
+    return out + sourceGlobals(pass.source) + effectGlobals(pass.stages);
 }
-
-std::string fadeSingleHead(const char* name, const std::string& below)
-{
-    const std::string from = "    texture2d<float> f0 [[texture(" + std::to_string(kFromLumaSlot) + ")]],\n" +
-                             "    texture2d<float> f1 [[texture(" + std::to_string(kFromChromaSlot) + ")]],\n";
-    const std::string head = fragmentHead(name, 0, below + from);
-    const std::string end = "constant float* pb [[buffer(1)]]) {\n";
-    return head.substr(0, head.rfind(end)) +
-           "constant float* pb [[buffer(1)]], constant FadeMix& m [[buffer(2)]],\n"
-           "    constant Header& hf [[buffer(3)]], constant float* pbf [[buffer(4)]]) {\n";
-}
-
-} // namespace
-
-bool singlePassFade(const PlannedPass& pass)
-{
-    return pass.intoComposition && pass.source == SourceKind::Yuv && combinedStages(pass).empty();
-}
-
-namespace {
 
 std::string generateMain(const PlannedPass& pass, size_t aux)
 {
-    std::string out =
-        kPrelude + argsMacros(aux, pass.source) + sourceFunction(pass.source) + effectFunctions(pass.stages);
-    stageFunctions(pass.stages, out, paramCount(pass.stages));
-    const std::string last = "    float4 c = s" + std::to_string(pass.stages.size()) + "(in.position.xy, PASS);\n";
+    const std::string last = "s" + std::to_string(pass.stages.size()) + "(gl_FragCoord.xy)";
+    std::string out = passHead(pass, aux);
     if (!pass.intoComposition)
-        return out + fragmentHead("passMain", aux, "", pass.source) + last +
-               "    return float4(c.rgb, c.a * h.opacity);\n}\n";
-    const std::string below = "    texture2d<float> below [[texture(" + std::to_string(kBelowSlot) + ")]],\n";
-    const std::string into = kIntoComposition + fragmentHead("passMain", aux, "", pass.source) + last +
-                             "    float a = c.a * h.opacity;\n"
-                             "    return float4(c.rgb * a, a);\n"
-                             "}\n" +
-                             fragmentHead("passBlend", aux, below, pass.source) + last +
-                             "    return composite(below.read(uint2(in.position.xy)), float4(c.rgb, c.a * h.opacity), "
-                             "h.blend);\n"
-                             "}\n";
+        return out + chainFunctions(pass.source, pass.stages, "") +
+               entry("passMain", "    vec4 c = " + last + ";\n    fragColour = vec4(c.rgb, c.a * h.opacity);\n");
+    out += texture("below", kBelowSlot) + kIntoComposition;
     if (pass.source == SourceKind::YuvFade)
-        return out + into;
-    const std::string faded = "    float4 c = fadeMixed(uint2(in.position.xy), from, m, PASS);\n";
+        return out + chainFunctions(pass.source, pass.stages, "") + intoEntries("passMain", "passBlend", last, false);
+
+    const bool single = singlePassFade(pass);
     const auto transitions = isfTransitions();
-    return out + kFadeMix + kFade + fadeFunction(pass.stages.size(), *transitions) + into +
-           fadeHead("fadeMain", aux, "") + faded + "    return c * h.opacity;\n}\n" +
-           fadeHead("fadeBlend", aux, below) + faded +
-           "    float4 straight = c.a > 0.0 ? float4(c.rgb / c.a, c.a * h.opacity) : float4(0.0);\n"
-           "    return composite(below.read(uint2(in.position.xy)), straight, h.blend);\n"
-           "}\n" +
-           (singlePassFade(pass) ? fadeSingle(pass.stages.size(), below, *transitions) : std::string());
+    out += kFadeMix + texture("from", kFromSlot) + kFade + isfTransitionFunctions(*transitions) +
+           chainFunctions(pass.source, pass.stages, "");
+    if (single)
+        out += kFromHeader + params("pbf", 4, valueCount(pass.stages)) + texture("f0", kFromLumaSlot) +
+               texture("f1", kFromChromaSlot) + outgoingChainFunctions(pass.source, pass.stages);
+    out += fadeFunctions(pass.stages.size(), single, *transitions) + intoEntries("passMain", "passBlend", last, false) +
+           intoEntries("fadeMain", "fadeBlend", "fadeMixed(uvec2(gl_FragCoord.xy))", true);
+    if (single)
+        out += intoEntries("fadeSingleMain", "fadeSingleBlend", "fadeMixedSingle(uvec2(gl_FragCoord.xy))", true);
+    return out;
 }
 
 // A side pass evaluates the stages before its multi-pass stage as INPUT, then that stage's side function.
@@ -556,20 +555,14 @@ std::string generateSide(const PlannedPass& pass, size_t aux)
     const size_t side = *pass.side;
     const std::string fxs = "fxs_" + effect.type + "_" + std::to_string(side);
 
-    std::string out = kPrelude + argsMacros(aux, pass.source) + sourceFunction(pass.source) + effectFunctions(prefix);
-    const size_t offset = stageFunctions(prefix, out, paramCount(pass.stages));
-    out += "\n#define INPUT(q) s" + std::to_string(prefix.size()) + "(q, PASS)\n";
-    out += "float4 " + fxs + "(float2 px, texture2d<float> prev, " + textureList("side", side, ", ") +
-           "ARGS, constant float* p) {" + effect.sidePasses[side].metal + "}\n";
-
-    std::string extra = "    texture2d<float> prev [[texture(" + std::to_string(kPrevSlot) + ")]],\n";
+    std::string out = passHead(pass, aux) + texture("prev", kPrevSlot);
     for (size_t i = 0; i < side; ++i)
-        extra += "    texture2d<float> side" + std::to_string(i) + " [[texture(" + std::to_string(kSideSlot + i) +
-                 ")]],\n";
-    out += fragmentHead("passMain", aux, extra, pass.source);
-    out += "    return " + fxs + "(in.position.xy, prev, " + nameList("side", side) + "PASS, pb + " +
-           std::to_string(offset) + ");\n}\n";
-    return out;
+        out += texture("side" + std::to_string(i), kSideSlot + i);
+    out += "\nvec4 s0(vec2 px)\n{" + sourceBody(pass.source) + "}\n" + effectFunctions(prefix, "");
+    const size_t offset = stageFunctions(prefix, out, paramCount(pass.stages), "");
+    out += "\n#define INPUT(q) s" + std::to_string(prefix.size()) + "(q)\n";
+    out += "vec4 " + fxs + "(vec2 px, int p)\n{" + effect.sidePasses[side].glsl + "}\n";
+    return out + entry("passMain", "    fragColour = " + fxs + "(gl_FragCoord.xy, " + std::to_string(offset) + ");\n");
 }
 
 bool needsFloat16(const PlannedPass& pass)
@@ -612,6 +605,24 @@ void addSidePasses(const PlannedPass& pass, PlannedStage stage, std::vector<Plan
 
 } // namespace
 
+bool singlePassFade(const PlannedPass& pass)
+{
+    return pass.intoComposition && pass.source == SourceKind::Yuv && combinedStages(pass).empty();
+}
+
+std::vector<std::string> passEntries(const PlannedPass& pass)
+{
+    if (!pass.intoComposition)
+        return {"passMain"};
+    std::vector<std::string> entries{"passMain", "passBlend"};
+    if (pass.source != SourceKind::YuvFade)
+        entries.insert(entries.end(), {"fadeMain", "fadeBlend"});
+    if (singlePassFade(pass))
+        entries.insert(entries.end(), {"fadeSingleMain", "fadeSingleBlend"});
+    return entries;
+}
+
+
 std::vector<PlannedPass> planChain(SourceKind source, const std::vector<const EffectDef*>& chain)
 {
     std::vector<PlannedPass> passes;
@@ -631,7 +642,7 @@ std::vector<PlannedPass> planChain(SourceKind source, const std::vector<const Ef
     for (PlannedPass& p : passes) {
         p.float16 = needsFloat16(p);
         const size_t aux = combinedStages(p).size();
-        p.metal = p.side ? generateSide(p, aux) : generateMain(p, aux);
+        p.glsl = p.side ? generateSide(p, aux) : generateMain(p, aux);
     }
     return passes;
 }

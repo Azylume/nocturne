@@ -17,7 +17,7 @@ shaders, copied snippets), check its licence here and add a row to ADR 0012's ta
 | Component | Version | Licence | Use | Compatible |
 |---|---|---|---|---|
 | glslang | vulkan-sdk-1.4.363.0 | BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0 (its LICENSE.txt); the "GPL-3 with Bison exception" section covers only Bison skeleton output, which the exception lets us ship under any terms (and Bison is no longer used) | FetchContent, linked into the engine; GLSL to SPIR-V | yes |
-| SPIRV-Cross | vulkan-sdk-1.4.363.0 | Apache-2.0 (a few files MIT) | FetchContent, linked into the engine; SPIR-V to MSL | yes |
+| SPIRV-Cross | vulkan-sdk-1.4.363.0 | Apache-2.0 (a few files MIT) | FetchContent, linked into the engine; SPIR-V to MSL, and ISF shaders back to GLSL | yes |
 | ISFMSLKit (mrRay) | 3aa9355 | MIT; its own dependencies are BSD/MIT/Apache | reference reading only, nothing copied | yes (unused) |
 | VVMetalKit (mrRay) | 85ff46e | MIT text (README calls it BSD); bundles Apple's AAPLMathUtilities under the Apple sample code licence | reference reading only, nothing copied | yes (unused) |
 | ISF-Files (Vidvox) | 395072d | MIT for the repository; shaders ported from elsewhere carry their own terms, and many say nothing | source of the curated shaders, vendored verbatim with the licence next to them | per shader, below |

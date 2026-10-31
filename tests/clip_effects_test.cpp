@@ -25,7 +25,7 @@ constexpr uint32_t kYellowY = 90;
 void registerHalf()
 {
     if (!azl::findEffect("testHalf"))
-        azl::registerEffect({"testHalf", azl::StageKind::Pointwise, {}, false, "\n    return float4(c.rgb * 0.5, c.a);\n", {}});
+        azl::registerEffect({"testHalf", azl::StageKind::Pointwise, {}, false, "\n    return vec4(c.rgb * 0.5, c.a);\n", {}});
 }
 
 Effect colorize(double hue, double saturation = 1.0)

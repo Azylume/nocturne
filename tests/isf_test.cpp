@@ -67,18 +67,21 @@ std::filesystem::path freshDir(const char* name)
 
 } // namespace
 
-TEST_CASE("a GLSL fragment shader crosses to MSL; a broken one reports the compiler's error")
+TEST_CASE("a GLSL fragment shader crosses to MSL in its entry's namespace; a broken one reports the compiler's error")
 {
-    const azl::CrossResult ok = azl::fragmentGlslToMsl(R"(#version 450
+    const azl::CrossResult ok = azl::glslToMsl({{"tint", azl::ShaderStage::Fragment, R"(#version 450
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 colour;
 void main() { colour = vec4(uv, 0.0, 1.0); }
-)");
+)"}});
     CHECK(ok.error.empty());
-    CHECK(ok.msl.find("fragment") != std::string::npos);
+    CHECK(ok.text.find("namespace tint {") != std::string::npos);
+    CHECK(ok.text.find("fragment") != std::string::npos);
+    CHECK(azl::mslFunction("tint") == "tint::main0");
 
-    const azl::CrossResult broken = azl::fragmentGlslToMsl("#version 450\nvoid main() { undefinedThing = 1.0; }\n");
-    CHECK(broken.msl.empty());
+    const azl::CrossResult broken =
+        azl::glslToMsl({{"broken", azl::ShaderStage::Fragment, "#version 450\nvoid main() { undefinedThing = 1.0; }\n"}});
+    CHECK(broken.text.empty());
     CHECK(broken.error.find("undefinedThing") != std::string::npos);
 }
 
@@ -110,27 +113,29 @@ void main() { gl_FragColor = transition(isf_FragNormCoord.xy); })") ==
           "a transition must read both pictures at its own pixel only");
 }
 
-TEST_CASE("an ISF shader translates to namespaced Metal and caches it on disk; a broken one reports its error")
+TEST_CASE("an ISF shader translates to prefixed GLSL and caches it on disk; a broken one reports its error")
 {
     const std::filesystem::path dir = freshDir("isf-cache-test");
-    const azl::IsfMetal tint = azl::translateIsf(parsed(kTint), dir);
+    const azl::IsfGlsl tint = azl::translateIsf(parsed(kTint), dir);
     REQUIRE_MESSAGE(tint.error.empty(), tint.error);
-    CHECK(tint.globals.find("namespace isf_isfTestTint {") != std::string::npos);
-    CHECK(tint.globals.find("[[") == std::string::npos);
-    CHECK(tint.body.find("isf_isfTestTint::main0(i)") != std::string::npos);
-    CHECK(azl::translateIsf(parsed(kShift), {}).body.find("main0(i, t, lin)") != std::string::npos);
+    CHECK(tint.globals.find("vec4 isf_isfTestTint_isf_run(") != std::string::npos);
+    CHECK(tint.globals.find("#version") == std::string::npos);
+    CHECK(tint.globals.find("void main()") == std::string::npos);
+    CHECK(tint.body.find("isf_isfTestTint_isf_run(") != std::string::npos);
+    CHECK(azl::translateIsf(parsed(kShift), {}).globals.find("#define isf_isfTestShift_inputImage sampler2D(t0, lin)") !=
+          std::string::npos);
 
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(dir))
         files.push_back(entry.path());
     REQUIRE(files.size() == 1);
-    std::ofstream(files[0]) << "struct main0_in {}; // from the cache\n";
+    std::ofstream(files[0]) << "float isf_isfTestTint_cached; // from the cache\n";
     CHECK(azl::translateIsf(parsed(kTint), dir).globals.find("from the cache") != std::string::npos);
     std::filesystem::remove_all(dir);
 
     azl::IsfShader broken = parsed(kShift);
     broken.glsl = "void main() { gl_FragColor = vec4(missingValue); }";
-    const azl::IsfMetal failed = azl::translateIsf(broken, {});
+    const azl::IsfGlsl failed = azl::translateIsf(broken, {});
     CHECK(failed.globals.empty());
     CHECK(failed.error.find("missingValue") != std::string::npos);
 }
@@ -145,19 +150,19 @@ void main() {
     gl_FragColor = IMG_PIXEL(inputImage, _inputImage_imgRect.zw - loc);
 }
 )"};
-    const azl::IsfMetal metal = azl::translateIsf(parsed(v1), {});
-    CHECK_MESSAGE(metal.error.empty(), metal.error);
+    const azl::IsfGlsl glsl = azl::translateIsf(parsed(v1), {});
+    CHECK_MESSAGE(glsl.error.empty(), glsl.error);
     CHECK(azl::isfGlsl(parsed(v1)).find("#define _inputImage_imgRect vec4(vec2(0.0), IMG_SIZE(inputImage))") !=
           std::string::npos);
 }
 
-TEST_CASE("an ISF shader read from the cache is the same Metal as one translated, for each type it registers as")
+TEST_CASE("an ISF shader read from the cache is the same GLSL as one translated, for each type it registers as")
 {
     const std::filesystem::path dir = freshDir("isf-cache-same-test");
     const azl::IsfShader tint = parsed(kTint);
     azl::IsfShader renamed = tint;
     renamed.type = "isfTestTintToo";
-    const azl::IsfMetal fresh = azl::translateIsf(tint, {});
+    const azl::IsfGlsl fresh = azl::translateIsf(tint, {});
     REQUIRE_MESSAGE(fresh.error.empty(), fresh.error);
     CHECK(azl::translateIsf(tint, dir).globals == fresh.globals);
     CHECK(azl::translateIsf(tint, dir).globals == fresh.globals);

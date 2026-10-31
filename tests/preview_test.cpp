@@ -495,7 +495,7 @@ void registerRedOnly()
 {
     if (!azl::findEffect("testRedOnly"))
         azl::registerEffect({"testRedOnly", azl::StageKind::Pointwise, {}, false,
-                             "\n    return float4(c.r, 0.0, 0.0, c.a);\n", {}});
+                             "\n    return vec4(c.r, 0.0, 0.0, c.a);\n", {}});
 }
 
 struct Channels {

@@ -85,16 +85,17 @@ int optionIndex(const ParamDef& param, double value);
 // The value that picks the option: min + index x (max - min) / (options - 1).
 double optionValue(const ParamDef& param, int index);
 
-// A pass a multi-pass effect renders before the layer's pass combines its result. `metal` is the body of
-//   float4 fxs_TYPE_i(float2 px, texture2d<float> prev, texture2d<float> side0, ..., ARGS, constant float* p)
-// where px is this target's pixel, side0.. are the targets of the effect's earlier side passes this frame, and
-// INPUT(q) is the effect's input at composition pixel q, with the stages before it fused in.
+// A pass a multi-pass effect renders before the layer's pass combines its result. `glsl` is the body of
+//   vec4 fxs_TYPE_i(vec2 px, int p)
+// where px is this target's pixel, the textures `prev` (last frame's target) and side0.. (the targets of the effect's
+// earlier side passes this frame) are in scope, and INPUT(q) is the effect's input at composition pixel q, with the
+// stages before it fused in.
 struct SidePass {
     // The target is the composition size divided by this.
     uint32_t divisor = 1;
     // The target keeps its content across frames: two textures swap roles each frame and `prev` is last frame's.
     bool persistent = false;
-    std::string metal;
+    std::string glsl;
 };
 
 // A shader that replaces the effect's own while any of `params` is on (off its default, or passing `when` if set, or
@@ -103,21 +104,20 @@ struct SidePass {
 struct EffectVariant {
     std::string name;
     std::vector<std::string> params;
-    std::string metal;
+    std::string glsl;
     bool (*when)(double value) = nullptr;
     std::optional<StageKind> kind{};
 };
 
-// `metal` is the body of one Metal function whose signature the planner writes from the kind:
-//   Pointwise:     float4 fx_TYPE(float4 c, float2 px, constant Header& h, constant float* p)
-//   Remap:         float2 fx_TYPE(float2 px, constant Header& h, constant float* p[, constant float* q]), returning the
-//                  input pixel to read; q when it derives values
-//   Neighbourhood: float4 fx_TYPE(texture2d<float> t, float2 px, constant Header& h, constant float* p), sampling t
-//                  with `pix`; with derived values, a last argument `constant float* q` holds them
-//   MultiPass:     float4 fx_TYPE(float4 c, float2 px, constant Header& h, texture2d<float> a, constant float* p), where
-//                  a is the target of its last side pass
-// px are composition pixel coordinates with centres at .5; p holds the parameters in declaration order, each as its
-// drive derives it; h.size is the composition size, h.time its clock in seconds and h.beat the beat clock's beats.
+// `glsl` is the body of one GLSL function whose signature the planner writes from the kind:
+//   Pointwise:     vec4 fx_TYPE(vec4 c, vec2 px, int p)
+//   Remap:         vec2 fx_TYPE(vec2 px, int p[, int q]), returning the input pixel to read; q when it derives values
+//   Neighbourhood: vec4 fx_TYPE(texture2D t, vec2 px, int p), reading t with samplePixel; with derived values, a last
+//                  argument `int q`
+//   MultiPass:     vec4 fx_TYPE(vec4 c, vec2 px, texture2D a, int p), where a is the target of its last side pass
+// px are composition pixel coordinates with centres at .5; the parameters, in declaration order and each as its drive
+// derives it, are pb[p], pb[p + 1] and so on, and the derived values pb[q] onwards; h.size is the composition size,
+// h.time its clock in seconds and h.beat the beat clock's beats.
 struct EffectDef {
     std::string type;
     StageKind kind = StageKind::Pointwise;
@@ -125,7 +125,7 @@ struct EffectDef {
     std::vector<ParamDef> params;
     // Intermediates are 8-bit unless a stage needs headroom. For a multi-pass effect it applies to its side targets.
     bool needsFloat16 = false;
-    std::string metal;
+    std::string glsl;
     std::vector<SidePass> sidePasses;
     // Checked in order; the first with a parameter on wins.
     std::vector<EffectVariant> variants{};
@@ -142,8 +142,9 @@ struct EffectDef {
     // Screen. Null when not known.
     bool (*keepsBlack)(const float* p) = nullptr;
     // For a pointwise effect: the body of
-    //   float mask_TYPE(float2 px, constant Header& h, constant float* p, constant float* q)
-    // which the stage evaluates first and hands to `metal` as a last argument `float m`. q holds the derived values.
+    //   float mask_TYPE(vec2 px, int p, int q)
+    // which the stage evaluates first and hands to `glsl` as a last argument `float m`. q is where the derived values
+    // start.
     std::string mask{};
     // Values the CPU works out once a frame from the parameters (p, as the shader reads them; `rates` has a driven
     // parameter's own value instead, a phase's rate), the composition time in seconds and the beat clock's beats,
@@ -155,7 +156,7 @@ struct EffectDef {
     bool (*blackOutsideMask)(const float* p) = nullptr;
     // Shown instead of the label the type spells when set.
     std::string label{};
-    // Metal at file scope that the effect's functions use, written once before them.
+    // GLSL at file scope that the effect's functions use, written once before them.
     std::string globals{};
     // The type is no longer registered.
     bool retired = false;
@@ -178,7 +179,7 @@ void registerEffect(EffectDef effect);
 // Any thread: later lookups of the type find nothing.
 void retireEffect(const std::string& type);
 // Start-up and tests only: gives a registered effect its shader.
-void setEffectShader(const std::string& type, std::string globals, std::string metal);
+void setEffectShader(const std::string& type, std::string globals, std::string glsl);
 
 // A hash of every effect type with its parameters' names and ranges, apart from the user's own shaders (which the
 // engine sends its clients): a UI and an engine that agree on it understand each other's effect edits.
