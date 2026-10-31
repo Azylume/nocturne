@@ -204,7 +204,7 @@ public:
     virtual ~FrameTap() = default;
     // Adds GPU work reading `frame` to the frame's command buffer and must never wait. What it returns runs once that
     // command buffer completed, with whether it succeeded.
-    virtual Done encode(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
+    virtual Done encode(gpu::CommandBuffer& cmd, const Frame& frame, const Composition& composition,
                         double seconds) = 0;
 };
 

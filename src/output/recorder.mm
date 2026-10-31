@@ -394,7 +394,7 @@ struct Recorder::Session : FrameTap, std::enable_shared_from_this<Session> {
             std::chrono::milliseconds spaceInterval);
     ~Session() override;
 
-    Done encode(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition, double seconds) override;
+    Done encode(gpu::CommandBuffer& cmd, const Frame& frame, const Composition& composition, double seconds) override;
     bool encodeConverted(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
                          CVPixelBufferRef buffer);
     bool encodeBGRA(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition, CVPixelBufferRef buffer,
@@ -667,7 +667,7 @@ Recorder::Session::Segment Recorder::Session::openSegment(const std::filesystem:
     return next;
 }
 
-FrameTap::Done Recorder::Session::encode(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
+FrameTap::Done Recorder::Session::encode(gpu::CommandBuffer& cmd, const Frame& frame, const Composition& composition,
                                          double seconds)
 {
     CVPixelBufferRef buffer = nullptr;
@@ -677,8 +677,8 @@ FrameTap::Done Recorder::Session::encode(MTL::CommandBuffer* cmd, const Frame& f
         return nullptr;
     }
     CVMetalTextureRef texture = nullptr;
-    const bool encoded = converter ? encodeConverted(cmd, frame, composition, buffer)
-                                   : encodeBGRA(cmd, frame, composition, buffer, texture);
+    const bool encoded = converter ? encodeConverted(cmd.native(), frame, composition, buffer)
+                                   : encodeBGRA(cmd.native(), frame, composition, buffer, texture);
     if (!encoded) {
         CFRelease(buffer);
         dropped++;
