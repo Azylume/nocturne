@@ -9,8 +9,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
+#include <thread>
 #include <vector>
 
 namespace gpu = azl::gpu;
@@ -277,8 +281,9 @@ namespace {
 
 // Draws three vertices through entries[0] (vertex) and entries[1] (fragment), `source` at texture 0, into a new BGRA8
 // target cleared to blue, and reads it back.
-std::vector<uint8_t> drawn(const gpu::Device& device, const gpu::Queue& queue, const std::vector<azl::ShaderEntry>& entries,
-                           uint32_t width, uint32_t height, const gpu::Texture* source = nullptr)
+std::vector<uint8_t> drawn(const gpu::Device& device, const gpu::Queue& queue,
+                           const std::vector<azl::ShaderEntry>& entries, uint32_t width, uint32_t height,
+                           const gpu::Texture* source = nullptr)
 {
     std::string error;
     const gpu::ShaderModule module = device.makeShaderModule(gpu::compileGlsl(entries), &error);
@@ -354,10 +359,9 @@ void main()
         color = texture(sampler2D(picture, textSampler), vec2(-0.5, 0.5));
 }
 )";
-    const std::vector<uint8_t> pixels = drawn(
-        device, queue,
-        {{"fullscreen", azl::ShaderStage::Vertex, azl::kFullscreenVertex}, {"reads", azl::ShaderStage::Fragment, reads}},
-        3, 1, &source);
+    const std::vector<azl::ShaderEntry> entries{{"fullscreen", azl::ShaderStage::Vertex, azl::kFullscreenVertex},
+                                                {"reads", azl::ShaderStage::Fragment, reads}};
+    const std::vector<uint8_t> pixels = drawn(device, queue, entries, 3, 1, &source);
     // Texel (2, 1) of the RGBA upload, read back as BGRA.
     const size_t texel = (1 * 4 + 2) * 4;
     for (size_t x : {0, 1}) {
@@ -416,12 +420,62 @@ TEST_CASE("each blending mode combines a premultiplied colour with the target as
     }
 }
 
+TEST_CASE("command buffers committed from several threads complete once each, and a fence orders two queues")
+{
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue first = device.makeQueue();
+    const gpu::Queue second = device.makeQueue();
+    std::atomic<int> completed{0};
+    const auto commitMany = [&completed](const gpu::Queue& queue) {
+        for (int i = 0; i < 200; ++i) {
+            gpu::Scope scope;
+            gpu::CommandBuffer cmd = queue.commandBuffer();
+            cmd.onCompleted([&completed](const gpu::Completion& done) {
+                if (done.ok)
+                    ++completed;
+            });
+            cmd.commit();
+        }
+    };
+    std::thread a(commitMany, std::cref(first)), b(commitMany, std::cref(second));
+    a.join();
+    b.join();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (completed < 400 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(completed == 400);
+
+    // The reading queue is committed first and waits for the fence the drawing queue signals.
+    const gpu::Texture target = device.makeTexture({.format = gpu::Format::RGBA8,
+                                                    .width = 4,
+                                                    .height = 4,
+                                                    .usage = gpu::Usage::RenderTarget | gpu::Usage::Sampled});
+    const gpu::Fence fence = device.makeFence();
+    gpu::Scope scope;
+    gpu::CommandBuffer draw = first.commandBuffer();
+    draw.begin(gpu::RenderTarget{&target, gpu::Load::Clear, {1.0, 0.0, 0.0, 1.0}}).end();
+    draw.signal(fence, 1);
+    gpu::CommandBuffer read = second.commandBuffer();
+    read.wait(fence, 1);
+    const gpu::Readback readback(device, target);
+    readback.encode(read);
+    read.commit();
+    draw.commit();
+    read.waitUntilCompleted();
+    REQUIRE(read.completion().ok);
+    CHECK(readback.data()[0] == 255);
+    CHECK(readback.data()[1] == 0);
+    CHECK(readback.data()[readback.size() - 1] == 255);
+}
+
 #if !defined(__APPLE__)
 #include "gpu/gpu_vulkan.hpp"
 
 TEST_CASE("the Vulkan validation layer checks every GPU call the tests make")
 {
-    REQUIRE(gpu::Device::systemDefault());
+    const gpu::Device device = gpu::Device::systemDefault();
+    REQUIRE(device);
+    MESSAGE(device.name() << ", present wait " << gpu::vulkan::presentWait(device));
     CHECK(gpu::vulkan::validationEnabled());
 }
 #endif

@@ -26,6 +26,8 @@ Texture wrapSwapchainImage(const Device& device, VkImage image, VkFormat format,
 // The command buffer waits for a binary semaphore (a swapchain acquire) before `stage`, or signals one when it is done.
 void waitSemaphore(CommandBuffer& cmd, VkSemaphore semaphore, VkPipelineStageFlags2 stage);
 void signalSemaphore(CommandBuffer& cmd, VkSemaphore semaphore);
+// VK_KHR_present_id and VK_KHR_present_wait are enabled: a swapchain can tag presents and wait for them on screen.
+bool presentWait(const Device& device);
 // vkQueuePresentKHR on the queue, serialised with its submissions. The output's present thread.
 VkResult present(const Queue& queue, const VkPresentInfoKHR& info);
 
