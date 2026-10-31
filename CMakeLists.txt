@@ -154,6 +154,7 @@ add_library(nocturne_protocol STATIC
   src/protocol/prepare.cpp
   src/protocol/remote_files.cpp
   src/protocol/return_stream.cpp
+  src/supervisor/crash_guard.cpp
   src/supervisor/rotating_log.cpp
   src/supervisor/state_saver.cpp
 )
@@ -167,7 +168,6 @@ else()
   target_sources(nocturne_protocol PRIVATE
     src/document/composition_file_posix.cpp
     src/protocol/bundle_push.cpp
-    src/supervisor/crash_guard.cpp
   )
 endif()
 
@@ -320,6 +320,20 @@ elseif(WIN32)
   target_link_libraries(nocturne_http PUBLIC winhttp)
 endif()
 
+add_executable(nocturne-supervisor src/app/supervisor.cpp)
+target_link_libraries(nocturne-supervisor PRIVATE nocturne_protocol)
+
+file(READ src/desk/page.html desk_page)
+configure_file(src/desk/page.cpp.in desk_page.cpp @ONLY)
+add_library(nocturne_desk STATIC src/desk/desk_server.cpp ${CMAKE_CURRENT_BINARY_DIR}/desk_page.cpp)
+target_link_libraries(nocturne_desk PUBLIC nocturne_net)
+add_executable(nocturne-desk src/app/desk.cpp)
+target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
+
+# The engine stand-in tests/supervisor_process_test.cpp runs under nocturne-supervisor.
+add_executable(nocturne_fake_engine tests/fake_engine.cpp)
+target_link_libraries(nocturne_fake_engine PRIVATE nocturne_protocol)
+
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
@@ -327,12 +341,15 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
   tests/media_files_test.cpp tests/video_decoder_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
-  tests/udp_clock_test.cpp tests/http_test.cpp ${NOCTURNE_PLATFORM_TESTS})
+  tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
+  ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"
   NOCTURNE_MEDIA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/media"
-  NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>")
-add_dependencies(nocturne_tests nocturne_platform_child)
+  NOCTURNE_PLATFORM_CHILD="$<TARGET_FILE:nocturne_platform_child>"
+  NOCTURNE_FAKE_ENGINE="$<TARGET_FILE:nocturne_fake_engine>" NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
+  NOCTURNE_DESK="$<TARGET_FILE:nocturne-desk>")
+add_dependencies(nocturne_tests nocturne_platform_child nocturne_fake_engine nocturne-supervisor nocturne-desk)
 target_link_libraries(nocturne_tests PRIVATE nocturne_audio)
 if(APPLE)
   target_sources(nocturne_tests PRIVATE src/audio/power_spectrum_pocketfft.cpp)
@@ -462,16 +479,6 @@ target_link_libraries(nocturne_app_config PUBLIC nocturne_engine nocturne_net)
 add_executable(nocturne src/app/main.mm src/app/safe_mode.mm)
 target_link_libraries(nocturne PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_djlink nocturne_upload)
 
-add_executable(nocturne-supervisor src/app/supervisor.cpp)
-target_link_libraries(nocturne-supervisor PRIVATE nocturne_protocol)
-
-file(READ src/desk/page.html desk_page)
-configure_file(src/desk/page.cpp.in desk_page.cpp @ONLY)
-add_library(nocturne_desk STATIC src/desk/desk_server.cpp ${CMAKE_CURRENT_BINARY_DIR}/desk_page.cpp)
-target_link_libraries(nocturne_desk PUBLIC nocturne_net)
-add_executable(nocturne-desk src/app/desk.cpp)
-target_link_libraries(nocturne-desk PRIVATE nocturne_desk)
-
 add_executable(nocturne-ctl src/app/ctl.cpp)
 target_link_libraries(nocturne-ctl PRIVATE nocturne_net nocturne_discovery nocturne_venues nocturne_fetch nocturne_audio)
 
@@ -508,7 +515,6 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/hap_playback_test.cpp
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-  NOCTURNE_SUPERVISOR="$<TARGET_FILE:nocturne-supervisor>"
   NOCTURNE_HAP_ENCODE="$<TARGET_FILE:nocturne-hap-encode>")
 add_dependencies(nocturne_tests app nocturne-hap-encode)
 target_link_libraries(nocturne_tests PRIVATE nocturne_app_config nocturne_harness nocturne_audio nocturne_net nocturne_sync nocturne_import nocturne_upload nocturne_djlink nocturne_venues "-framework CoreGraphics" "-framework ImageIO"

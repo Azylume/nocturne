@@ -1,9 +1,6 @@
 #include "desk/desk_server.hpp"
+#include "platform/process.hpp"
 
-#include <pthread.h>
-#include <signal.h>
-
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -46,18 +43,18 @@ int main(int argc, char** argv)
         else
             usage(2);
     }
+#ifdef _WIN32
+    // Windows has no line buffering: unbuffered, each line still reaches the supervisor's log as it is written.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+#else
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
-    std::signal(SIGPIPE, SIG_IGN);
-    sigset_t stop;
-    sigemptyset(&stop);
-    sigaddset(&stop, SIGTERM);
-    sigaddset(&stop, SIGINT);
-    sigaddset(&stop, SIGHUP);
-    pthread_sigmask(SIG_BLOCK, &stop, nullptr);
+#endif
+    if (!azl::watchStopRequests())
+        return 1;
     try {
         azl::DeskServer desk(options);
-        int signal = 0;
-        sigwait(&stop, &signal);
+        while (!azl::waitForStop(3600.0)) {
+        }
         std::printf("desk: stopping\n");
         return 0;
     } catch (const std::exception& e) {
