@@ -19,8 +19,8 @@ inline double traceNow()
     return traceSeconds(std::chrono::steady_clock::now());
 }
 
-// A host time (Metal's GPU and presented times, mach_absolute_time in seconds) on the steady clock, which also counts
-// the time the machine slept.
+// A host time (Metal's GPU and presented times, platform/clock.hpp) on the steady clock, which also counts the time
+// the machine slept.
 double traceFromHost(double hostSeconds);
 
 // A timeline of every rendered frame and every present, kept in memory and written as JSON lines, to see what the
