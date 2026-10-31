@@ -405,6 +405,19 @@ private:
             waitForPresent_(vk_, swapchain_, presents_, 200'000'000);
         else
             std::this_thread::sleep_for(period_ * 3);
+        drainQueue();
+    }
+
+    // Waits, at most a second, until this output's queue has run every present sent to it, so the queue no longer
+    // uses their semaphores or images.
+    void drainQueue()
+    {
+        gpu::Scope scope;
+        const gpu::Fence fence = device_.makeFence();
+        gpu::CommandBuffer cmd = queue_.commandBuffer();
+        cmd.signal(fence, 1);
+        cmd.commit();
+        fence.wait(1, 1000);
     }
 
     void tearDown()
