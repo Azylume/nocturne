@@ -2,6 +2,7 @@
 #include "test_client.hpp"
 
 #include "effects/isf.hpp"
+#include "engine/isf_compiler.hpp"
 
 #include <doctest.h>
 
@@ -54,7 +55,18 @@ vec4 transition(vec2 uv) { return uv.x < progress * scale ? getToColor(uv) : get
 void main() { gl_FragColor = transition(isf_FragNormCoord.xy); }
 )";
 
-constexpr const char* kBroken = R"(/*{"INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
+// Each long input's value as a tenth of a channel: evenly spaced values, uneven ones and descending ones.
+constexpr const char* kLongs = R"(/*{
+    "INPUTS": [
+        {"NAME": "even", "TYPE": "long", "VALUES": [3, 5, 7], "DEFAULT": 3},
+        {"NAME": "uneven", "TYPE": "long", "VALUES": [2, 5, 9], "DEFAULT": 2},
+        {"NAME": "down", "TYPE": "long", "VALUES": [4, 1, -2], "DEFAULT": 4}
+    ]
+}*/
+void main() { gl_FragColor = vec4(float(even) / 10.0, float(uneven) / 10.0, float(down + 2) / 10.0, 1.0); }
+)";
+
+constexpr const char* kBroken =R"(/*{"INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
 void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * notDeclared; }
 )";
 
@@ -171,6 +183,34 @@ TEST_CASE("user ISF shaders in the state folder join as user effects, generators
     // Gone with the engine that read them.
     CHECK_FALSE(azl::findEffect("userTestTint"));
     CHECK_FALSE(azl::findIsfTransition(*azl::isfTransitions(), azl::userTransitionMode("userTestSplit")));
+}
+
+TEST_CASE("a long input reads the value its option stands for; only uneven values need a table")
+{
+    const auto parsed = azl::parseIsf({"Test Longs", kLongs});
+    REQUIRE(std::holds_alternative<azl::IsfShader>(parsed));
+    const std::string glsl = azl::isfGlsl(std::get<azl::IsfShader>(parsed));
+    CHECK(glsl.find("isf_values0") == std::string::npos);
+    CHECK(glsl.find("isf_values1") != std::string::npos);
+    CHECK(glsl.find("isf_values2") == std::string::npos);
+
+    TempDir root;
+    write(root.path / "isf-user/Test Longs.fs", kLongs);
+    azl::EngineHarness harness({.width = 160, .height = 90}, 60.0, root.path);
+    Client client(harness.document());
+    apply(client, azl::SetQuantise{0});
+    const Params options{{"even", 1.0}, {"uneven", 2.0}, {"down", 1.0}};
+    const azl::ClipRef clip{.name = "longs", .effects = {azl::Effect{0, "userTestLongs", options}}};
+    apply(client, azl::SetSlot{1, 1, clip});
+    client.send({{"type", "trigger"}, {"op", "clip"}, {"layer", 1}, {"column", 1}});
+    REQUIRE(client.next()["op"] == "triggerClip");
+    harness.step(4);
+    harness.engine().waitForCompiles();
+    harness.step(2);
+    const auto p = pixel(harness.readScreen(), 80, 45);
+    CHECK(std::abs(p[0] - 128) <= 2);
+    CHECK(std::abs(p[1] - 230) <= 2);
+    CHECK(std::abs(p[2] - 77) <= 2);
 }
 
 TEST_CASE("a broken user ISF file reports its error and the engine keeps rendering")
