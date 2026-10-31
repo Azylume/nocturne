@@ -1,14 +1,8 @@
 #include "desk/desk_server.hpp"
 
 #include "net/lan.hpp"
+#include "net/socket_compat.hpp"
 #include "net/websocket.hpp"
-
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -52,17 +46,6 @@ std::string trimmed(const std::string& text)
     return first == std::string::npos ? "" : text.substr(first, last - first + 1);
 }
 
-void sendAll(int fd, const std::string& data)
-{
-    size_t sent = 0;
-    while (sent < data.size()) {
-        const ssize_t n = ::send(fd, data.data() + sent, data.size() - sent, 0);
-        if (n <= 0)
-            return;
-        sent += size_t(n);
-    }
-}
-
 } // namespace
 
 struct DeskServer::Link {
@@ -79,8 +62,7 @@ DeskServer::DeskServer(Options options) : options_(std::move(options)), port_(op
         options_.addresses = lanAddresses;
     if (options_.name.empty())
         options_.name = bonjourName();
-    if (::pipe(wake_) != 0)
-        throw std::runtime_error("cannot create the desk's wake pipe");
+    startSockets();
     bindAll();
     if (sockets_.empty() && (options_.loopbackOnly || port_ == 0)) {
         closeAll();
@@ -92,8 +74,7 @@ DeskServer::DeskServer(Options options) : options_(std::move(options)), port_(op
 DeskServer::~DeskServer()
 {
     stop_ = true;
-    const char byte = 1;
-    [[maybe_unused]] ssize_t n = ::write(wake_[1], &byte, 1);
+    wake_.signal();
     thread_.join();
     while (serving_ > 0)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -103,11 +84,8 @@ DeskServer::~DeskServer()
 void DeskServer::closeAll()
 {
     for (auto& [address, fd] : sockets_)
-        ::close(fd);
+        closeSocket(fd);
     sockets_.clear();
-    for (int& fd : wake_)
-        if (fd >= 0)
-            ::close(std::exchange(fd, -1));
 }
 
 // Listens on every address it should and no other; the port stays the one first bound.
@@ -121,27 +99,25 @@ void DeskServer::bindAll()
             continue;
         }
         std::printf("desk: no longer listening on %s\n", it->first.c_str());
-        ::close(it->second);
+        closeSocket(it->second);
         it = sockets_.erase(it);
     }
     for (const std::string& address : wanted) {
         if (sockets_.contains(address))
             continue;
-        sockaddr_in at{};
-        at.sin_len = sizeof at;
-        at.sin_family = AF_INET;
-        at.sin_port = htons(port_);
+        sockaddr_in at = ipv4Endpoint({}, port_);
         if (inet_pton(AF_INET, address.c_str(), &at.sin_addr) != 1)
             continue;
-        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0)
+        const Socket fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd == kNoSocket)
             continue;
         const int on = 1;
-        ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on);
-        ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+        ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof on);
+        noInherit(fd);
         if (::bind(fd, reinterpret_cast<sockaddr*>(&at), sizeof at) != 0 || ::listen(fd, 16) != 0) {
-            std::printf("desk: cannot listen on %s:%u: %s\n", address.c_str(), unsigned(port_), std::strerror(errno));
-            ::close(fd);
+            std::printf("desk: cannot listen on %s:%u: %s\n", address.c_str(), unsigned(port_),
+                        socketErrorText(socketError()).c_str());
+            closeSocket(fd);
             continue;
         }
         if (port_ == 0) {
@@ -159,10 +135,10 @@ void DeskServer::listen()
 {
     auto rescan = std::chrono::steady_clock::now() + std::chrono::milliseconds(kRescanMs);
     while (!stop_) {
-        std::vector<pollfd> fds{{wake_[0], POLLIN, 0}};
+        std::vector<pollfd> fds{{wake_.socket(), POLLIN, 0}};
         for (const auto& [address, fd] : sockets_)
             fds.push_back({fd, POLLIN, 0});
-        ::poll(fds.data(), nfds_t(fds.size()), kRescanMs);
+        pollSockets(fds.data(), fds.size(), kRescanMs);
         if (stop_)
             break;
         for (size_t i = 1; i < fds.size(); ++i) {
@@ -170,8 +146,8 @@ void DeskServer::listen()
                 continue;
             sockaddr_storage from{};
             socklen_t size = sizeof from;
-            const int fd = ::accept(fds[i].fd, reinterpret_cast<sockaddr*>(&from), &size);
-            if (fd < 0)
+            const Socket fd = ::accept(fds[i].fd, reinterpret_cast<sockaddr*>(&from), &size);
+            if (fd == kNoSocket)
                 continue;
             char text[INET6_ADDRSTRLEN] = {};
             if (from.ss_family == AF_INET)
@@ -179,7 +155,7 @@ void DeskServer::listen()
             else if (from.ss_family == AF_INET6)
                 inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6&>(from).sin6_addr, text, sizeof text);
             if (serving_ >= kMaxServing) {
-                ::close(fd);
+                closeSocket(fd);
                 continue;
             }
             ++serving_;
@@ -195,24 +171,21 @@ void DeskServer::listen()
     }
 }
 
-void DeskServer::serve(int fd, std::string source)
+void DeskServer::serve(Socket fd, std::string source)
 {
-    const timeval timeout{5, 0};
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
-    const int on = 1;
-    ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+    setTimeouts(fd, 5.0);
+    noSigPipe(fd);
     std::string request;
     char buffer[2048];
     while (request.find("\r\n\r\n") == std::string::npos && request.size() < kMaxRequest) {
-        const ssize_t n = ::recv(fd, buffer, sizeof buffer, 0);
+        const long n = receiveSome(fd, buffer, sizeof buffer);
         if (n <= 0)
             break;
         request.append(buffer, size_t(n));
     }
     const size_t end = request.find("\r\n\r\n");
     if (end == std::string::npos) {
-        ::close(fd);
+        closeSocket(fd);
         return;
     }
     std::string method, path, host;
@@ -238,8 +211,9 @@ void DeskServer::serve(int fd, std::string source)
     head += "Cache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n";
     head += "Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
             "connect-src 'self'; img-src 'self'\r\n\r\n";
-    sendAll(fd, head + r.body);
-    ::close(fd);
+    const std::string reply = head + r.body;
+    sendAll(fd, reply.data(), reply.size());
+    closeSocket(fd);
 }
 
 DeskServer::Response DeskServer::respond(const std::string& method, const std::string& path, const std::string& source,

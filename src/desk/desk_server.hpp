@@ -1,5 +1,6 @@
 #pragma once
 
+#include "net/socket_compat.hpp"
 #include "protocol/messages.hpp"
 
 #include <atomic>
@@ -59,13 +60,13 @@ private:
     std::optional<Message> engineStatus();
     void listen();
     void bindAll();
-    void serve(int fd, std::string source);
+    void serve(Socket fd, std::string source);
     void closeAll();
 
     Options options_;
     uint16_t port_ = 0;
-    std::map<std::string, int> sockets_;
-    int wake_[2] = {-1, -1};
+    std::map<std::string, Socket> sockets_;
+    Wake wake_;
     std::atomic<bool> stop_{false};
     std::atomic<int> serving_{0};
     std::thread thread_;

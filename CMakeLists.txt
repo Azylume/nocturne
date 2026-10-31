@@ -133,6 +133,7 @@ add_library(nocturne_protocol STATIC
   src/document/mapping.cpp
   src/document/cues.cpp
   src/document/lineup.cpp
+  src/net/socket_compat.cpp
   src/document/wall_clock.cpp
   src/document/modulation.cpp
   src/document/composition_file.cpp
@@ -159,6 +160,7 @@ target_link_libraries(nocturne_protocol PUBLIC nocturne_platform)
 target_include_directories(nocturne_protocol SYSTEM PUBLIC third_party/nlohmann)
 if(WIN32)
   target_sources(nocturne_protocol PRIVATE src/document/composition_file_win32.cpp)
+  target_link_libraries(nocturne_protocol PUBLIC ws2_32 iphlpapi)
 else()
   target_sources(nocturne_protocol PRIVATE
     src/document/composition_file_posix.cpp
