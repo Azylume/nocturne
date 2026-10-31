@@ -216,7 +216,7 @@ std::unique_ptr<State> outgoing(State& state)
 } // namespace
 
 Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* library)
-    : device_(gpuDevice), config_(config), queue_(NS::TransferPtr(device()->newCommandQueue())),
+    : device_(gpuDevice), config_(config), queue_(gpuDevice.makeQueue()),
       gpu_(device(), "render", ""),
       compiler_(device(), config.pipelineCache ? config.pipelineCache : ""),
       decoders_(device(), library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
@@ -235,12 +235,12 @@ Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* 
     poolTexture(fades_, 1, kFrameFormat, {config.width, config.height});
     poolTexture(fades_, 0, kFrameFormat, {config.width, config.height});
     if (config.gpuProfile) {
-        profile_ = std::make_unique<GpuProfile>(device(), profile::kEnabled ? 2 : 0);
+        profile_ = std::make_unique<GpuProfile>(gpuDevice, profile::kEnabled ? 2 : 0);
         std::fprintf(stderr, "nocturne: GPU profile: %s\n", profile_->mode());
         if (!profile_->enabled())
             profile_.reset();
     }
-    previewTimer_ = std::make_unique<GpuProfile>(device(), 1, true);
+    previewTimer_ = std::make_unique<GpuProfile>(gpuDevice, 1, true);
     if (!previewTimer_->enabled())
         previewTimer_.reset();
     if (config_.fsrUpscale)
@@ -377,13 +377,13 @@ void Engine::renderFrame(double seconds)
     }
     publishTransport(*current, seconds, beat, held);
 
-    FrameEncoding encoding{queue_->commandBuffer(), *frame, float(seconds)};
+    FrameEncoding encoding{queue_.commandBuffer(), *frame, float(seconds)};
     if (profile_)
         encoding.profile = profile_->begin();
     if (previewTimer_ && !previewOnly.empty())
         encoding.previewTimes = previewTimer_->begin();
     encoding.previewOnly = std::move(previewOnly);
-    encodeStack(encoding, &frame->texture, MTL::ClearColor(0, 0, 0, 1), draws);
+    encodeStack(encoding, &frame->texture, gpu::ClearColor{0, 0, 0, 1}, draws);
     stats_.passes = encoding.passes;
     stats_.previewPasses = encoding.previewPasses;
     stats_.bakedPasses = encoding.bakedPasses;
@@ -396,7 +396,7 @@ void Engine::renderFrame(double seconds)
     stats_.sideSpares = sides_.spares();
     stats_.pooledTextures = intermediates_[0].size() + intermediates_[1].size() + groups_.size() + below_.size() +
                             fades_.size();
-    FrameTap::Done tapped = tap ? tap->encode(encoding.cmd, *frame, *current, seconds) : nullptr;
+    FrameTap::Done tapped = tap ? tap->encode(encoding.cmd.native(), *frame, *current, seconds) : nullptr;
     mark.encoded = traceNow();
     mark.fading = stats_.fading;
 
@@ -404,37 +404,34 @@ void Engine::renderFrame(double seconds)
         std::lock_guard lock(inFlightMutex_);
         inFlight_++;
     }
-    encoding.cmd->addCompletedHandler([this, frame, pictures = std::move(pictures),
-                                       chains = std::move(chains),
-                                       tapped = std::move(tapped),
-                                       profile = encoding.profile,
-                                       previewTimes = encoding.previewTimes,
-                                       mark, timeline = gpu_](MTL::CommandBuffer* done) mutable {
+    encoding.cmd.onCompleted([this, frame, pictures = std::move(pictures),
+                              chains = std::move(chains),
+                              tapped = std::move(tapped),
+                              profile = encoding.profile,
+                              previewTimes = encoding.previewTimes,
+                              mark, timeline = gpu_](const gpu::Completion& done) mutable {
         AZL_GPU_COLLECT(timeline);
         pictures.clear();
         chains.clear();
         if (tapped)
-            tapped(done->status() == MTL::CommandBufferStatusCompleted);
-        const auto gpu = uint64_t(std::max(0.0, done->GPUEndTime() - done->GPUStartTime()) * 1e6);
+            tapped(done.ok);
+        const auto gpu = uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
         stats_.gpuMicros += gpu;
         recentGpu_ = (recentGpu_ * 7 + gpu) / 8;
         stats_.maxGpuMicros = std::max(stats_.maxGpuMicros.load(), gpu);
         stats_.maxDoneMicros = std::max(stats_.maxDoneMicros.load(), microsSince(frame->started));
         const auto queued =
-            uint64_t(std::max(0.0, traceFromHost(done->GPUStartTime()) - traceSeconds(frame->started)) * 1e6);
+            uint64_t(std::max(0.0, traceFromHost(done.gpuStart) - traceSeconds(frame->started)) * 1e6);
         stats_.queueMicros += queued;
         stats_.maxQueueMicros = std::max(stats_.maxQueueMicros.load(), queued);
         if (profile)
-            profile_->finish(*profile, done->status() == MTL::CommandBufferStatusCompleted, done->GPUStartTime(),
-                             done->GPUEndTime());
+            profile_->finish(*profile, done);
         if (previewTimes)
-            stats_.previewGpuMicros +=
-                previewTimer_->finish(*previewTimes, done->status() == MTL::CommandBufferStatusCompleted,
-                                      done->GPUStartTime(), done->GPUEndTime());
+            stats_.previewGpuMicros += previewTimer_->finish(*previewTimes, done);
         traceDone(mark, done);
-        finished(std::move(frame), done->status() == MTL::CommandBufferStatusCompleted);
+        finished(std::move(frame), done.ok);
     });
-    encoding.cmd->commit();
+    encoding.cmd.commit();
     AZL_FRAME_MARK;
     stats_.maxCpuMicros = std::max(stats_.maxCpuMicros.load(), microsSince(frame->started));
     pool->release();
@@ -1078,7 +1075,7 @@ void Engine::addCompositionChain(std::vector<Draw>& draws, const std::shared_ptr
     draws.push_back(std::move(draw));
 }
 
-void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, MTL::ClearColor clear,
+void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                          std::vector<Draw>& draws)
 {
     AZL_ZONE("encode stack");
@@ -1100,8 +1097,8 @@ void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, MTL::
 
     if (frame.profile)
         frame.label = "stack | clear";
-    auto* enc = beginPass(frame, target, MTL::LoadActionClear, clear);
-    const bool opaque = clear.alpha == 1.0;
+    auto* enc = beginPass(frame, target, gpu::Load::Clear, clear);
+    const bool opaque = clear.a == 1.0;
     for (Draw& draw : draws) {
         if (!draw.composite)
             continue;
@@ -1215,7 +1212,7 @@ MTL::RenderCommandEncoder* Engine::composite(FrameEncoding& frame, const gpu::Te
         if (variant == BlendVariant::Shader)
             below = copyBelow(frame, target);
         label(frame, draw, &draw.passes->back(), draw.from.empty() ? nullptr : "mix");
-        enc = beginPass(frame, target, MTL::LoadActionLoad);
+        enc = beginPass(frame, target, gpu::Load::Keep);
     }
     if (draw.reduced) {
         encodeUpscaled(enc, draw, variant, below, frame.seconds, draw.opacity, baseOf(draw));
@@ -1240,7 +1237,7 @@ void Engine::encodeInputs(FrameEncoding& frame, Draw& draw)
     if (!draw.layers.empty() || draw.opaque) {
         draw.source = poolTexture(groups_, frame.groups++, kFrameFormat,
                                   draw.upscales ? baseOf(draw.layers.front()) : sizeOf(draw));
-        encodeStack(frame, draw.source, MTL::ClearColor(0, 0, 0, draw.opaque ? 1 : 0), draw.layers);
+        encodeStack(frame, draw.source, gpu::ClearColor{0, 0, 0, draw.opaque ? 1.0 : 0.0}, draw.layers);
     }
     draw.input = draw.source;
     if (draw.passes->size() < 2)
@@ -1271,7 +1268,7 @@ void Engine::encodeInputs(FrameEncoding& frame, Draw& draw)
                                    ? bake.texture
                                    : poolTexture(pool, ordinal * 2 + written++ % 2, format, sizeOf(draw));
         label(frame, draw, &pass);
-        auto* enc = beginPass(frame, target, MTL::LoadActionDontCare);
+        auto* enc = beginPass(frame, target, gpu::Load::DontCare);
         encodePass(enc, pass, 0, draw, draw.input, nullptr, frame.seconds, 1.0f);
         endPass(frame, enc);
         frame.fullResolutionTargets++;
@@ -1374,7 +1371,7 @@ void Engine::encodePicture(FrameEncoding& frame, const Draw& draw)
 {
     gpu::Texture picture = ring_->claimPicture();
     label(frame, draw, &draw.passes->back(), "picture");
-    auto* enc = beginPass(frame, &picture, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0));
+    auto* enc = beginPass(frame, &picture, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     if (draw.reduced)
         encodeUpscaled(enc, draw, BlendVariant::Normal, nullptr, frame.seconds, 1.0f, {config_.width, config_.height});
     else
@@ -1397,7 +1394,7 @@ void Engine::encodeFade(FrameEncoding& frame, Draw& draw)
     draw.mixed[0] = poolTexture(fades_, frame.fades, kFrameFormat, sizeOf(draw));
     label(frame, from, &from.passes->back(), from.picture ? nullptr : "clear");
     // The pass blends over the target, so where the picture is transparent (around a text) it keeps what is there.
-    auto* enc = beginPass(frame, draw.mixed[0], MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0));
+    auto* enc = beginPass(frame, draw.mixed[0], gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     if (from.picture)
         encodePass(enc, from.passes->back(), size_t(BlendVariant::Normal), from, from.input, nullptr, frame.seconds,
                    1.0f);
@@ -1414,7 +1411,7 @@ void Engine::encodeReduced(FrameEncoding& frame, Draw& draw)
     const size_t index = frame.reduced++;
     draw.reduced = poolTexture(reduced_, index, kFrameFormat, sizeOf(draw));
     label(frame, draw, &draw.passes->back(), "reduced");
-    auto* enc = beginPass(frame, draw.reduced, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0));
+    auto* enc = beginPass(frame, draw.reduced, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0});
     encodeLast(enc, draw, BlendVariant::Normal, nullptr, frame.seconds, 1.0f);
     endPass(frame, enc);
     frame.passes++;
@@ -1423,12 +1420,12 @@ void Engine::encodeReduced(FrameEncoding& frame, Draw& draw)
 
     const gpu::Texture* scaled = poolTexture(easu_, 0, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "easu");
-    enc = beginPass(frame, scaled, MTL::LoadActionDontCare);
+    enc = beginPass(frame, scaled, gpu::Load::DontCare);
     fsr_->encodeEasu(enc, draw.reduced->native(), scaled->native());
     endPass(frame, enc);
     draw.reduced = poolTexture(upscaled_, index, kFrameFormat, baseOf(draw));
     label(frame, draw, &draw.passes->back(), "rcas");
-    enc = beginPass(frame, draw.reduced, MTL::LoadActionDontCare);
+    enc = beginPass(frame, draw.reduced, gpu::Load::DontCare);
     fsr_->encodeRcas(enc, scaled->native());
     endPass(frame, enc);
     frame.passes += 2;
@@ -1513,10 +1510,10 @@ void Engine::encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Dr
                      sizeOf(draw).height);
     label(frame, draw, &pass);
     if (target.fresh)
-        endPass(frame, beginPass(frame, target.prev, MTL::LoadActionClear, MTL::ClearColor(0, 0, 0, 0)));
+        endPass(frame, beginPass(frame, target.prev, gpu::Load::Clear, gpu::ClearColor{0, 0, 0, 0}));
     frame.fullResolutionTargets += pass.plan.divisor == 1;
 
-    auto* enc = beginPass(frame, target.write, MTL::LoadActionDontCare);
+    auto* enc = beginPass(frame, target.write, gpu::Load::DontCare);
     if (target.prev)
         enc->setFragmentTexture(target.prev->native(), kPrevSlot);
     for (size_t i = 0; i < side; ++i)
@@ -1525,39 +1522,36 @@ void Engine::encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Dr
     endPass(frame, enc);
 }
 
-MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, const gpu::Texture* target, MTL::LoadAction load,
-                                             MTL::ClearColor clear) const
+MTL::RenderCommandEncoder* Engine::beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
+                                             gpu::ClearColor clear) const
 {
-    auto* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
-    auto* color = desc->colorAttachments()->object(0);
-    color->setTexture(target->native());
-    color->setLoadAction(load);
-    color->setClearColor(clear);
-    color->setStoreAction(MTL::StoreActionStore);
+    gpu::RenderTarget into{target, load, clear};
     if (frame.profile)
-        profile_->attach(*frame.profile, desc, frame.label);
+        profile_->attach(*frame.profile, into, frame.label);
     if (frame.preview)
         frame.previewPasses++;
     if (frame.previewTimes)
         frame.previewTimes->passes++;
     if (timesPreview(frame))
-        previewTimer_->attach(*frame.previewTimes, desc, "preview");
-    AZL_GPU_ZONE(&gpu_, desc, "pass");
-    auto* enc = frame.cmd->renderCommandEncoder(desc);
+        previewTimer_->attach(*frame.previewTimes, into, "preview");
+    const gpu::RenderPassSetup setup = frame.cmd.setup(into);
+    AZL_GPU_ZONE(&gpu_, setup.native(), "pass");
+    gpu::RenderPass pass = frame.cmd.begin(setup);
     if (frame.profile)
-        profile_->sample(*frame.profile, enc, true);
+        profile_->sample(*frame.profile, pass, true);
     if (timesPreview(frame))
-        previewTimer_->sample(*frame.previewTimes, enc, true);
-    return enc;
+        previewTimer_->sample(*frame.previewTimes, pass, true);
+    return pass.native();
 }
 
 void Engine::endPass(FrameEncoding& frame, MTL::RenderCommandEncoder* enc) const
 {
+    gpu::RenderPass pass = gpu::RenderPass::wrap(enc);
     if (frame.profile)
-        profile_->sample(*frame.profile, enc, false);
+        profile_->sample(*frame.profile, pass, false);
     if (timesPreview(frame))
-        previewTimer_->sample(*frame.previewTimes, enc, false);
-    enc->endEncoding();
+        previewTimer_->sample(*frame.previewTimes, pass, false);
+    pass.end();
 }
 
 bool Engine::timesPreview(const FrameEncoding& frame)
@@ -1594,7 +1588,7 @@ const gpu::Texture* Engine::copyBelow(FrameEncoding& frame, const gpu::Texture* 
     const gpu::Texture* below = poolTexture(below_, 0, kFrameFormat, {target->width(), target->height()});
     auto* pass = MTL::BlitPassDescriptor::blitPassDescriptor();
     AZL_GPU_ZONE(&gpu_, pass, "copy below");
-    auto* blit = frame.cmd->blitCommandEncoder(pass);
+    auto* blit = frame.cmd.native()->blitCommandEncoder(pass);
     blit->copyFromTexture(target->native(), below->native());
     blit->endEncoding();
     frame.passes++;
@@ -1893,12 +1887,12 @@ std::map<std::string, size_t> Engine::sizes()
     return sizes;
 }
 
-void Engine::traceDone(FrameTrace::Render& mark, MTL::CommandBuffer* done) const
+void Engine::traceDone(FrameTrace::Render& mark, const gpu::Completion& done) const
 {
     if (!config_.frameTrace)
         return;
-    mark.gpuStart = traceFromHost(done->GPUStartTime());
-    mark.gpuEnd = traceFromHost(done->GPUEndTime());
+    mark.gpuStart = traceFromHost(done.gpuStart);
+    mark.gpuEnd = traceFromHost(done.gpuEnd);
     mark.done = traceNow();
     config_.frameTrace->add(mark);
 }

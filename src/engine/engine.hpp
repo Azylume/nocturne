@@ -447,7 +447,7 @@ private:
 
     // The resources a frame takes from the render thread's pools, and its pass count.
     struct FrameEncoding {
-        MTL::CommandBuffer* cmd;
+        gpu::CommandBuffer cmd;
         Frame& frame;
         float seconds;
         size_t intermediates = 0;
@@ -504,7 +504,7 @@ private:
     std::vector<Draw> collect(const std::vector<Layer>& layers, const Layer* group, bool solos,
                               const std::set<uint64_t>& pictures, const std::shared_ptr<const Composition>& document,
                               std::vector<std::shared_ptr<const CompiledChain>>& chains);
-    void encodeStack(FrameEncoding& frame, const gpu::Texture* target, MTL::ClearColor clear,
+    void encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                      std::vector<Draw>& draws);
     static bool timesPreview(const FrameEncoding& frame);
     MTL::RenderCommandEncoder* composite(FrameEncoding& frame, const gpu::Texture* target, MTL::RenderCommandEncoder* enc,
@@ -537,8 +537,8 @@ private:
                         const gpu::Texture* below,
                         float seconds, float opacity, Size into) const;
     void encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Draw& draw);
-    MTL::RenderCommandEncoder* beginPass(FrameEncoding& frame, const gpu::Texture* target, MTL::LoadAction load,
-                                         MTL::ClearColor clear = {}) const;
+    MTL::RenderCommandEncoder* beginPass(FrameEncoding& frame, const gpu::Texture* target, gpu::Load load,
+                                         gpu::ClearColor clear = {}) const;
     void endPass(FrameEncoding& frame, MTL::RenderCommandEncoder* enc) const;
     // While profiling, names the passes that follow: "L3", "L3 in", "L3 out", "G7" or "comp", then the pass's effects.
     void label(FrameEncoding& frame, const Draw& draw, const CompiledPass* pass, const char* what = nullptr) const;
@@ -548,13 +548,13 @@ private:
                     const TransitionMix* mix = nullptr, const gpu::Texture* from = nullptr) const;
     // The pools are deques: a texture handed out this frame keeps its address while the pool grows.
     const gpu::Texture* poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size);
-    void traceDone(FrameTrace::Render& mark, MTL::CommandBuffer* done) const;
+    void traceDone(FrameTrace::Render& mark, const gpu::Completion& done) const;
     void finished(std::shared_ptr<Frame> frame, bool ok);
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
 
     gpu::Device device_;
     EngineConfig config_;
-    NS::SharedPtr<MTL::CommandQueue> queue_;
+    gpu::Queue queue_;
     profile::GpuTimeline gpu_;
     ChainCompiler compiler_;
     ClipDecoders decoders_;

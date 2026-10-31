@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <cstdint>
 #include <map>
@@ -17,9 +17,9 @@ namespace azl {
 class GpuProfile {
 public:
     // Disabled when the device samples timestamps neither way, unless `commandBuffer`: then a frame's timed passes get
-    // the command buffer's GPU time by their share of its passes, and only finish's total counts. `attachment` is the
-    // pass's sample buffer attachment it uses, so two profiles can time the same pass.
-    explicit GpuProfile(MTL::Device* device, NS::UInteger attachment = 0, bool commandBuffer = false);
+    // the command buffer's GPU time by their share of its passes, and only finish's total counts. `slot` is the pass's
+    // timestamp slot it uses (gpu::kTimestampSlots), so two profiles can time the same pass.
+    explicit GpuProfile(const gpu::Device& device, uint32_t slot = 0, bool commandBuffer = false);
 
     // Test seam: profiles made after this believe the device has no counter sampling.
     static void forceNoCounterSampling(bool force);
@@ -29,19 +29,19 @@ public:
     const char* mode() const;
 
     struct Frame {
-        NS::SharedPtr<MTL::CounterSampleBuffer> buffer;
+        gpu::TimestampQueries queries;
         std::vector<std::string> labels;
         // Every pass of the command buffer, timed or not.
         size_t passes = 0;
     };
     // Render thread: null when disabled or every buffer is still on the GPU.
     std::shared_ptr<Frame> begin();
-    // Around each render pass: `attach` before its encoder is made, `sample` once it is made and before it ends.
-    void attach(Frame& frame, MTL::RenderPassDescriptor* desc, std::string label);
-    void sample(Frame& frame, MTL::RenderCommandEncoder* enc, bool start);
-    // Once the frame's command buffer has completed (`gpuStart` and `gpuEnd` are its GPUStartTime and GPUEndTime): adds
-    // its passes' times, gives the buffer back and returns the frame's total.
-    uint64_t finish(Frame& frame, bool ok, double gpuStart, double gpuEnd);
+    // Around each render pass: `attach` before it begins, `sample` once it has begun and before it ends.
+    void attach(Frame& frame, gpu::RenderTarget& target, std::string label);
+    void sample(Frame& frame, gpu::RenderPass& pass, bool start);
+    // Once the frame's command buffer has completed: adds its passes' times, gives the queries back and returns the
+    // frame's total.
+    uint64_t finish(Frame& frame, const gpu::Completion& done);
 
     struct Total {
         uint64_t micros = 0;
@@ -56,11 +56,9 @@ private:
     static constexpr size_t kMaxPasses = 256;
 
     Mode mode_ = Mode::Off;
-    NS::UInteger attachment_ = 0;
-    NS::SharedPtr<MTL::Device> device_;
-    NS::SharedPtr<MTL::CounterSet> timestamps_;
+    uint32_t slot_ = 0;
     std::mutex mutex_;
-    std::vector<NS::SharedPtr<MTL::CounterSampleBuffer>> free_;
+    std::vector<gpu::TimestampQueries> free_;
     std::map<std::string, Total> totals_;
     // A command buffer's start in seconds and its first timestamp: counter ticks are in no documented unit.
     std::optional<std::pair<double, uint64_t>> anchor_;
