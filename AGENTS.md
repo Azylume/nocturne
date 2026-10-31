@@ -33,6 +33,8 @@ build/nocturne --offscreen                      # a smoke run that shows no wind
 - The suite renders on the GPU and needs a logged-in macOS session. Some cases are GPU timing reports, not checks.
 - Optional builds: `-DNOCTURNE_SANITIZE=ON` (ASan + UBSan), `-DNOCTURNE_TRACY=ON` (profiler), fuzzing per
   `fuzz/README.md` (a new parser gets a harness).
+- Windows (port in progress): the `cmd.exe` commands in CONTRIBUTING.md (VS x64 environment, clang-cl, Ninja,
+  vcpkg), then `build\nocturne_tests.exe --test-case="*HAP*"` and `tools\make-installer.ps1`.
 - **In a Linux or cloud sandbox nothing here builds or runs** (Metal, AppKit, AVFoundation). You can still edit code,
   docs, ISF `.fs` files and scripts. Say in the PR that it was **not built or tested**, and what a human should run.
 

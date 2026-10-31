@@ -67,6 +67,26 @@ ui`; a case that fails is rerun once on its own and reported as flaky when it pa
 Pushes to main and a nightly run also build universal (arm64 + x86_64) and check every binary with `lipo`. Run the
 full suite locally before a pull request that touches rendering, outputs, recording or the supervisor.
 
+### Windows (port in progress, #35)
+
+Windows 10 2004+ x64 with Visual Studio 2022 (Build Tools are enough) with the C++ workload and its clang-cl
+component, CMake, Ninja, Git, [vcpkg](https://github.com/microsoft/vcpkg) cloned and bootstrapped with `VCPKG_ROOT`
+pointing at it, and Inno Setup 6 for the installer. From the repository root in `cmd.exe` (for another Visual Studio
+edition, use its folder instead of `BuildTools`):
+
+```bat
+"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+set "PATH=%VCINSTALLDIR%Tools\Llvm\x64\bin;%PATH%"
+set CC=clang-cl
+set CXX=clang-cl
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j8
+build\nocturne_tests.exe --test-case="*HAP*"
+powershell -ExecutionPolicy Bypass -File tools\make-installer.ps1
+```
+
+The first configure builds FFmpeg through vcpkg (about half an hour; later configures reuse vcpkg's binary cache).
+
 ## What a good change looks like
 
 - One topic per pull request, with a test that fails without it. Render changes compare against the goldens in
