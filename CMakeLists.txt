@@ -258,7 +258,9 @@ add_library(nocturne_media STATIC
   src/media/snappy.cpp
   src/media/stills.mm
   src/media/text_renderer.cpp
-  src/media/video_decoder.mm
+  src/media/text_renderer_coretext.cpp
+  src/media/video_decoder.cpp
+  src/media/video_source_avf.mm
 )
 target_include_directories(nocturne_media PUBLIC src third_party/metal-cpp)
 target_link_libraries(nocturne_media PUBLIC
