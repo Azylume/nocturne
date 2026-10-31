@@ -12,6 +12,7 @@ run CPU code only (no GPU, no AVFoundation), under AddressSanitizer and Undefine
 | `composition_fuzz` | composition files (JSON, `migrateCompositionFile`, `compositionFileFromJson`) |
 | `xml_fuzz` | Resolume XML (`parseXml`) |
 | `isf_fuzz` | user ISF shaders (`parseIsf`) |
+| `websocket_fuzz` | WebSocket frames (`ws::MessageReader`, either side) and handshake heads (`ws::parseHead`) |
 
 ## Build
 
