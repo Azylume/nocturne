@@ -57,7 +57,7 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
     : fps_(fps), device_(NS::TransferPtr(MTL::CreateSystemDefaultDevice())),
       libraryRoot_(libraryRoot.empty() ? temporaryLibrary() : libraryRoot), library_(libraryRoot_),
       userIsf_(libraryRoot_ / "isf-user", libraryRoot_ / "isf"),
-      engine_(device_.get(), deterministic(config), &library_), screenDisplays_(libraryRoot_ / "screen-displays.json"),
+      engine_(gpu::Device::retain(device_.get()), deterministic(config), &library_), screenDisplays_(libraryRoot_ / "screen-displays.json"),
       outputs_(engine_, displays_, {}, &known_),
       document_(placedByRole(std::move(initial), screenDisplays_.roles()),
                 [this](auto composition) {

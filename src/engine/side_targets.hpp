@@ -2,8 +2,7 @@
 
 #include "document/composition.hpp"
 #include "effects/effect_registry.hpp"
-
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <cstdint>
 #include <map>
@@ -24,12 +23,12 @@ namespace azl {
 // effects, the outgoing clip's fade) allocates no textures.
 class SideTargets {
 public:
-    SideTargets(MTL::Device* device, uint32_t width, uint32_t height);
+    SideTargets(const gpu::Device& device, uint32_t width, uint32_t height);
 
     struct Target {
-        MTL::Texture* write = nullptr;
+        const gpu::Texture* write = nullptr;
         // Last frame's content of a persistent target; it needs clearing first when `fresh`.
-        MTL::Texture* prev = nullptr;
+        const gpu::Texture* prev = nullptr;
         bool fresh = false;
     };
 
@@ -43,7 +42,7 @@ public:
                  uint32_t height = 0);
     // What that side pass wrote this frame.
     // Null before the side pass first ran.
-    MTL::Texture* output(uint64_t layer, uint64_t effect, size_t side) const;
+    const gpu::Texture* output(uint64_t layer, uint64_t effect, size_t side) const;
     size_t count() const { return targets_.size(); }
     size_t spares() const { return spares_.size(); }
     // Allocated bytes of the targets and spares.
@@ -53,7 +52,7 @@ public:
 
 private:
     struct Textures {
-        NS::SharedPtr<MTL::Texture> texture[2];
+        gpu::Texture texture[2];
         int written = 0;
         bool fresh = true;
         // The layer that last drew it.
@@ -67,15 +66,15 @@ private:
     using Key = std::tuple<uint64_t, size_t, bool>;
 
     struct Spare {
-        NS::SharedPtr<MTL::Texture> texture;
+        gpu::Texture texture;
         uint64_t since = 0;
     };
 
     static Key key(uint64_t layer, uint64_t effect, size_t side);
-    NS::SharedPtr<MTL::Texture> take(uint32_t width, uint32_t height, bool float16);
+    gpu::Texture take(uint32_t width, uint32_t height, bool float16);
     void release(Textures& textures);
 
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     uint32_t width_;
     uint32_t height_;
     std::map<uint64_t, Layer> layers_;

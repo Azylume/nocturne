@@ -29,6 +29,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -216,7 +217,7 @@ public:
     static constexpr double kAudioSettle = 1.0;
 
     // Clips resolve their media through `library`; without one, layers with clips keep the test card.
-    Engine(MTL::Device* device, EngineConfig config = {}, MediaLibrary* library = nullptr);
+    Engine(const gpu::Device& device, EngineConfig config = {}, MediaLibrary* library = nullptr);
     ~Engine();
 
     // Any thread. The render thread picks it up at its next frame and never waits for the document.
@@ -272,7 +273,8 @@ public:
     {
         return ring_->next(shown, time);
     }
-    MTL::Device* device() const { return device_.get(); }
+    const gpu::Device& gpuDevice() const { return device_; }
+    MTL::Device* device() const { return device_.native(); }
     // The Tracy timeline of the render queue, for encoders that write into the frame's command buffer.
     const profile::GpuTimeline& gpuTimeline() const { return gpu_; }
     const EngineConfig& config() const { return config_; }
@@ -401,9 +403,9 @@ private:
         uint64_t layer;
         std::vector<Draw> layers;
         // A group's sub-stack, which its first pass reads.
-        MTL::Texture* source = nullptr;
+        const gpu::Texture* source = nullptr;
         // What the last pass reads.
-        MTL::Texture* input = nullptr;
+        const gpu::Texture* input = nullptr;
         // Drawn into the stack it is in; false when only its picture is published.
         bool composite = true;
         // The layer whose picture this draw publishes with the frame, or 0.
@@ -413,7 +415,7 @@ private:
         // Both render into `mixed`, which the transition pass mixes in place of the last pass.
         std::vector<Draw> from{};
         TransitionMix mix{};
-        MTL::Texture* mixed[2] = {};
+        const gpu::Texture* mixed[2] = {};
         // Instead, during an alpha transition between two clips with only the same layer chain, the outgoing clip's
         // picture, which the chain's YuvFade passes mix in at their source so the chain runs once.
         const VideoFrame* fadeFrom = nullptr;
@@ -424,7 +426,7 @@ private:
         std::optional<BlendMode> fromBlend{};
         // Drawn at the composition size divided by this, into `reduced`, which the group pass scales up.
         uint32_t divisor = 1;
-        MTL::Texture* reduced = nullptr;
+        const gpu::Texture* reduced = nullptr;
         // Drawn at this size before the divisor at a render scale; 0 is the composition size.
         uint32_t width = 0;
         uint32_t height = 0;
@@ -469,7 +471,7 @@ private:
     // A draw's kept static prefix.
     struct Baked {
         StaticBake state;
-        NS::SharedPtr<MTL::Texture> texture;
+        gpu::Texture texture;
         // Keeps the baked picture's pixels from going back to its decoder's pool.
         std::shared_ptr<void> picture;
     };
@@ -479,7 +481,7 @@ private:
         StaticBake::Action action = StaticBake::Action::Live;
         size_t prefix = 0;
         std::optional<size_t> kept{};
-        MTL::Texture* texture = nullptr;
+        const gpu::Texture* texture = nullptr;
     };
 
     // `slot` is a layer id, a layer's fadeId for its outgoing clip, or 0 for the composition. Until the slot's first
@@ -502,9 +504,10 @@ private:
     std::vector<Draw> collect(const std::vector<Layer>& layers, const Layer* group, bool solos,
                               const std::set<uint64_t>& pictures, const std::shared_ptr<const Composition>& document,
                               std::vector<std::shared_ptr<const CompiledChain>>& chains);
-    void encodeStack(FrameEncoding& frame, MTL::Texture* target, MTL::ClearColor clear, std::vector<Draw>& draws);
+    void encodeStack(FrameEncoding& frame, const gpu::Texture* target, MTL::ClearColor clear,
+                     std::vector<Draw>& draws);
     static bool timesPreview(const FrameEncoding& frame);
-    MTL::RenderCommandEncoder* composite(FrameEncoding& frame, MTL::Texture* target, MTL::RenderCommandEncoder* enc,
+    MTL::RenderCommandEncoder* composite(FrameEncoding& frame, const gpu::Texture* target, MTL::RenderCommandEncoder* enc,
                                          const Draw& draw, bool opaque);
     bool addsOnly(const Draw& draw, bool opaque) const;
     std::optional<MTL::ScissorRect> textScissor(const Draw& draw, bool opaque) const;
@@ -527,28 +530,29 @@ private:
     void guardBudget(std::vector<Draw>& draws, std::vector<std::shared_ptr<const CompiledChain>>& chains, bool enabled);
     static bool singlePass(const Draw& draw);
     PassHeader passHeader(const Draw& draw, float seconds, float opacity) const;
-    void encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, MTL::Texture* below,
+    void encodeLast(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, const gpu::Texture* below,
                     float seconds, float opacity) const;
     // A reduced draw's picture scaled up to the composition size.
-    void encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant, MTL::Texture* below,
+    void encodeUpscaled(MTL::RenderCommandEncoder* enc, const Draw& draw, BlendVariant variant,
+                        const gpu::Texture* below,
                         float seconds, float opacity, Size into) const;
     void encodeSide(FrameEncoding& frame, const CompiledPass& pass, const Draw& draw);
-    MTL::RenderCommandEncoder* beginPass(FrameEncoding& frame, MTL::Texture* target, MTL::LoadAction load,
+    MTL::RenderCommandEncoder* beginPass(FrameEncoding& frame, const gpu::Texture* target, MTL::LoadAction load,
                                          MTL::ClearColor clear = {}) const;
     void endPass(FrameEncoding& frame, MTL::RenderCommandEncoder* enc) const;
     // While profiling, names the passes that follow: "L3", "L3 in", "L3 out", "G7" or "comp", then the pass's effects.
     void label(FrameEncoding& frame, const Draw& draw, const CompiledPass* pass, const char* what = nullptr) const;
-    MTL::Texture* copyBelow(FrameEncoding& frame, MTL::Texture* target);
+    const gpu::Texture* copyBelow(FrameEncoding& frame, const gpu::Texture* target);
     void encodePass(MTL::RenderCommandEncoder* enc, const CompiledPass& pass, size_t pipeline, const Draw& draw,
-                    MTL::Texture* input, MTL::Texture* below, float seconds, float opacity,
-                    const TransitionMix* mix = nullptr, MTL::Texture* from = nullptr) const;
-    MTL::Texture* poolTexture(std::vector<NS::SharedPtr<MTL::Texture>>& pool, size_t index, MTL::PixelFormat format,
-                              Size size);
+                    const gpu::Texture* input, const gpu::Texture* below, float seconds, float opacity,
+                    const TransitionMix* mix = nullptr, const gpu::Texture* from = nullptr) const;
+    // The pools are deques: a texture handed out this frame keeps its address while the pool grows.
+    const gpu::Texture* poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size);
     void traceDone(FrameTrace::Render& mark, MTL::CommandBuffer* done) const;
     void finished(std::shared_ptr<Frame> frame, bool ok);
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
 
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     EngineConfig config_;
     NS::SharedPtr<MTL::CommandQueue> queue_;
     profile::GpuTimeline gpu_;
@@ -572,15 +576,15 @@ private:
     std::map<uint64_t, LayerChain> chains_;
     // Render thread only: two per layer with intermediate passes, 8-bit and 16-bit float; one per group; one copy of
     // the target for shader blend modes, which draw one after another.
-    std::vector<NS::SharedPtr<MTL::Texture>> intermediates_[2];
-    std::vector<NS::SharedPtr<MTL::Texture>> groups_;
-    std::vector<NS::SharedPtr<MTL::Texture>> below_;
+    std::deque<gpu::Texture> intermediates_[2];
+    std::deque<gpu::Texture> groups_;
+    std::deque<gpu::Texture> below_;
     // Two per layer in a transition: its outgoing and incoming pictures.
-    std::vector<NS::SharedPtr<MTL::Texture>> fades_;
+    std::deque<gpu::Texture> fades_;
     // One per layer drawn at reduced resolution, and at full size its upscaled picture and the one EASU writes.
-    std::vector<NS::SharedPtr<MTL::Texture>> reduced_;
-    std::vector<NS::SharedPtr<MTL::Texture>> upscaled_;
-    std::vector<NS::SharedPtr<MTL::Texture>> easu_;
+    std::deque<gpu::Texture> reduced_;
+    std::deque<gpu::Texture> upscaled_;
+    std::deque<gpu::Texture> easu_;
     std::optional<FsrUpscaler> fsr_;
     // Render thread only, by draw layer.
     std::map<uint64_t, Baked> bakes_;

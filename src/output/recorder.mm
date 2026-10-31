@@ -548,12 +548,13 @@ Recorder::Session::Session(Recorder& owner, Settings s, double fps, AudioPlan au
         converter->setGpuTimeline(gpu);
     }
     if (!whole) {
-        painter = std::make_unique<ScreenPainter>(engine.device(), kFrameFormat,
+        painter = std::make_unique<ScreenPainter>(engine.device(), gpu::metalFormat(kFrameFormat),
                                                   std::array<uint32_t, 2>{compositionWidth, compositionHeight});
         painter->setGpuTimeline(gpu);
     }
     if (!whole && converter) {
-        auto* desc = MTL::TextureDescriptor::texture2DDescriptor(kFrameFormat, width, height, false);
+        auto* desc =
+            MTL::TextureDescriptor::texture2DDescriptor(gpu::metalFormat(kFrameFormat), width, height, false);
         desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
         desc->setStorageMode(MTL::StorageModePrivate);
         painted = NS::TransferPtr(engine.device()->newTexture(desc));
@@ -697,7 +698,7 @@ FrameTap::Done Recorder::Session::encode(MTL::CommandBuffer* cmd, const Frame& f
 bool Recorder::Session::encodeConverted(MTL::CommandBuffer* cmd, const Frame& frame, const Composition& composition,
                                         CVPixelBufferRef buffer)
 {
-    MTL::Texture* source = frame.texture.get();
+    MTL::Texture* source = frame.texture.native();
     if (painter) {
         paint(cmd, frame, composition, painted.get());
         source = painted.get();
@@ -718,8 +719,8 @@ bool Recorder::Session::encodeBGRA(MTL::CommandBuffer* cmd, const Frame& frame, 
         auto* pass = MTL::BlitPassDescriptor::blitPassDescriptor();
         AZL_GPU_ZONE(gpu, pass, "record copy");
         MTL::BlitCommandEncoder* copy = cmd->blitCommandEncoder(pass);
-        copy->copyFromTexture(frame.texture.get(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), target, 0,
-                              0, MTL::Origin(0, 0, 0));
+        copy->copyFromTexture(frame.texture.native(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), target,
+                              0, 0, MTL::Origin(0, 0, 0));
         copy->endEncoding();
     }
     if (target->storageMode() == MTL::StorageModeManaged) {

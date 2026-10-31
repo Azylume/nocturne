@@ -111,6 +111,9 @@ private:
     TextureHandle handle_;
 };
 
+// The native handle of a texture that may be absent, for the call sites not yet on this interface.
+inline NativeTexture native(const Texture* texture);
+
 class Buffer {
 public:
     Buffer() = default;

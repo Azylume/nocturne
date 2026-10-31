@@ -305,7 +305,7 @@ TEST_CASE("the planner fuses pointwise and remap stages and cuts before a neighb
     auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
     for (const azl::PlannedPass& pass : cut)
         CHECK_NOTHROW(azl::makePipeline(device.get(), azl::passMsl(pass).c_str(), azl::mslFunction("fullscreen").c_str(),
-                                        azl::mslFunction("passMain").c_str(), azl::kFrameFormat));
+                                        azl::mslFunction("passMain").c_str(), azl::gpu::metalFormat(azl::kFrameFormat)));
 }
 
 TEST_CASE("a neighbourhood effect reads a materialised 8-bit intermediate")
@@ -424,7 +424,8 @@ TEST_CASE("every v1 effect declares its stage kind and the planner fuses accordi
         for (const azl::PlannedPass& pass : chain)
             CHECK_NOTHROW(azl::makePipeline(device.get(), azl::passMsl(pass).c_str(),
                                             azl::mslFunction("fullscreen").c_str(), azl::mslFunction("passMain").c_str(),
-                                            pass.float16 ? MTL::PixelFormatRGBA16Float : azl::kFrameFormat));
+                                            pass.float16 ? MTL::PixelFormatRGBA16Float
+                                                         : azl::gpu::metalFormat(azl::kFrameFormat)));
 }
 
 TEST_CASE("frame stats show the passes and full-resolution intermediates of the fused chains")

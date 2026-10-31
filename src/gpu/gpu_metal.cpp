@@ -134,44 +134,6 @@ bool samplesAtDraws(MTL::Device* device)
 
 } // namespace
 
-MTL::PixelFormat metalFormat(Format format)
-{
-    switch (format) {
-    case Format::BGRA8: return MTL::PixelFormatBGRA8Unorm;
-    case Format::RGBA8: return MTL::PixelFormatRGBA8Unorm;
-    case Format::RGBA16F: return MTL::PixelFormatRGBA16Float;
-    case Format::RGBA16: return MTL::PixelFormatRGBA16Unorm;
-    case Format::R8: return MTL::PixelFormatR8Unorm;
-    case Format::RG8: return MTL::PixelFormatRG8Unorm;
-    case Format::R16: return MTL::PixelFormatR16Unorm;
-    case Format::RG16: return MTL::PixelFormatRG16Unorm;
-    case Format::BC1: return MTL::PixelFormatBC1_RGBA;
-    case Format::BC3: return MTL::PixelFormatBC3_RGBA;
-    case Format::BC4: return MTL::PixelFormatBC4_RUnorm;
-    case Format::Invalid: break;
-    }
-    return MTL::PixelFormatInvalid;
-}
-
-Format fromMetal(MTL::PixelFormat format)
-{
-    switch (format) {
-    case MTL::PixelFormatBGRA8Unorm: return Format::BGRA8;
-    case MTL::PixelFormatRGBA8Unorm: return Format::RGBA8;
-    case MTL::PixelFormatRGBA16Float: return Format::RGBA16F;
-    case MTL::PixelFormatRGBA16Unorm: return Format::RGBA16;
-    case MTL::PixelFormatR8Unorm: return Format::R8;
-    case MTL::PixelFormatRG8Unorm: return Format::RG8;
-    case MTL::PixelFormatR16Unorm: return Format::R16;
-    case MTL::PixelFormatRG16Unorm: return Format::RG16;
-    case MTL::PixelFormatBC1_RGBA: return Format::BC1;
-    case MTL::PixelFormatBC3_RGBA: return Format::BC3;
-    case MTL::PixelFormatBC4_RUnorm: return Format::BC4;
-    default: break;
-    }
-    return Format::Invalid;
-}
-
 Device Device::systemDefault()
 {
     Device d;
