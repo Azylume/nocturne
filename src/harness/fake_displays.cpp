@@ -77,7 +77,9 @@ public:
         }
     }
 
-    const gpu::Texture* nextTarget() override { return &target_; }
+    // Null while a second of refreshes is still on the GPU: a GPU slower than the display (a software rasteriser)
+    // backs up that much work at most, not all it was ever handed.
+    const gpu::Texture* nextTarget() override { return *inFlight_ < refreshHz_ ? &target_ : nullptr; }
 
     // Shown as a display would: at the first refresh after its GPU work ends, the next one at the earliest, not when
     // the completion handler happens to run.
@@ -86,7 +88,9 @@ public:
         if (wanted())
             encodeCapture(cmd);
         const double refresh = traceSeconds(refresh_), period = 1.0 / refreshHz_;
-        cmd.onCompleted([shown = std::move(shown), refresh, period](const gpu::Completion& done) {
+        ++*inFlight_;
+        cmd.onCompleted([shown = std::move(shown), refresh, period, inFlight = inFlight_](const gpu::Completion& done) {
+            --*inFlight;
             const double end = traceFromHost(done.gpuEnd);
             shown(refresh + period * std::max(1.0, std::ceil((end - refresh) / period)));
         });
@@ -137,6 +141,7 @@ private:
     gpu::Device device_;
     gpu::Texture target_;
     std::shared_ptr<Capture> capture_ = std::make_shared<Capture>();
+    std::shared_ptr<std::atomic<int>> inFlight_ = std::make_shared<std::atomic<int>>(0);
 };
 
 void FakeDisplays::attach(DisplayInfo display)
