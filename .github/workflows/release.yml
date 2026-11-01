@@ -32,7 +32,7 @@ jobs:
         with:
           key: ${{ runner.os }}-universal
           save: false
-          max-size: 1G
+          max-size: 1500M
       - name: Restore the fetched dependencies (glslang, SPIRV-Cross, JUCE)
         uses: actions/cache/restore@v4
         with:
