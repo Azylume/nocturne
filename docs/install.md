@@ -94,7 +94,10 @@ building it from source.
 The Windows port is still in progress ([#35](https://github.com/Azylume/nocturne/issues/35)). Its installer,
 `Nocturne-<version>-windows-x64-unsigned.exe`, comes from the `nocturne-windows-installer` artifact of a CI run or
 from `tools\make-installer.ps1` (see `docs/reference.md`); it is not on the releases page yet. It needs Windows 10 version
-2004 or later, 64-bit, and admin rights.
+2004 or later or Windows 11, 64-bit (x64), admin rights, and an NVIDIA or AMD GPU whose driver offers Vulkan 1.3 or
+newer. Intel integrated GPUs are untested. Without such a GPU the engine does not start: it says what is missing (no
+`vulkan-1.dll`, no device, a device below Vulkan 1.3, or a missing extension or feature) in one line in `engine.log`,
+which the UI shows too, and asks for a GPU driver update.
 
 ### Verify and run the installer
 

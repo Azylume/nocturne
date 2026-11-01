@@ -141,6 +141,11 @@ Device Device::systemDefault()
     return d;
 }
 
+std::string Device::systemDefaultProblem()
+{
+    return systemDefault() ? "" : "this Mac has no Metal GPU.";
+}
+
 std::string Device::name() const
 {
     return handle_->name()->utf8String();

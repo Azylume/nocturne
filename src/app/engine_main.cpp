@@ -38,6 +38,7 @@
 #include "harness/fake_displays.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
+#include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
 #include "supervisor/state_saver.hpp"
 #include "sync/discovery.hpp"
@@ -766,6 +767,10 @@ int runEngine(const EngineConfig& opt)
     }
 
     const azl::gpu::Device device = azl::gpu::Device::systemDefault();
+    if (!device) {
+        std::fprintf(stderr, "%s%s\n", azl::restart::kNoGpuLine, azl::gpu::Device::systemDefaultProblem().c_str());
+        return azl::restart::kNoGpu;
+    }
     azl::UserIsfLibrary userIsf(opt.state.empty() ? std::filesystem::path() : stateDir / "isf-user",
                                 opt.state.empty() ? std::filesystem::path() : stateDir / "isf");
     azl::MediaLibrary library(opt.library);

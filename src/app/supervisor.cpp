@@ -157,11 +157,25 @@ public:
     }
     ~OutputPump()
     {
-        thread_.join();
+        finish();
         azl::closeHandle(output_);
     }
 
+    // Waits for the engine's output to end, then returns the line in which it said it found no usable GPU, without
+    // its newline; empty when it said none.
+    std::string noGpuLine()
+    {
+        finish();
+        return noGpu_;
+    }
+
 private:
+    void finish()
+    {
+        if (thread_.joinable())
+            thread_.join();
+    }
+
     void run()
     {
         std::string line;
@@ -171,17 +185,25 @@ private:
             for (long i = 0; i < n; ++i) {
                 line += buffer[i];
                 if (buffer[i] == '\n') {
-                    log_.write(timestamp() + " " + line);
+                    take(line);
                     line.clear();
                 }
             }
         }
         if (!line.empty())
-            log_.write(timestamp() + " " + line + "\n");
+            take(line + "\n");
+    }
+
+    void take(const std::string& line)
+    {
+        log_.write(timestamp() + " " + line);
+        if (line.rfind(azl::restart::kNoGpuLine, 0) == 0)
+            noGpu_ = line.substr(0, line.find_last_not_of("\r\n") + 1);
     }
 
     azl::NativeHandle output_;
     azl::RotatingLog& log_;
+    std::string noGpu_;
     std::thread thread_;
 };
 
@@ -241,6 +263,7 @@ private:
             crashes.push_back(c);
         const nlohmann::json status{{"mode", safeReason_.empty() ? "normal" : "safe"},
                                     {"reason", safeReason_},
+                                    {"error", noGpu_},
                                     {"engine", pid},
                                     {"starts", starts_},
                                     {"crashes", crashes},
@@ -395,6 +418,14 @@ private:
             say("stop asked for from a client; stopping");
             return;
         }
+        if (code == azl::restart::kNoGpu) {
+            stopping_ = true;
+            const std::string line = pump.noGpuLine();
+            noGpu_ = line.empty() ? azl::restart::kNoGpuLine + std::string("the engine did not say what is missing")
+                                  : line;
+            say(noGpu_ + " Stopping; the engine is not restarted.");
+            return;
+        }
         if (code == azl::restart::kNormal) {
             say("engine restart asked for from a client");
             return;
@@ -543,6 +574,8 @@ private:
     std::deque<Clock::time_point> crashes_;
     std::deque<std::string> crashLog_;
     std::string safeReason_;
+    // The engine's line saying it found no usable GPU, once it has exited for that.
+    std::string noGpu_;
     int starts_ = 0;
 };
 

@@ -1,5 +1,7 @@
 #include "ui/client/engine_launcher.hpp"
 
+#include "scoped_env.hpp"
+
 #include "net/socket_compat.hpp"
 
 #include <doctest.h>
@@ -22,6 +24,8 @@ struct FakeEngine {
     int lastStopped = 0;
     bool spawnFails = false;
     double clock = 0.0;
+    int refusedPid = 0;
+    std::string refusal;
 
     EngineLauncher::Hooks hooks()
     {
@@ -36,6 +40,7 @@ struct FakeEngine {
             return running;
         };
         h.alive = [this](int pid) { return pid == running; };
+        h.refusal = [this](int pid) { return pid == refusedPid ? refusal : std::string(); };
         h.stop = [this](int pid) {
             ++stops;
             lastStopped = pid;
@@ -46,6 +51,14 @@ struct FakeEngine {
     }
 
     void die() { running = 0; } // The engine process exits on its own.
+
+    // The engine exits saying it cannot run on this machine.
+    void refuse(const std::string& line)
+    {
+        refusedPid = running;
+        refusal = line;
+        running = 0;
+    }
 };
 
 }
@@ -115,6 +128,22 @@ TEST_CASE("the watchdog restarts an engine that dies, up to twice in a minute, t
     launcher.poll();
     launcher.ensureRunning();
     CHECK(eng.spawns == 3);
+}
+
+TEST_CASE("the watchdog does not restart an engine that found no usable GPU, and its line is the failure")
+{
+    FakeEngine eng;
+    EngineLauncher launcher(eng.hooks());
+    launcher.ensureRunning();
+    eng.refuse("nocturne: no usable GPU: no GPU offers Vulkan.");
+    launcher.poll();
+    CHECK(eng.spawns == 1);
+    CHECK_FALSE(launcher.startedByUs());
+    CHECK(launcher.failure() == "nocturne: no usable GPU: no GPU offers Vulkan.");
+
+    launcher.poll();
+    launcher.ensureRunning();
+    CHECK(eng.spawns == 1);
 }
 
 TEST_CASE("a death after the window has passed is restarted again, not counted against an old one")
@@ -199,4 +228,25 @@ TEST_CASE("the default hooks start the engine with a heartbeat and ask it to qui
     CHECK(std::chrono::steady_clock::now() - asked < std::chrono::seconds(2));
 
     CHECK(azl::ui::defaultEngineHooks(7499, "no-such-engine").spawn() == 0);
+}
+
+TEST_CASE("the default hooks report the line of an engine that exited for want of a GPU, and nothing for others")
+{
+    const EngineLauncher::Hooks hooks = azl::ui::defaultEngineHooks(7499, NOCTURNE_FAKE_ENGINE);
+    int pid = 0;
+    {
+        const ScopedEnv refuse("NOCTURNE_FAKE_ENGINE_DO", "no-gpu");
+        pid = hooks.spawn();
+    }
+    REQUIRE(pid > 0);
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (hooks.alive(pid) && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(hooks.refusal(pid) == "nocturne: no usable GPU: fake has no Vulkan 1.3 device.");
+
+    pid = hooks.spawn();
+    REQUIRE(pid > 0);
+    CHECK(hooks.alive(pid));
+    hooks.stop(pid);
+    CHECK(hooks.refusal(pid).empty());
 }

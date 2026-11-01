@@ -3,11 +3,14 @@
 #include "net/socket_compat.hpp"
 #include "platform/app_paths.hpp"
 #include "platform/process.hpp"
+#include "supervisor/restart_request.hpp"
 
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <cstdio>
 #include <memory>
+#include <string>
 #include <thread>
 
 namespace azl::ui {
@@ -44,11 +47,66 @@ bool portAnswers(uint16_t port)
     return answers;
 }
 
-// The engine the UI started and the read end of its heartbeat pipe; closing that tells the engine to quit. One engine
-// runs at a time. Shared so the spawn, alive and stop hooks all reach it.
+// Passes the engine's stderr through to the UI's own on a thread of its own, keeping the line in which the engine said
+// it found no usable GPU.
+class ErrorPump {
+public:
+    explicit ErrorPump(NativeHandle error) : error_(error), thread_([this] { run(); }) {}
+    ~ErrorPump()
+    {
+        finish();
+        closeHandle(error_);
+    }
+
+    // Waits for the engine's stderr to end, then returns that line without its newline; empty when there was none.
+    std::string noGpuLine()
+    {
+        finish();
+        return noGpu_;
+    }
+
+private:
+    void finish()
+    {
+        if (thread_.joinable())
+            thread_.join();
+    }
+
+    void run()
+    {
+        std::string line;
+        char buffer[1024];
+        long n;
+        while ((n = readHandle(error_, buffer, sizeof buffer)) > 0) {
+            std::fwrite(buffer, 1, size_t(n), stderr);
+            for (long i = 0; i < n; ++i) {
+                if (buffer[i] != '\n' && buffer[i] != '\r') {
+                    line += buffer[i];
+                    continue;
+                }
+                if (line.rfind(restart::kNoGpuLine, 0) == 0)
+                    noGpu_ = line;
+                line.clear();
+            }
+        }
+        if (line.rfind(restart::kNoGpuLine, 0) == 0)
+            noGpu_ = line;
+    }
+
+    NativeHandle error_;
+    std::string noGpu_;
+    std::thread thread_;
+};
+
+// The engine the UI started, the read end of its heartbeat pipe (closing that tells the engine to quit) and its
+// stderr. One engine runs at a time. Shared so the spawn, alive, stop and refusal hooks all reach it.
 struct StartedEngine {
     std::optional<Process> process;
     std::optional<NativeHandle> heartbeat;
+    std::unique_ptr<ErrorPump> errors;
+    // The pid of the last engine that exited for want of a GPU, and its line.
+    int refusedPid = 0;
+    std::string refusal;
 
     void forget()
     {
@@ -56,6 +114,18 @@ struct StartedEngine {
             closeHandle(*heartbeat);
         heartbeat.reset();
         process.reset();
+        errors.reset();
+    }
+
+    // Called once the engine has exited.
+    void noteRefusal()
+    {
+        if (process->poll() != restart::kNoGpu)
+            return;
+        refusedPid = process->pid();
+        refusal = errors ? errors->noGpuLine() : "";
+        if (refusal.empty())
+            refusal = restart::kNoGpuLine + std::string("the engine did not say what is missing");
     }
 };
 
@@ -83,8 +153,15 @@ void EngineLauncher::poll()
     if (!hooks_.alive || hooks_.alive(ownedPid_))
         return; // Still running.
 
-    // The engine we started has died. Restart it, unless it has already died too often in the last minute.
+    // The engine we started has died. Restart it, unless it refused to run or has already died too often in the last
+    // minute.
+    const int died = ownedPid_;
     ownedPid_ = 0;
+    if (hooks_.refusal) {
+        failure_ = hooks_.refusal(died);
+        if (!failure_.empty())
+            return;
+    }
     const double t = hooks_.now ? hooks_.now() : 0.0;
     while (!restarts_.empty() && t - restarts_.front() > kWindowSeconds)
         restarts_.pop_front();
@@ -122,30 +199,42 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
         const std::optional<PipeEnds> pipe = makePipe();
         if (!pipe)
             return 0;
+        const std::optional<PipeEnds> errors = makePipe();
+        if (!errors) {
+            closeHandle(pipe->read);
+            closeHandle(pipe->write);
+            return 0;
+        }
         // The engine listens on 127.0.0.1 only (never the LAN) on the port the UI connects to. It is NOT given
         // NOCTURNE_SUPERVISED, so it never exits to ask a supervisor to restart it; the UI is its only watchdog. It
         // writes a frame mark to the heartbeat and quits when the UI's read end closes, however the UI dies.
         std::optional<Process> process =
             spawnProcess({.program = engine,
                           .args = {"--loopback", "--port", std::to_string(port)},
+                          .error = Stdio::to(errors->write),
                           .heartbeat = pipe->write,
                           .environment = {{"NOCTURNE_SUPERVISED", std::nullopt}}});
         closeHandle(pipe->write);
+        closeHandle(errors->write);
         if (!process) {
             closeHandle(pipe->read);
+            closeHandle(errors->read);
             return 0;
         }
-        started->forget(); // Any previous engine's pipe is done with.
+        started->forget(); // Any previous engine's pipes are done with.
         started->process = std::move(process);
         started->heartbeat = pipe->read;
+        started->errors = std::make_unique<ErrorPump>(errors->read);
         return started->process->pid();
     };
     hooks.alive = [started](int pid) {
         if (!started->process || started->process->pid() != pid || !started->process->poll())
             return true;
-        started->forget(); // The engine exited; let its heartbeat pipe go.
+        started->noteRefusal();
+        started->forget(); // The engine exited; let its pipes go.
         return false;
     };
+    hooks.refusal = [started](int pid) { return pid == started->refusedPid ? started->refusal : std::string(); };
     hooks.stop = [started](int pid) {
         if (!started->process || started->process->pid() != pid)
             return;

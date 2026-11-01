@@ -10,6 +10,7 @@
 #include "gpu/gpu.hpp"
 #include "gpu/gpu_vulkan.hpp"
 #include "gpu/vulkan_memory.hpp"
+#include "gpu/vulkan_requirements.hpp"
 #include "gpu/vulkan_spirv.hpp"
 
 #include <algorithm>
@@ -685,24 +686,62 @@ VkInstance makeInstance(bool validation, VkDebugUtilsMessengerEXT& messenger)
     return instance;
 }
 
-VkPhysicalDevice pickPhysical(VkInstance instance)
+static_assert(kVulkanMinimum == VK_API_VERSION_1_3);
+
+// The loader's own version, 0 when vulkan-1.dll is missing. Read before any other Vulkan call: on Windows the loader
+// is delay-loaded, and a call into a missing one faults.
+uint32_t loaderVersion()
+{
+#if defined(_WIN32)
+    const HMODULE loader = LoadLibraryExW(L"vulkan-1.dll", nullptr, 0);
+    if (!loader)
+        return 0;
+    const auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        reinterpret_cast<void*>(GetProcAddress(loader, "vkEnumerateInstanceVersion")));
+#else
+    const PFN_vkEnumerateInstanceVersion enumerate = vkEnumerateInstanceVersion;
+#endif
+    uint32_t version = VK_API_VERSION_1_0;
+    if (enumerate)
+        enumerate(&version);
+    return version;
+}
+
+std::vector<VkPhysicalDevice> physicalDevices(VkInstance instance)
 {
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance, &count, devices.data());
-    VkPhysicalDevice best = VK_NULL_HANDLE;
-    for (VkPhysicalDevice device : devices) {
-        VkPhysicalDeviceProperties p;
-        vkGetPhysicalDeviceProperties(device, &p);
-        if (p.apiVersion < VK_API_VERSION_1_3)
-            continue;
-        if (!best || p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-            best = device;
-        if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-            break;
-    }
-    return best;
+    return devices;
+}
+
+VulkanDeviceInfo describe(VkPhysicalDevice device)
+{
+    VkPhysicalDeviceProperties p;
+    vkGetPhysicalDeviceProperties(device, &p);
+    VulkanDeviceInfo info{.name = p.deviceName,
+                          .apiVersion = p.apiVersion,
+                          .discrete = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU};
+    if (p.apiVersion < VK_API_VERSION_1_3)
+        return info;
+    uint32_t count = 0;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> extensions(count);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data());
+    for (const VkExtensionProperties& e : extensions)
+        info.extensions.push_back(e.extensionName);
+    VkPhysicalDeviceVulkan13Features has13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDeviceVulkan12Features has12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &has13};
+    VkPhysicalDeviceFeatures2 has{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &has12};
+    vkGetPhysicalDeviceFeatures2(device, &has);
+    info.features = {.dynamicRendering = bool(has13.dynamicRendering),
+                     .synchronization2 = bool(has13.synchronization2),
+                     .timelineSemaphore = bool(has12.timelineSemaphore),
+                     .scalarBlockLayout = bool(has12.scalarBlockLayout),
+                     .hostQueryReset = bool(has12.hostQueryReset),
+                     .textureCompressionBC = bool(has.features.textureCompressionBC)};
+    return info;
 }
 
 // Whether the device can sample its own clock together with the host clock hostTicks() reads.
@@ -731,8 +770,6 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
     vkEnumerateDeviceExtensionProperties(d.physical, nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> available(count);
     vkEnumerateDeviceExtensionProperties(d.physical, nullptr, &count, available.data());
-    if (!hasExtension(available, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME))
-        return false;
     std::vector<const char*> extensions{VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
     if (hasExtension(available, VK_KHR_SWAPCHAIN_EXTENSION_NAME))
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -752,9 +789,6 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
     VkPhysicalDeviceVulkan12Features has12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &has13};
     VkPhysicalDeviceFeatures2 has{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &has12};
     vkGetPhysicalDeviceFeatures2(d.physical, &has);
-    if (!has13.dynamicRendering || !has13.synchronization2 || !has12.timelineSemaphore || !has12.scalarBlockLayout ||
-        !has12.hostQueryReset || !has.features.textureCompressionBC)
-        return false;
     // Lets an output's present thread wait for a frame to reach the display (vsync phase).
     d.presentWait = hasExtension(available, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
                     hasExtension(available, VK_KHR_PRESENT_WAIT_EXTENSION_NAME) && hasId.presentId &&
@@ -849,24 +883,36 @@ void makeUploader(DeviceObject& d)
     }
 }
 
-std::shared_ptr<DeviceObject> makeDevice()
+// Null with `problem` set when the machine has no device the backend can run on (chooseVulkanDevice).
+std::shared_ptr<DeviceObject> makeDevice(std::string& problem)
 {
     auto d = std::make_shared<DeviceObject>();
-    const bool validation = envOn("NOCTURNE_VULKAN_VALIDATION");
-    gValidation = validation;
-    d->instance = makeInstance(validation, d->messenger);
-    if (!d->instance)
+    VulkanProbe probe{.loaderVersion = loaderVersion()};
+    if (probe.loaderVersion >= kVulkanMinimum) {
+        const bool validation = envOn("NOCTURNE_VULKAN_VALIDATION");
+        gValidation = validation;
+        d->instance = makeInstance(validation, d->messenger);
+        probe.instance = d->instance != VK_NULL_HANDLE;
+    }
+    const std::vector<VkPhysicalDevice> devices =
+        probe.instance ? physicalDevices(d->instance) : std::vector<VkPhysicalDevice>();
+    for (VkPhysicalDevice device : devices)
+        probe.devices.push_back(describe(device));
+    const VulkanChoice choice = chooseVulkanDevice(probe);
+    if (choice.device < 0) {
+        problem = choice.problem;
         return nullptr;
-    d->physical = pickPhysical(d->instance);
-    if (!d->physical)
-        return nullptr;
+    }
+    d->physical = devices[size_t(choice.device)];
     vkGetPhysicalDeviceProperties(d->physical, &d->properties);
     vkGetPhysicalDeviceMemoryProperties(d->physical, &d->memory);
     d->uniformAlign = std::max(d->properties.limits.minUniformBufferOffsetAlignment,
                                d->properties.limits.minStorageBufferOffsetAlignment);
     uint32_t queues = 0;
-    if (!pickFamily(*d, queues) || !makeLogical(*d, queues))
+    if (!pickFamily(*d, queues) || !makeLogical(*d, queues)) {
+        problem = vulkanProblem(std::string(d->properties.deviceName) + " could not be opened (vkCreateDevice failed)");
         return nullptr;
+    }
     d->allocator.init(d->device, d->memory);
     for (uint32_t i = 0; i < queues; ++i) {
         auto slot = std::make_unique<QueueSlot>();
@@ -1426,13 +1472,36 @@ bool cacheHeaderMatches(const DeviceObject& d, const std::vector<char>& data)
 
 } // namespace vk
 
+namespace {
+
+struct SystemDevice {
+    std::shared_ptr<vk::DeviceObject> device;
+    std::string problem;
+};
+
+// Made once and kept for the life of the process, like Metal's system default device.
+const SystemDevice& systemDevice()
+{
+    static const SystemDevice* system = [] {
+        auto* s = new SystemDevice;
+        s->device = vk::makeDevice(s->problem);
+        return s;
+    }();
+    return *system;
+}
+
+} // namespace
+
 Device Device::systemDefault()
 {
-    // Made once and kept for the life of the process, like Metal's system default device.
-    static auto* device = new std::shared_ptr<vk::DeviceObject>(vk::makeDevice());
     Device d;
-    d.handle_ = *device;
+    d.handle_ = systemDevice().device;
     return d;
+}
+
+std::string Device::systemDefaultProblem()
+{
+    return systemDevice().problem;
 }
 
 Device Device::retain(NativeDevice device)

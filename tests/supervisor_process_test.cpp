@@ -215,6 +215,22 @@ TEST_CASE("supervisor: the engine's exit status asks for a restart, safe mode, l
     CHECK(contains(supervised.log(), "stop asked for from a client; stopping"));
 }
 
+TEST_CASE("supervisor: an engine that finds no usable GPU is not restarted and its line goes into the status once")
+{
+    Supervised supervised;
+    INFO(supervised.log());
+    supervised.command("no-gpu");
+    REQUIRE(eventually([&] { return supervised.process().poll().has_value(); }, 10.0));
+    CHECK(supervised.process().poll() == 0);
+    const std::string line = "nocturne: no usable GPU: fake has no Vulkan 1.3 device.";
+    CHECK(supervised.status()["error"] == line);
+    CHECK(supervised.mode() == "normal");
+    CHECK(supervised.starts() == 1);
+    CHECK(supervised.status()["crashes"].empty());
+    CHECK(count(supervised.log(), line) == 1);
+    CHECK(contains(supervised.engineLog(), line));
+}
+
 TEST_CASE("supervisor: stopping the supervisor asks the engine to quit, and both exit")
 {
     Supervised supervised;
