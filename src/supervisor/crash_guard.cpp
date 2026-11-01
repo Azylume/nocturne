@@ -19,6 +19,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <werapi.h>
 #else
 #include <fcntl.h>
 #include <pthread.h>
@@ -163,6 +164,22 @@ int signalFor(DWORD exception)
     }
 }
 
+// True when this program is listed under Windows Error Reporting's ExcludedApplications, as the installer lists it.
+bool excludedFromErrorReports()
+{
+    wchar_t path[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    if (length == 0 || length == MAX_PATH)
+        return false;
+    const wchar_t* slash = wcsrchr(path, L'\\');
+    DWORD excluded = 0;
+    DWORD size = sizeof excluded;
+    const wchar_t* key = L"SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting\\ExcludedApplications";
+    return RegGetValueW(HKEY_LOCAL_MACHINE, key, slash ? slash + 1 : path, RRF_RT_REG_DWORD, nullptr, &excluded,
+                        &size) == ERROR_SUCCESS &&
+           excluded != 0;
+}
+
 // The handlers installed before ours, which run after them.
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 void (*previousAbort)(int) = SIG_DFL;
@@ -275,8 +292,14 @@ void recordCrash(int signal)
 void installCrashHandlers()
 {
 #ifdef _WIN32
-    // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it.
-    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it. Windows Error
+    // Reporting runs, without its UI, only for a program it makes no report of, so it just writes the local dump.
+    if (excludedFromErrorReports()) {
+        SetErrorMode(SEM_FAILCRITICALERRORS);
+        WerSetFlags(WER_FAULT_REPORTING_NO_UI);
+    } else {
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    }
     const LPTOP_LEVEL_EXCEPTION_FILTER filter = SetUnhandledExceptionFilter(onCrash);
     if (filter != onCrash)
         previousFilter = filter;
