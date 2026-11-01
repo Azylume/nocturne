@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 inline bool elevated()
@@ -51,19 +52,11 @@ struct VhdxDisk {
                          " type=expandable\n" + select() + "attach vdisk\ncreate partition primary\n"
                          "format fs=ntfs quick label=azl\nassign mount=\"" + mount.string() + "\"\n"));
     }
-    ~VhdxDisk() { detach(); }
+    ~VhdxDisk() { run(select() + "detach vdisk\n"); }
 
     bool detach() { return diskpart(select() + "detach vdisk\n"); }
     // The volume comes back on the same folder.
     bool attach() { return diskpart(select() + "attach vdisk\n"); }
-
-    bool diskpart(const std::string& script)
-    {
-        const fs::path file = dir.path / "diskpart.txt";
-        std::ofstream(file) << script;
-        return std::system(("diskpart /s \"" + file.string() + "\" > \"" + (dir.path / "diskpart.log").string() +
-                            "\"").c_str()) == 0;
-    }
 
     TempDir dir;
     fs::path image;
@@ -71,4 +64,29 @@ struct VhdxDisk {
 
 private:
     std::string select() const { return "select vdisk file=\"" + image.string() + "\"\n"; }
+
+    // When the script fails, the case fails with diskpart's output and the disk's state.
+    bool diskpart(const std::string& script)
+    {
+        if (run(script))
+            return true;
+        const std::string output = log();
+        run(select() + "detail vdisk\n");
+        FAIL_CHECK("diskpart failed on:\n" << script << "with:\n" << output << "the disk now:\n" << log());
+        return false;
+    }
+
+    bool run(const std::string& script)
+    {
+        const fs::path file = dir.path / "diskpart.txt";
+        std::ofstream(file) << script;
+        return std::system(("diskpart /s \"" + file.string() + "\" > \"" + logFile().string() + "\"").c_str()) == 0;
+    }
+
+    fs::path logFile() const { return dir.path / "diskpart.log"; }
+    std::string log() const
+    {
+        std::ifstream in(logFile());
+        return {std::istreambuf_iterator<char>(in), {}};
+    }
 };
