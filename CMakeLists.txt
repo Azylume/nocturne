@@ -354,6 +354,13 @@ function(nocturne_windowless target)
   endif()
 endfunction()
 
+# Every Windows program runs with UTF-8 as its code page, so the UTF-8 strings paths are made of (command lines,
+# documents, the protocol) name the same files through narrow APIs. The linker merges this manifest with its own and
+# with what JUCE asks for (common controls 6).
+function(nocturne_utf8_manifest target)
+  target_sources(${target} PRIVATE ${CMAKE_SOURCE_DIR}/src/app/nocturne.manifest)
+endfunction()
+
 add_executable(nocturne-supervisor src/app/supervisor.cpp)
 target_link_libraries(nocturne-supervisor PRIVATE nocturne_protocol)
 nocturne_windowless(nocturne-supervisor)
@@ -542,10 +549,14 @@ if(NOT APPLE)
     target_link_options(nocturne PRIVATE "LINKER:/STACK:8388608")
     target_link_options(nocturne_tests PRIVATE "LINKER:/STACK:8388608")
     target_sources(nocturne_tests PRIVATE tests/engine_win_test.cpp tests/win_outputs_test.cpp tests/golden_png_win.cpp
-      tests/desk_page_win_test.cpp)
+      tests/desk_page_win_test.cpp tests/utf8_paths_win_test.cpp)
     target_link_libraries(nocturne_tests PRIVATE nocturne_win_displays psapi)
     target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_ENGINE="$<TARGET_FILE:nocturne>")
     add_dependencies(nocturne_tests nocturne)
+    foreach(target nocturne nocturne-supervisor nocturne-desk nocturne-ctl nocturne-hap-encode nocturne-ui nocturne_tests
+        nocturne_ui_tests)
+      nocturne_utf8_manifest(${target})
+    endforeach()
   endif()
   return()
 endif()
