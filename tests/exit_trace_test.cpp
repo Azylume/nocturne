@@ -3,6 +3,8 @@
 #include "platform/process.hpp"
 
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -14,12 +16,13 @@ struct Ended {
 };
 
 // Runs the test child's `trace HOW` job and collects what it wrote on stderr.
-Ended endTraced(const std::string& how)
+Ended endTraced(const std::string& how, std::map<std::string, std::optional<std::string>> environment = {})
 {
     const std::optional<azl::PipeEnds> pipe = azl::makePipe();
     REQUIRE(pipe);
     std::optional<azl::Process> child = azl::spawnProcess(
-        {.program = NOCTURNE_PLATFORM_CHILD, .args = {"trace", how}, .error = azl::Stdio::to(pipe->write)});
+        {.program = NOCTURNE_PLATFORM_CHILD, .args = {"trace", how}, .error = azl::Stdio::to(pipe->write),
+         .environment = std::move(environment)});
     azl::closeHandle(pipe->write);
     REQUIRE(child);
     Ended ended;
@@ -86,4 +89,32 @@ TEST_CASE("exit trace: exit and ExitProcess from anywhere but main's return leav
     const Ended normal = endTraced("return");
     CHECK(normal.exit == 0);
     CHECK(normal.error.empty());
+}
+
+TEST_CASE("exit trace: a fault a filter ends with exit() leaves the exception, a named stack and a minidump")
+{
+    const std::filesystem::path dumps = std::filesystem::temp_directory_path() / "nocturne-exit-trace-dumps";
+    std::filesystem::remove_all(dumps);
+    const Ended ended = endTraced("fault-filtered", {{"NOCTURNE_CRASH_DUMP_DIR", dumps.string()}});
+    CHECK(ended.exit == 3);
+    CHECK(has(ended.error, "nocturne: after exception 0xc0000005 writing 0x0 at nocturne_platform_child.exe+0x"));
+    CHECK(has(ended.error, "nocturne: the same stack with symbols:"));
+    CHECK(has(ended.error, "platform_child.cpp:"));
+    CHECK(has(ended.error, "nocturne: wrote a minidump to "));
+    uintmax_t bytes = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dumps))
+        if (entry.path().extension() == ".dmp")
+            bytes += entry.file_size();
+    CHECK(bytes > 0);
+    std::filesystem::remove_all(dumps);
+}
+
+// Crashes this test binary itself, under doctest's own handler, to see by hand what a crash in the suite leaves: the
+// stack with names on stderr and a minidump in NOCTURNE_CRASH_DUMP_DIR. Skipped, and it needs NOCTURNE_TEST_CRASH=1.
+TEST_CASE("exit trace: NOCTURNE_TEST_CRASH=1 crashes the test binary itself" * doctest::skip())
+{
+    if (!std::getenv("NOCTURNE_TEST_CRASH"))
+        return;
+    int* volatile nowhere = nullptr;
+    *nowhere = 1;
 }

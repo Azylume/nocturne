@@ -4,6 +4,9 @@
 #if !defined(__APPLE__)
 #include "gpu/gpu_vulkan.hpp"
 #endif
+#ifdef _WIN32
+#include "platform/exit_trace.hpp"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -11,6 +14,10 @@
 
 int main(int argc, char** argv)
 {
+#ifdef _WIN32
+    // A crash prints its stack, named from the PDBs, before doctest's own handler reports it and exits.
+    azl::traceExits();
+#endif
     // Every engine these tests start keeps its audio input off, so no test asks for the microphone.
     // NOCTURNE_REAL_AUDIO=1 runs the tests that need a real input.
     const char* real = std::getenv("NOCTURNE_REAL_AUDIO");
@@ -36,6 +43,9 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "Vulkan validation errors: %llu\n", static_cast<unsigned long long>(errors));
         result = result ? result : 1;
     }
+#endif
+#ifdef _WIN32
+    azl::exitingNormally();
 #endif
     return result;
 }

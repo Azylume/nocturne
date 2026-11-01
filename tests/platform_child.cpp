@@ -35,6 +35,11 @@ int endTraced(const std::string& how)
         fault();
     else if (how == "fault-thread")
         std::thread(fault).join();
+    else if (how == "fault-filtered") {
+        // Like doctest's handler: a filter that replaces the trace's own and exits.
+        SetUnhandledExceptionFilter([](EXCEPTION_POINTERS*) -> LONG { std::exit(3); });
+        fault();
+    }
     else if (how == "throw-thread")
         std::thread([] { throw std::runtime_error("lost in a thread"); }).join();
     else if (how == "abort")

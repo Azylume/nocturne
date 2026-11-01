@@ -35,6 +35,10 @@ if(MSVC)
   # clang-cl: /W4 is clang's -Wall -Wextra (its /Wall would be -Weverything).
   add_compile_options(/W4 -Wno-unused-parameter -Wno-missing-designated-field-initializers /utf-8)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
+  # Release binaries get a PDB of line tables next to them, so a crash's stack names functions and lines. The
+  # optimisations /DEBUG would turn off stay on.
+  add_compile_options($<$<CONFIG:Release>:-gline-tables-only>)
+  add_link_options($<$<CONFIG:Release>:/DEBUG> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
 else()
   add_compile_options(-Wall -Wextra -Wno-unused-parameter $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
 endif()

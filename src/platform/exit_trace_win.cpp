@@ -1,19 +1,24 @@
 #include "platform/exit_trace.hpp"
 
 #include <windows.h>
+// dbghelp.h needs windows.h first.
+#include <dbghelp.h>
 
 #include <atomic>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <cwchar>
 #include <exception>
 #include <stdlib.h>
+
+#pragma comment(lib, "dbghelp.lib")
 
 namespace azl {
 
 namespace {
 
-constexpr int kMaxFrames = 32;
+constexpr int kMaxFrames = 48;
 // Fatal exceptions reported when raised; a library that keeps faulting and handling it must not flood the log.
 constexpr int kMaxRaised = 8;
 
@@ -21,6 +26,15 @@ constexpr int kMaxRaised = 8;
 std::atomic<bool> expected{true};
 std::atomic<int> raised{0};
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
+
+// The last fatal exception this thread raised, kept for the exit an unhandled-exception filter that is not ours (the
+// test runner's) makes after it.
+struct Raised {
+    EXCEPTION_RECORD record;
+    CONTEXT context;
+    bool set = false;
+};
+thread_local Raised raisedHere;
 
 // One line of text, written to stderr in one piece. Never allocates, so it works while the heap is broken.
 class Line {
@@ -78,8 +92,7 @@ public:
         DWORD name = length;
         while (name && path[name - 1] != L'\\')
             --name;
-        for (DWORD i = name; i < length && n_ < kRoom; ++i)
-            text_[n_++] = path[i] < 128 ? char(path[i]) : '?';
+        wide(path + name, length - name);
         *this << "+";
         return hex(at - reinterpret_cast<uint64_t>(module));
     }
@@ -91,11 +104,18 @@ public:
         wchar_t* description = nullptr;
         if (SUCCEEDED(GetThreadDescription(GetCurrentThread(), &description)) && description && *description) {
             *this << " (";
-            for (const wchar_t* c = description; *c && n_ < kRoom; ++c)
-                text_[n_++] = *c < 128 ? char(*c) : '?';
+            wide(description, wcslen(description));
             *this << ")";
         }
         LocalFree(description);
+        return *this;
+    }
+
+    // ASCII as is, every other character as '?'.
+    Line& wide(const wchar_t* text, size_t length)
+    {
+        for (size_t i = 0; i < length && n_ < kRoom; ++i)
+            text_[n_++] = text[i] < 128 ? char(text[i]) : '?';
         return *this;
     }
 
@@ -105,20 +125,26 @@ private:
     size_t n_ = 0;
 };
 
-// The calling thread's stack from `context` down, one frame per line, by the unwind data every x64 function has. A
-// frame without it (a leaf, or a call through a null pointer) returns to the address on top of its stack.
-void writeStack(CONTEXT context)
+struct Stack {
+    uint64_t frames[kMaxFrames];
+    int count = 0;
+};
+
+// The calling thread's stack from `context` down, by the unwind data every x64 function has. A frame without it (a
+// leaf, or a call through a null pointer) returns to the address on top of its stack.
+Stack walk(CONTEXT context)
 {
+    Stack stack;
 #if defined(_M_X64)
     ULONG_PTR low = 0, high = 0;
     GetCurrentThreadStackLimits(&low, &high);
-    for (int i = 0; i < kMaxFrames && (i == 0 || context.Rip); ++i) {
-        (Line() << "    ").address(context.Rip);
+    while (stack.count < kMaxFrames && (stack.count == 0 || context.Rip)) {
+        stack.frames[stack.count++] = context.Rip;
         DWORD64 base = 0;
         RUNTIME_FUNCTION* function = RtlLookupFunctionEntry(context.Rip, &base, nullptr);
         if (!function) {
             if (context.Rsp < low || context.Rsp + 8 > high)
-                return;
+                break;
             context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
             context.Rsp += 8;
             continue;
@@ -131,13 +157,117 @@ void writeStack(CONTEXT context)
 #else
     (void)context;
 #endif
+    return stack;
+}
+
+// Loads the symbols of every module once, from the PDBs next to them, and keeps dbghelp, which is single threaded, to
+// one thread. A thread that faults while another one (or itself) looks symbols up goes without. Unlike the rest of
+// this file it allocates and reads files, so it runs only after the raw stack is out.
+class Symbols {
+public:
+    Symbols() : owned_(TryAcquireSRWLockExclusive(&lock)) {}
+    ~Symbols()
+    {
+        if (owned_)
+            ReleaseSRWLockExclusive(&lock);
+    }
+
+    bool ready()
+    {
+        if (!owned_)
+            return false;
+        if (!tried) {
+            tried = true;
+            wchar_t folder[MAX_PATH];
+            DWORD length = GetModuleFileNameW(nullptr, folder, MAX_PATH);
+            while (length && folder[length - 1] != L'\\')
+                --length;
+            folder[length] = 0;
+            SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_FAIL_CRITICAL_ERRORS |
+                          SYMOPT_NO_PROMPTS);
+            loaded = SymInitializeW(GetCurrentProcess(), folder, TRUE);
+        }
+        return loaded;
+    }
+
+private:
+    const bool owned_;
+    static inline SRWLOCK lock = SRWLOCK_INIT;
+    static inline bool tried = false;
+    static inline bool loaded = false;
+};
+
+// The function, and the source line where there is one. A return address points after its call, so its line is the
+// one before it.
+void writeSymbol(Line& line, uint64_t at, bool returnAddress)
+{
+    alignas(SYMBOL_INFO) char buffer[sizeof(SYMBOL_INFO) + 256];
+    auto* symbol = reinterpret_cast<SYMBOL_INFO*>(buffer);
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = 256;
+    DWORD64 offset = 0;
+    if (!SymFromAddr(GetCurrentProcess(), at, &offset, symbol))
+        return;
+    (line << " " << symbol->Name << "+").hex(offset);
+    IMAGEHLP_LINE64 source{};
+    source.SizeOfStruct = sizeof source;
+    DWORD column = 0;
+    if (SymGetLineFromAddr64(GetCurrentProcess(), at - (returnAddress ? 1 : 0), &column, &source))
+        (line << " (" << source.FileName << ":").dec(source.LineNumber) << ")";
+}
+
+// One frame per line as module+offset first, which needs neither the heap nor files; then, where dbghelp finds them,
+// the same frames with function names and lines.
+void writeStack(const Stack& stack, bool symbols)
+{
+    for (int i = 0; i < stack.count; ++i)
+        (Line() << "    ").address(stack.frames[i]);
+    if (!symbols)
+        return;
+    Symbols lookup;
+    if (!lookup.ready())
+        return;
+    Line() << "nocturne: the same stack with symbols:";
+    for (int i = 0; i < stack.count; ++i) {
+        Line line;
+        (line << "    ").address(stack.frames[i]);
+        writeSymbol(line, stack.frames[i], i > 0);
+    }
 }
 
 void writeStackHere()
 {
     CONTEXT context{};
     RtlCaptureContext(&context);
-    writeStack(context);
+    writeStack(walk(context), true);
+}
+
+// A minidump of the process with `exception`, into NOCTURNE_CRASH_DUMP_DIR if it is set, as <exe>.<pid>.dmp.
+void writeDump(EXCEPTION_POINTERS* exception)
+{
+    wchar_t path[MAX_PATH];
+    const DWORD folder = GetEnvironmentVariableW(L"NOCTURNE_CRASH_DUMP_DIR", path, MAX_PATH);
+    if (!folder || folder > MAX_PATH - 80)
+        return;
+    wchar_t module[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(nullptr, module, MAX_PATH);
+    DWORD name = length;
+    while (name && module[name - 1] != L'\\')
+        --name;
+    CreateDirectoryW(path, nullptr);
+    std::swprintf(path + folder, MAX_PATH - folder, L"\\%.60ls.%lu.dmp", module + name, GetCurrentProcessId());
+    const HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return;
+    MINIDUMP_EXCEPTION_INFORMATION info{GetCurrentThreadId(), exception, FALSE};
+    const auto type = MINIDUMP_TYPE(MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithThreadInfo |
+                                    MiniDumpWithUnloadedModules | MiniDumpWithHandleData);
+    const bool written = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, type,
+                                           exception ? &info : nullptr, nullptr, nullptr);
+    CloseHandle(file);
+    Line line;
+    line << (written ? "nocturne: wrote a minidump to " : "nocturne: could not write a minidump to ");
+    line.wide(path, wcslen(path));
 }
 
 // The system's exceptions of error severity: access violations, stack overflows, heap corruption, illegal
@@ -162,7 +292,12 @@ void describe(Line& line, const EXCEPTION_RECORD& record)
 
 LONG CALLBACK onRaised(EXCEPTION_POINTERS* info)
 {
-    if (!fatal(info->ExceptionRecord->ExceptionCode) || raised.fetch_add(1) >= kMaxRaised)
+    if (!fatal(info->ExceptionRecord->ExceptionCode))
+        return EXCEPTION_CONTINUE_SEARCH;
+    raisedHere.record = *info->ExceptionRecord;
+    raisedHere.context = *info->ContextRecord;
+    raisedHere.set = true;
+    if (raised.fetch_add(1) >= kMaxRaised)
         return EXCEPTION_CONTINUE_SEARCH;
     {
         Line line;
@@ -175,7 +310,8 @@ LONG CALLBACK onRaised(EXCEPTION_POINTERS* info)
         else
             line.thread();
     }
-    writeStack(*info->ContextRecord);
+    // A thread out of stack has no room for dbghelp either.
+    writeStack(walk(*info->ContextRecord), info->ExceptionRecord->ExceptionCode != EXCEPTION_STACK_OVERFLOW);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -189,6 +325,7 @@ LONG WINAPI onUnhandled(EXCEPTION_POINTERS* info)
         line.thread();
         line << ": the process ends";
     }
+    writeDump(info);
     return previousFilter ? previousFilter(info) : EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -237,10 +374,23 @@ void onPureCall()
     std::abort();
 }
 
+// A filter that ends the process with exit() after a fatal exception on this thread (doctest's) leaves that exception
+// and a dump too.
 void onExit()
 {
-    if (!expected)
-        report("exit() called");
+    if (expected)
+        return;
+    report("exit() called");
+    if (!raisedHere.set)
+        return;
+    {
+        Line line;
+        line << "nocturne: after ";
+        describe(line, raisedHere.record);
+    }
+    writeStack(walk(raisedHere.context), true);
+    EXCEPTION_POINTERS pointers{&raisedHere.record, &raisedHere.context};
+    writeDump(&pointers);
 }
 
 void onQuickExit()
