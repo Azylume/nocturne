@@ -19,7 +19,7 @@ constexpr auto kBeatHeartbeat = std::chrono::milliseconds(500);
 constexpr auto kRetry = std::chrono::seconds(1);
 constexpr auto kTick = std::chrono::milliseconds(100);
 
-const std::set<std::string> kNodeOpen = {"node", "library", "preview", "audio"};
+const std::set<std::string> kNodeOpen = {"node", "library", "preview", "audio", "clock state"};
 
 Message beatMessage(const BeatTimeline& t)
 {

@@ -93,7 +93,7 @@ public:
     // may name none.
     void allowRemoteFiles(std::function<std::vector<std::filesystem::path>()> roots);
     // While set, clients cannot edit: commands and every machine-local type outside `open` are refused with `reason`
-    // (a node follows its main engine). perform still applies.
+    // (a node follows its main engine). `open` names a type, or one op of a type as "type op". perform still applies.
     void setReadOnly(std::optional<std::string> reason, std::set<std::string> open = {});
 
 private:
