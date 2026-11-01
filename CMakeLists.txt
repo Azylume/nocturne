@@ -506,9 +506,10 @@ if(NOT APPLE)
   target_sources(nocturne_tests PRIVATE tests/golden.cpp tests/harness_test.cpp tests/layers_test.cpp
     tests/screens_test.cpp tests/transition_test.cpp tests/output_import_test.cpp tests/clip_effects_test.cpp
     tests/classic_test.cpp tests/text_test.cpp tests/generator_test.cpp tests/upscale_test.cpp tests/isf_user_test.cpp
-    tests/hap_golden_test.cpp tests/effects_test.cpp tests/isf_engine_test.cpp tests/mapping_test.cpp)
+    tests/hap_golden_test.cpp tests/effects_test.cpp tests/isf_engine_test.cpp tests/mapping_test.cpp
+    tests/sync_test.cpp)
   target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-  target_link_libraries(nocturne_tests PRIVATE nocturne_harness nocturne_import)
+  target_link_libraries(nocturne_tests PRIVATE nocturne_harness nocturne_import nocturne_sync)
   if(WIN32)
     add_library(nocturne_win_displays STATIC src/platform/win_displays.cpp)
     target_link_libraries(nocturne_win_displays PUBLIC nocturne_gpu nocturne_platform)

@@ -1,10 +1,9 @@
 #include "engine/render_thread.hpp"
 #include "net/websocket.hpp"
+#include "platform/process.hpp"
 #include "sync/discovery.hpp"
 #include "sync/node_sync.hpp"
 #include "test_client.hpp"
-
-#include <unistd.h>
 
 #include <atomic>
 #include <cmath>
@@ -193,7 +192,7 @@ TEST_CASE("UDP clock pings over loopback find the other clock's offset")
 
 TEST_CASE("Bonjour finds an engine and sees its role change")
 {
-    const std::string name = "nocturne-test-" + std::to_string(getpid());
+    const std::string name = "nocturne-test-" + std::to_string(azl::currentProcessId());
     azl::Advertiser advertiser(name, 45123, {{"role", "main"}});
     azl::Browser browser;
     auto role = [&]() -> std::string {
@@ -510,6 +509,27 @@ TEST_CASE("a node without fetching, as a UI's preview follower, mirrors the comp
     CHECK(node.status().bytes == 0);
     const auto entry = follower.library().find(hash);
     CHECK((!entry || entry->status == azl::MediaStatus::Missing));
+}
+
+TEST_CASE("a node answers the clock state query and refuses clock actions of its own")
+{
+    Main main;
+    Node node(main.port);
+    REQUIRE(waitUntil([&] { return node.status()["synced"] == true; }));
+    Client local(node.harness.document());
+
+    local.send({{"type", "clock"}, {"op", "state"}});
+    const Message state = local.next();
+    CHECK(state["type"] == "clock");
+    CHECK(state["op"] == "state");
+
+    for (const char* op : {"tap", "nudge", "resync"}) {
+        CAPTURE(op);
+        local.send({{"type", "clock"}, {"op", op}, {"percent", 5.0}});
+        const Message refused = local.next();
+        CHECK(refused["type"] == "error");
+        CHECK(refused["message"].get<std::string>().find("node") != std::string::npos);
+    }
 }
 
 TEST_CASE("a node shrugs off a message whose type is not a string")
