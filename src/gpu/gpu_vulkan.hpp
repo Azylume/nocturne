@@ -8,6 +8,10 @@
 #include <cstdint>
 #include <shared_mutex>
 
+// Every queue submit of the backend, vkQueueSubmit2 itself unless a test binary links its own to make one fail.
+extern "C" VkResult nocturneVulkanQueueSubmit2(VkQueue queue, uint32_t count, const VkSubmitInfo2* submits,
+                                               VkFence fence);
+
 namespace azl::gpu::vulkan {
 
 VkInstance instance(const Device& device);
@@ -20,6 +24,9 @@ uint32_t queueFamily(const Device& device);
 // NOCTURNE_VULKAN_VALIDATION=1 was set before the first device was made (the test mains set it).
 uint64_t validationErrors();
 bool validationEnabled();
+// A device of its own beside the system default, kept for the life of the process, for a test that fails one. Null
+// when there is no GPU.
+Device makeSeparateDevice();
 
 // A swapchain's image as a render target. The texture never destroys the image; it rests in the present layout, so
 // a pass drawn into it leaves it ready to present.

@@ -25,6 +25,21 @@
 #include <mutex>
 #include <thread>
 
+#if defined(_WIN32)
+extern "C" VkResult nocturneVulkanQueueSubmit2Default(VkQueue queue, uint32_t count, const VkSubmitInfo2* submits,
+                                                      VkFence fence)
+{
+    return vkQueueSubmit2(queue, count, submits, fence);
+}
+#pragma comment(linker, "/alternatename:nocturneVulkanQueueSubmit2=nocturneVulkanQueueSubmit2Default")
+#else
+extern "C" __attribute__((weak)) VkResult nocturneVulkanQueueSubmit2(VkQueue queue, uint32_t count,
+                                                                     const VkSubmitInfo2* submits, VkFence fence)
+{
+    return vkQueueSubmit2(queue, count, submits, fence);
+}
+#endif
+
 namespace azl::gpu {
 
 namespace vk {
@@ -38,6 +53,8 @@ constexpr VkDeviceSize kUniformChunk = 256 * 1024;
 constexpr VkDeviceSize kStagingBytes = 64ull * 1024 * 1024;
 constexpr size_t kUploadCommands = 8;
 constexpr double kCalibrationSeconds = 10.0;
+// How long one look at a timeline lasts before a wait checks whether the device failed meanwhile.
+constexpr uint64_t kWaitSliceNs = 100'000'000;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL onMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                                          VkDebugUtilsMessageTypeFlagsEXT,
@@ -315,13 +332,38 @@ uint64_t counter(DeviceObject& d, VkSemaphore semaphore)
     return value;
 }
 
-bool waitValue(DeviceObject& d, VkSemaphore semaphore, uint64_t value, uint64_t timeoutNs)
+VkResult waitValue(DeviceObject& d, VkSemaphore semaphore, uint64_t value, uint64_t timeoutNs)
 {
     VkSemaphoreWaitInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
     info.semaphoreCount = 1;
     info.pSemaphores = &semaphore;
     info.pValues = &value;
-    return vkWaitSemaphores(d.device, &info, timeoutNs) == VK_SUCCESS;
+    return vkWaitSemaphores(d.device, &info, timeoutNs);
+}
+
+// Waits until the timeline reaches `value`, or until the device fails: a failed device ends the wait within a slice.
+// False when the device has failed.
+bool waitReached(DeviceObject& d, VkSemaphore timeline, uint64_t value)
+{
+    VkResult result = VK_TIMEOUT;
+    while (result == VK_TIMEOUT && !d.lost)
+        result = waitValue(d, timeline, value, kWaitSliceNs);
+    if (result != VK_SUCCESS && result != VK_TIMEOUT)
+        d.lost = true;
+    return result == VK_SUCCESS && !d.lost;
+}
+
+// After a failed submit: moves the slot's timeline to the value the submit would have signalled, so waits for it end
+// at once. Only when no earlier submit still has to signal it, as the host may not signal past a pending GPU signal;
+// otherwise the waits end on the device's failure.
+void signalFailedSubmit(DeviceObject& d, QueueSlot& slot, uint64_t value)
+{
+    if (counter(d, slot.timeline) + 1 != value)
+        return;
+    VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+    info.semaphore = slot.timeline;
+    info.value = value;
+    vkSignalSemaphore(d.device, &info);
 }
 
 VkSemaphore makeTimeline(VkDevice device)
@@ -350,11 +392,11 @@ uint64_t submit(DeviceObject& d, QueueSlot& slot, const VkCommandBufferSubmitInf
     info.pCommandBufferInfos = cmds;
     info.signalSemaphoreInfoCount = uint32_t(signals.size());
     info.pSignalSemaphoreInfos = signals.data();
-    const VkResult result = vkQueueSubmit2(slot.queue, 1, &info, VK_NULL_HANDLE);
+    const VkResult result = nocturneVulkanQueueSubmit2(slot.queue, 1, &info, VK_NULL_HANDLE);
     if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "vulkan: queue submit failed (%d)\n", int(result));
-        if (result == VK_ERROR_DEVICE_LOST)
-            d.lost = true;
+        std::fprintf(stderr, "vulkan: queue submit failed (%d); the device counts as lost\n", int(result));
+        d.lost = true;
+        signalFailedSubmit(d, slot, value);
     }
     if (tracked) {
         tracked->value = value;
@@ -1138,7 +1180,7 @@ void waitUntilCompleted(CommandObject* c)
         std::unique_lock lock(d.orderMutex);
         d.submittedCv.wait(lock, [c] { return c->value != 0; });
     }
-    waitValue(d, c->queue->slot->timeline, c->value, UINT64_MAX);
+    waitReached(d, c->queue->slot->timeline, c->value);
 }
 
 void signal(CommandObject* c, FenceObject* fence, uint64_t value)
@@ -1243,7 +1285,7 @@ uint64_t fenceValue(FenceObject* fence)
 
 bool waitFence(FenceObject* fence, uint64_t value, uint64_t timeoutMs)
 {
-    return waitValue(*fence->device, fence->semaphore, value, timeoutMs * 1000000ull);
+    return waitValue(*fence->device, fence->semaphore, value, timeoutMs * 1000000ull) == VK_SUCCESS;
 }
 
 CommandObject* commandBuffer(QueueObject* queue)
@@ -1606,7 +1648,8 @@ bool Device::upload(const Texture& texture, uint32_t level, const void* data, si
         const bool overlaps = span.start < end && start < span.end;
         if (!overlaps && vk::counter(d, u.slot->timeline) < span.value)
             break;
-        vk::waitValue(d, u.slot->timeline, span.value, UINT64_MAX);
+        if (!vk::waitReached(d, u.slot->timeline, span.value))
+            return false;
         u.spans.pop_front();
     }
     u.head = end;
@@ -1615,8 +1658,8 @@ bool Device::upload(const Texture& texture, uint32_t level, const void* data, si
                     tight);
 
     vk::Uploader::Recording& rec = u.recordings[u.next++ % vk::kUploadCommands];
-    if (rec.value)
-        vk::waitValue(d, u.slot->timeline, rec.value, UINT64_MAX);
+    if (rec.value && !vk::waitReached(d, u.slot->timeline, rec.value))
+        return false;
     vkResetCommandPool(d.device, rec.pool, 0);
     vk::beginRecording(rec.cmd);
     const bool whole = t->mipLevels == 1;
@@ -1632,7 +1675,7 @@ bool Device::upload(const Texture& texture, uint32_t level, const void* data, si
     u.spans.push_back({start, end, rec.value});
     const uint64_t value = rec.value;
     lock.unlock();
-    return vk::waitValue(d, u.slot->timeline, value, UINT64_MAX);
+    return vk::waitReached(d, u.slot->timeline, value);
 }
 
 ShaderModule Device::makeShaderModule(const ShaderSource& source, std::string* error) const
@@ -1959,6 +2002,13 @@ uint64_t validationErrors()
 bool validationEnabled()
 {
     return vk::gValidation.load();
+}
+
+Device makeSeparateDevice()
+{
+    // Never freed: its completion thread runs for the life of the process, as the system default's does.
+    const auto* kept = new std::shared_ptr<vk::DeviceObject>(vk::makeDevice());
+    return Device::retain(kept->get());
 }
 
 Texture wrapSwapchainImage(const Device& device, VkImage image, VkFormat format, uint32_t width, uint32_t height)

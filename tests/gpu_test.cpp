@@ -537,6 +537,69 @@ TEST_CASE("command buffers that wait for a fence another queue signals later com
 #if !defined(__APPLE__)
 #include "gpu/gpu_vulkan.hpp"
 
+#include <future>
+#include <memory>
+
+namespace {
+
+// A submit from a thread with this set fails as if the device ran out of memory, and never reaches the GPU.
+thread_local bool tFailSubmits = false;
+
+// True when `wait` returns within five seconds. It runs on a thread of its own, left behind if it never returns.
+bool returnsSoon(std::function<void()> wait)
+{
+    auto done = std::make_shared<std::promise<void>>();
+    std::future<void> returned = done->get_future();
+    std::thread([wait = std::move(wait), done] {
+        wait();
+        done->set_value();
+    }).detach();
+    return returned.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+}
+
+} // namespace
+
+extern "C" VkResult nocturneVulkanQueueSubmit2(VkQueue queue, uint32_t count, const VkSubmitInfo2* submits,
+                                               VkFence fence)
+{
+    return tFailSubmits ? VK_ERROR_OUT_OF_DEVICE_MEMORY : vkQueueSubmit2(queue, count, submits, fence);
+}
+
+TEST_CASE("a failed queue submit fails the device: its wait ends, its handler says it failed, an upload fails")
+{
+    const gpu::Device device = gpu::vulkan::makeSeparateDevice();
+    REQUIRE(device);
+    const gpu::Queue queue = device.makeQueue();
+    gpu::Scope scope;
+    gpu::CommandBuffer ran = queue.commandBuffer();
+    ran.commit();
+    ran.waitUntilCompleted();
+    REQUIRE(ran.completion().ok);
+
+    auto handled = std::make_shared<std::atomic<int>>(0);
+    gpu::CommandBuffer failed = queue.commandBuffer();
+    failed.onCompleted([handled](const gpu::Completion& done) { *handled = done.ok ? 1 : -1; });
+    tFailSubmits = true;
+    failed.commit();
+    tFailSubmits = false;
+    CHECK(returnsSoon([failed]() mutable { failed.waitUntilCompleted(); }));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (*handled == 0 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(*handled == -1);
+
+    const gpu::Texture texture =
+        device.makeTexture({.format = gpu::Format::RGBA8, .width = 4, .height = 4, .memory = gpu::Memory::Upload});
+    REQUIRE(texture);
+    auto uploaded = std::make_shared<std::atomic<bool>>(true);
+    CHECK(returnsSoon([device, texture, uploaded] {
+        const std::vector<uint8_t> bytes(4 * 4 * 4, 0x7f);
+        tFailSubmits = true;
+        *uploaded = device.upload(texture, 0, bytes.data(), 4 * 4);
+    }));
+    CHECK_FALSE(*uploaded);
+}
+
 TEST_CASE("the Vulkan validation layer checks every GPU call the tests make")
 {
     const gpu::Device device = gpu::Device::systemDefault();
