@@ -1,10 +1,14 @@
 ; Nocturne for Windows: one folder under Program Files that holds the UI, the engine, its supervisor and tools, and
-; the DLLs they load. Built by tools/make-installer.ps1, which stages the files and passes AppVersion and StageDir.
+; the DLLs they load. Built by tools/make-installer.ps1, which stages the files and passes AppVersion, SourceCommit
+; and StageDir.
 ; Uninstalling removes the program, its firewall rules, the autostart task and the crash dump settings;
 ; %LOCALAPPDATA%\Nocturne stays.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=X.Y.Z (tools/make-installer.ps1 reads it from CMakeLists.txt)
+#endif
+#ifndef SourceCommit
+  #error Pass /DSourceCommit=HASH (tools/make-installer.ps1 reads it from the build's source-commit.txt)
 #endif
 #ifndef StageDir
   #error Pass /DStageDir=DIR (tools/make-installer.ps1 stages the files there)
@@ -15,6 +19,10 @@
 AppId={{45BD7F96-9263-4FCD-AE72-9E6DDF388D0F}
 AppName=Nocturne
 AppVersion={#AppVersion}
+; The welcome page and the installer's file properties name the commit the build came from.
+AppVerName=Nocturne {#AppVersion} ({#SourceCommit})
+VersionInfoVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion} ({#SourceCommit})
 AppPublisher=Azylume
 AppPublisherURL=https://github.com/Azylume/nocturne
 DefaultDirName={autopf}\Nocturne
@@ -35,6 +43,7 @@ SolidCompression=yes
 OutputBaseFilename=Nocturne-{#AppVersion}-windows-x64-unsigned
 
 [Tasks]
+Name: desktopicon; Description: "Create a desktop shortcut"
 Name: autostart; Description: "Start the engine under its supervisor at every logon (for a show machine)"; Flags: unchecked
 
 [Files]
@@ -59,6 +68,7 @@ Root: HKLM; Subkey: "{#WerKey}\ExcludedApplications"; ValueType: dword; ValueNam
 [Icons]
 Name: "{group}\Nocturne"; Filename: "{app}\Nocturne UI.exe"
 Name: "{group}\Uninstall Nocturne"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Nocturne"; Filename: "{app}\Nocturne UI.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Nocturne engine"""; Flags: runhidden

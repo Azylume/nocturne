@@ -62,4 +62,11 @@ std::filesystem::path siblingExecutable(const std::string& name)
     return executablePath().parent_path() / name;
 }
 
+std::filesystem::path programInFolderOrPath(const std::filesystem::path& folder, const std::string& name)
+{
+    std::error_code error;
+    const std::filesystem::path program = folder / name;
+    return std::filesystem::is_regular_file(program, error) ? program : std::filesystem::path(name);
+}
+
 } // namespace azl

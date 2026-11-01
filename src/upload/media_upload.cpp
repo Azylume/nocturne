@@ -3,6 +3,7 @@
 #include "document/composition_file.hpp"
 #include "media/hap_encoder.hpp"
 #include "media/media_library.hpp"
+#include "platform/app_paths.hpp"
 #include "platform/credentials.hpp"
 #include "platform/process.hpp"
 
@@ -14,6 +15,7 @@
 #include <ctime>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -27,6 +29,12 @@ namespace azl {
 namespace {
 
 constexpr const char* kContentType = "video/mp4";
+
+// The ffmpeg or ffprobe installed beside the running program (the Windows installer ships them), else the one on PATH.
+std::string mediaTool(const std::string& name)
+{
+    return programInFolderOrPath(executablePath().parent_path(), name).string();
+}
 
 // Runs a command and returns its standard output; throws when it cannot start or exits non-zero.
 // Runs the tool and returns its output; with a `sink`, its output goes there as it comes instead.
@@ -107,7 +115,7 @@ Probe probe(const fs::path& file)
 {
     Probe p;
     for (const std::string& line :
-         lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
                         "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0",
                         file.string()}))) {
         const auto f = fields(line);
@@ -134,8 +142,9 @@ Probe probe(const fs::path& file)
 bool hasOneSecondGop(const fs::path& file, double duration)
 {
     std::vector<double> keyframes;
-    for (const std::string& line : lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                                                  "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
+    for (const std::string& line :
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
         const auto f = fields(line);
         if (f.size() >= 2 && !f[1].empty() && f[1][0] == 'K' && f[0] != "N/A")
             keyframes.push_back(std::atof(f[0].c_str()));
@@ -154,9 +163,9 @@ bool hasOneSecondGop(const fs::path& file, double duration)
 std::vector<std::string> ffmpeg()
 {
 #ifdef _WIN32
-    return {"ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    return {mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
 #else
-    return {"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    return {"nice", "-n", "15", mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
 #endif
 }
 
@@ -171,22 +180,66 @@ std::vector<std::string> ffmpegCommand(const std::vector<std::string>& args, con
     return command;
 }
 
+#ifdef _WIN32
+// Whether ffmpeg encodes a few frames with `encoder` here: the hardware ones need a GPU and driver that have them.
+bool encoderOpens(const std::string& encoder)
+{
+    std::vector<std::string> command = ffmpeg();
+    command.insert(command.end(), {"-f", "lavfi", "-i", "color=s=256x256:d=0.1", "-c:v", encoder, "-f", "null", "-"});
+    try {
+        runTool(command);
+        return true;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+}
+
+// The bundled ffmpeg is LGPL and has no libx264: a hardware encoder at about x264's quality for the CRF, else
+// Microsoft's Media Foundation encoder. Probed once per process.
+std::vector<std::string> h264Args(const ConvertOptions& options)
+{
+    static const std::string encoder = pickH264Encoder(encoderOpens);
+    const std::string quality = std::to_string(options.crf);
+    if (encoder == "h264_nvenc")
+        return {"-c:v", encoder, "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", quality, "-b:v", "0",
+                "-profile:v", "high", "-no-scenecut", "1"};
+    if (encoder == "h264_amf")
+        return {"-c:v", encoder, "-quality", "quality", "-rc", "cqp", "-qp_i", quality, "-qp_p", quality,
+                "-profile:v", "high"};
+    if (encoder == "h264_qsv")
+        return {"-c:v", encoder, "-preset", "slow", "-global_quality", quality, "-profile:v", "high"};
+    if (encoder == "h264_mf")
+        return {"-c:v", encoder, "-rate_control", "quality", "-quality", std::to_string(100 - 2 * options.crf),
+                "-profile:v", "high"};
+    throw std::runtime_error("no H.264 encoder opens on this machine (tried h264_nvenc, h264_amf, h264_qsv, h264_mf)");
+}
+#else
+std::vector<std::string> h264Args(const ConvertOptions& options)
+{
+    return {"-c:v", "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high"};
+}
+#endif
+
 std::vector<std::string> encodeArgs(const fs::path& source, double fps, const ConvertOptions& options)
 {
     const std::string gop = std::to_string(std::max(1L, std::lround(fps)));
-    return {"-i", source.string(), "-an", "-vf",
-            "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p", "-c:v",
-            "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g", gop,
-            "-keyint_min", gop, "-sc_threshold", "0"};
+    std::vector<std::string> args = {
+        "-i", source.string(), "-an", "-vf",
+        "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p"};
+    std::ranges::copy(h264Args(options), std::back_inserter(args));
+    args.insert(args.end(), {"-g", gop, "-keyint_min", gop, "-sc_threshold", "0"});
+    return args;
 }
 
 std::vector<std::string> stillArgs(const fs::path& source, const ConvertOptions& options)
 {
-    return {"-loop", "1", "-t", "4", "-framerate", "30", "-i", source.string(), "-an", "-filter_complex",
-            "color=black:s=1920x1080:r=30:d=4[bg];[0:v]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bg]["
-            "fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p",
-            "-c:v", "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g",
-            "30", "-keyint_min", "30", "-sc_threshold", "0"};
+    std::vector<std::string> args = {
+        "-loop", "1", "-t", "4", "-framerate", "30", "-i", source.string(), "-an", "-filter_complex",
+        "color=black:s=1920x1080:r=30:d=4[bg];[0:v]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bg]["
+        "fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"};
+    std::ranges::copy(h264Args(options), std::back_inserter(args));
+    args.insert(args.end(), {"-g", "30", "-keyint_min", "30", "-sc_threshold", "0"});
+    return args;
 }
 
 std::vector<std::string> remuxArgs(const fs::path& source)
@@ -412,6 +465,14 @@ S3Config loadR2Config(const fs::path& path, const std::string& keychainService, 
     if (config.secretAccessKey.empty())
         throw std::runtime_error("no R2 secret access key: " + secretHelp(keychainService, config.accessKeyId, env));
     return config;
+}
+
+std::string pickH264Encoder(const std::function<bool(const std::string& encoder)>& opens)
+{
+    for (const char* encoder : {"h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"})
+        if (opens(encoder))
+            return encoder;
+    return {};
 }
 
 Conversion convertForPlayback(const fs::path& source, const fs::path& outDir, const ConvertOptions& options)

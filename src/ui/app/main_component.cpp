@@ -1,5 +1,6 @@
 #include "ui/app/main_component.hpp"
 
+#include "protocol/build_info.hpp"
 #include "ui/app/midi.hpp"
 
 namespace azl::ui {
@@ -268,7 +269,7 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 }
 
 MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible)
-    : DocumentWindow("Nocturne", Look::palette().background, DocumentWindow::allButtons)
+    : DocumentWindow("Nocturne " + juce::String(versionLabel()), Look::palette().background, DocumentWindow::allButtons)
 {
     setUsingNativeTitleBar(true);
     setContentOwned(new MainComponent(session, std::move(settings)), true);

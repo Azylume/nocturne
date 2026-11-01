@@ -2,8 +2,10 @@
 
 #include "platform/app_paths.hpp"
 #include "scoped_env.hpp"
+#include "test_files.hpp"
 
 #include <filesystem>
+#include <fstream>
 
 TEST_CASE("platform: Nocturne's folders live in the user's own data folder")
 {
@@ -53,4 +55,18 @@ TEST_CASE("platform: the running program finds itself and the programs beside it
 #else
     CHECK(azl::siblingExecutable("nocturne").filename() == "nocturne");
 #endif
+}
+
+TEST_CASE("platform: a tool in the program's folder comes before the one on PATH")
+{
+    const TempDir folder;
+    CHECK(azl::programInFolderOrPath(folder.path, "ffmpeg") == std::filesystem::path("ffmpeg"));
+#ifdef _WIN32
+    const std::filesystem::path bundled = folder.path / "ffmpeg.exe";
+#else
+    const std::filesystem::path bundled = folder.path / "ffmpeg";
+#endif
+    std::ofstream(bundled) << "";
+    CHECK(azl::programInFolderOrPath(folder.path, "ffmpeg") == bundled);
+    CHECK(azl::programInFolderOrPath(folder.path, "ffprobe") == std::filesystem::path("ffprobe"));
 }

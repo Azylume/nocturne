@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <regex>
 #include <thread>
 
 namespace {
@@ -544,4 +545,9 @@ TEST_CASE("nocturne-ctl machine update sends the bundle, waits for the installer
     CHECK(code == 1);
     CHECK(out.find("Show lock is on") != std::string::npos);
     CHECK(runCtl(port, "machine update '" + laptop.path.string() + "'").first == 1);
+}
+
+TEST_CASE("the version label names the project version and the commit the build came from")
+{
+    CHECK(std::regex_match(azl::versionLabel(), std::regex(R"(\d+\.\d+\.\d+ \(([0-9a-f]{7,}(-dirty)?|unknown)\))")));
 }

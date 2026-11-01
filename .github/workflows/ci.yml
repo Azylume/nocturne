@@ -235,6 +235,13 @@ jobs:
           name: nocturne-windows-installer
           path: build/installer/Nocturne-*-windows-x64-unsigned.exe
           if-no-files-found: error
+      - name: The FFmpeg source the installer ships, for LGPL-2.1 section 6(d)
+        shell: pwsh
+        run: tools\ffmpeg-source.ps1 -BuildDir build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-windows-ffmpeg-source
+          path: build/installer/ffmpeg-source/
 
   # Runs the engine suite in shards on Mesa's lavapipe, without the cases that need a GPU, a desktop session or the
   # Credential Manager (.github/windows-ci-tests.txt; the GPU suite runs on a real machine). Like the macOS shards,

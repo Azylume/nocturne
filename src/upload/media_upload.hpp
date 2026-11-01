@@ -46,6 +46,10 @@ struct Conversion {
 Conversion convertForPlayback(const std::filesystem::path& source, const std::filesystem::path& outDir,
                               const ConvertOptions& options = {});
 
+// Windows' H.264 encoder for conversions, in this order: h264_nvenc, h264_amf, h264_qsv, then h264_mf, the first
+// that `opens` says opens on this machine. Empty when none does.
+std::string pickH264Encoder(const std::function<bool(const std::string& encoder)>& opens);
+
 struct UploadOptions {
     // A larger file goes up in parts of this size.
     uint64_t partSize = 16ull << 20;

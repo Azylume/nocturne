@@ -1,4 +1,5 @@
 #include "net/websocket.hpp"
+#include "protocol/build_info.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
 #include "ui/app/window_display.hpp"
@@ -56,7 +57,7 @@ private:
 class Application : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "Nocturne UI"; }
-    const juce::String getApplicationVersion() override { return "0.1"; }
+    const juce::String getApplicationVersion() override { return azl::versionLabel(); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String& commandLine) override
