@@ -116,4 +116,8 @@ target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE
 add_dependencies(nocturne_ui_tests nocturne_fake_engine)
 target_link_libraries(nocturne_ui_tests PRIVATE nocturne_ui_components nocturne_upload nocturne_harness
   juce::juce_recommended_config_flags)
+if(WIN32)
+  # Engines, harnesses and audio analyses live on the main thread's stack: 8 MB on macOS, so the same here.
+  target_link_options(nocturne_ui_tests PRIVATE "LINKER:/STACK:8388608")
+endif()
 add_test(NAME nocturne_ui_tests COMMAND nocturne_ui_tests)
