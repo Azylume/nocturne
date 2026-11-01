@@ -137,9 +137,9 @@ Nocturne keeps its own files (state, logs, the pairing token) in `%LOCALAPPDATA%
 
 `ffmpeg.exe` and `ffprobe.exe` are built from the same FFmpeg as the DLLs, LGPL-2.1 only (no GPL, version 3 or
 non-free parts; `"C:\Program Files\Nocturne\ffmpeg.exe" -version` prints its configuration). The media conversions
-of `nocturne-ctl upload` run the `ffmpeg` and `ffprobe` beside `nocturne-ctl.exe` first and the ones on `PATH` only
-when there are none. This ffmpeg has no libx264 (GPL), which their H.264 re-encode uses: it probes and remuxes
-clips, but a clip that needs re-encoding to H.264 fails with it. The exact FFmpeg source of an installer is
+of `nocturne-ctl media upload` run the `ffmpeg` and `ffprobe` beside `nocturne-ctl.exe` first and the ones on `PATH`
+only when there are none. This ffmpeg has no libx264 (GPL), so on Windows a clip that needs re-encoding to H.264 goes
+through the machine's own encoder (the order is in `docs/reference.md`). The exact FFmpeg source of an installer is
 offered beside it as `nocturne-windows-ffmpeg-source` (see `THIRD-PARTY-NOTICES.txt`).
 
 ### Uninstall

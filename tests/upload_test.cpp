@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <set>
 #include <sstream>
 
 namespace {
@@ -388,3 +389,21 @@ TEST_CASE("ctl media upload sends a file up by hash; media status shows each cli
 }
 
 TEST_SUITE_END();
+
+TEST_CASE("a conversion takes the first H.264 encoder that opens: NVENC, AMF, Quick Sync, then Media Foundation")
+{
+    const auto opening = [](std::set<std::string> encoders) {
+        return [encoders](const std::string& encoder) { return encoders.contains(encoder); };
+    };
+    CHECK(azl::pickH264Encoder(opening({"h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"})) == "h264_nvenc");
+    CHECK(azl::pickH264Encoder(opening({"h264_qsv", "h264_amf", "h264_mf"})) == "h264_amf");
+    CHECK(azl::pickH264Encoder(opening({"h264_mf", "h264_qsv"})) == "h264_qsv");
+    CHECK(azl::pickH264Encoder(opening({"h264_mf"})) == "h264_mf");
+    CHECK(azl::pickH264Encoder(opening({"libx264"})).empty());
+    std::vector<std::string> probed;
+    azl::pickH264Encoder([&](const std::string& encoder) {
+        probed.push_back(encoder);
+        return encoder == "h264_qsv";
+    });
+    CHECK(probed == std::vector<std::string>{"h264_nvenc", "h264_amf", "h264_qsv"});
+}
