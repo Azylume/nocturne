@@ -83,7 +83,8 @@ endif()
 # The Windows executable carries the app icon; the macOS bundle keeps the look it has.
 set(ui_icon)
 if(WIN32)
-  set(ui_icon ICON_BIG "${CMAKE_SOURCE_DIR}/assets/icon/nocturne.png")
+  set(ui_icon ICON_BIG "${CMAKE_SOURCE_DIR}/assets/icon/png/nocturne-256.png"
+              ICON_SMALL "${CMAKE_SOURCE_DIR}/assets/icon/png/nocturne-32.png")
 endif()
 juce_add_gui_app(nocturne-ui
   PRODUCT_NAME "Nocturne UI"

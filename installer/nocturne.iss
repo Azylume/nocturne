@@ -34,6 +34,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Windows 10 2004: the engine's process loopback audio capture needs it.
 MinVersion=10.0.19041
 LicenseFile=..\LICENSE
+SetupIconFile=..\assets\icon\nocturne.ico
 UninstallDisplayIcon={app}\Nocturne UI.exe
 UninstallDisplayName=Nocturne
 CloseApplications=force
