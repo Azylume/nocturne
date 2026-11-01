@@ -136,6 +136,9 @@ function Save-Notice([string]$source, [string]$from, [string]$to, [string]$desti
 $version = Select-String -Path (Join-Path $root 'CMakeLists.txt') -Pattern '^project\(nocturne VERSION ([0-9.]+)' |
     Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value }
 if (-not $version) { throw 'no project() version in CMakeLists.txt' }
+$commitFile = Join-Path $build 'source-commit.txt'
+if (-not (Test-Path $commitFile)) { throw "no $commitFile (configure the build with CMake first)" }
+$commit = (Get-Content $commitFile -Raw).Trim()
 if (-not $env:VCToolsRedistDir) { throw 'VCToolsRedistDir is not set: run this from a VS x64 developer prompt' }
 $iscc = Find-Iscc
 
@@ -160,6 +163,7 @@ Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE.txt')
 Copy-Licences
 "staged $($dlls.Count) DLL(s) from the build and the VC++ runtime from $($crt.Name)"
 
-& $iscc /Q "/DAppVersion=$version" "/DStageDir=$stage" "/O$out" (Join-Path $root 'installer\nocturne.iss')
+& $iscc /Q "/DAppVersion=$version" "/DSourceCommit=$commit" "/DStageDir=$stage" "/O$out" `
+    (Join-Path $root 'installer\nocturne.iss')
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-"wrote $out\Nocturne-$version-windows-x64-unsigned.exe"
+"wrote $out\Nocturne-$version-windows-x64-unsigned.exe ($commit)"

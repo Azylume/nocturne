@@ -52,6 +52,19 @@ execute_process(COMMAND git rev-parse --absolute-git-dir
 if(EXISTS "${git_dir}/logs/HEAD")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${git_dir}/logs/HEAD")
 endif()
+execute_process(COMMAND git rev-parse --short HEAD
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE NOCTURNE_SOURCE_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET)
+if(NOCTURNE_SOURCE_COMMIT)
+  execute_process(COMMAND git status --porcelain --untracked-files=no
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE source_changes ERROR_QUIET)
+  if(source_changes)
+    string(APPEND NOCTURNE_SOURCE_COMMIT "-dirty")
+  endif()
+else()
+  set(NOCTURNE_SOURCE_COMMIT unknown)
+endif()
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/source-commit.txt "${NOCTURNE_SOURCE_COMMIT}\n")
 configure_file(src/protocol/build_info.cpp.in build_info.cpp @ONLY)
 
 option(NOCTURNE_TRACY "Instrument the engine for the Tracy profiler" OFF)

@@ -14,4 +14,9 @@ const char* buildId()
     return kBuild + sizeof("nocturne-build");
 }
 
+const char* versionLabel()
+{
+    return "@PROJECT_VERSION@ (@NOCTURNE_SOURCE_COMMIT@)";
+}
+
 } // namespace azl

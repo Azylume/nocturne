@@ -1,10 +1,14 @@
 ; Nocturne for Windows: one folder under Program Files that holds the UI, the engine, its supervisor and tools, and
-; the DLLs they load. Built by tools/make-installer.ps1, which stages the files and passes AppVersion and StageDir.
+; the DLLs they load. Built by tools/make-installer.ps1, which stages the files and passes AppVersion, SourceCommit
+; and StageDir.
 ; Uninstalling removes the program, its firewall rules, the autostart task and the crash dump settings;
 ; %LOCALAPPDATA%\Nocturne stays.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=X.Y.Z (tools/make-installer.ps1 reads it from CMakeLists.txt)
+#endif
+#ifndef SourceCommit
+  #error Pass /DSourceCommit=HASH (tools/make-installer.ps1 reads it from the build's source-commit.txt)
 #endif
 #ifndef StageDir
   #error Pass /DStageDir=DIR (tools/make-installer.ps1 stages the files there)
@@ -15,6 +19,10 @@
 AppId={{45BD7F96-9263-4FCD-AE72-9E6DDF388D0F}
 AppName=Nocturne
 AppVersion={#AppVersion}
+; The welcome page and the installer's file properties name the commit the build came from.
+AppVerName=Nocturne {#AppVersion} ({#SourceCommit})
+VersionInfoVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion} ({#SourceCommit})
 AppPublisher=Azylume
 AppPublisherURL=https://github.com/Azylume/nocturne
 DefaultDirName={autopf}\Nocturne

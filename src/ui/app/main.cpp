@@ -1,4 +1,5 @@
 #include "net/websocket.hpp"
+#include "protocol/build_info.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
 #include "ui/client/engine_launcher.hpp"
@@ -55,7 +56,7 @@ private:
 class Application : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "Nocturne UI"; }
-    const juce::String getApplicationVersion() override { return "0.1"; }
+    const juce::String getApplicationVersion() override { return azl::versionLabel(); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String& commandLine) override
@@ -184,7 +185,8 @@ private:
     class Window : public juce::DocumentWindow {
     public:
         Window(azl::ui::Session& session, bool visible)
-            : DocumentWindow("Nocturne", azl::ui::Look::palette().background, DocumentWindow::allButtons)
+            : DocumentWindow("Nocturne " + juce::String(azl::versionLabel()), azl::ui::Look::palette().background,
+                             DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar(true);
             setContentOwned(new azl::ui::MainComponent(session, azl::ui::MainComponent::defaultSettings()), true);
