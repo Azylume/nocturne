@@ -38,14 +38,16 @@ Picture scaled(const Picture& in, int width, int height)
 {
     if (in.width == width && in.height == height)
         return in;
-    Picture out{std::vector<uint8_t>(size_t(width) * height * 4), width, height};
     const ff::Scale scale(sws_getContext(in.width, in.height, AV_PIX_FMT_RGBA, width, height, AV_PIX_FMT_RGBA,
                                          SWS_AREA, nullptr, nullptr, nullptr));
+    if (!scale)
+        return {};
     const uint8_t* source[] = {in.rgba.data()};
     const int sourceStride[] = {in.width * 4};
-    uint8_t* target[] = {out.rgba.data()};
-    const int targetStride[] = {width * 4};
-    if (!scale || sws_scale(scale.get(), source, sourceStride, 0, in.height, target, targetStride) <= 0)
+    ff::Frame padded;
+    Picture out{ff::scalePacked(scale.get(), source, sourceStride, in.height, AV_PIX_FMT_RGBA, width, height, padded),
+                width, height};
+    if (out.rgba.empty())
         return {};
     return out;
 }
@@ -170,10 +172,10 @@ private:
         const int* coefficients = sws_getCoefficients(space);
         sws_setColorspaceDetails(scale_.get(), coefficients, frame.color_range == AVCOL_RANGE_JPEG, coefficients, 1, 0,
                                  1 << 16, 1 << 16);
-        Picture out{std::vector<uint8_t>(size_t(width) * height * 4), width, height};
-        uint8_t* target[] = {out.rgba.data()};
-        const int stride[] = {width * 4};
-        if (sws_scale(scale_.get(), frame.data, frame.linesize, 0, frame.height, target, stride) <= 0)
+        Picture out{ff::scalePacked(scale_.get(), frame.data, frame.linesize, frame.height, AV_PIX_FMT_RGBA, width,
+                                    height, padded_),
+                    width, height};
+        if (out.rgba.empty())
             return {};
         return out;
     }
@@ -182,6 +184,7 @@ private:
     AVStream* stream_ = nullptr;
     ff::Codec codec_;
     ff::Scale scale_;
+    ff::Frame padded_;
     int64_t start_ = 0;
     double duration_ = 0.0;
     int turns_ = 0;

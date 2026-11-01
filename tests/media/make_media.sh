@@ -10,6 +10,7 @@
 # The first is tagged Rec.709 video range, the second BT.601 full range.
 # count_hevc.mp4: count_709_tv.mp4's picture as HEVC Main with B-frames and a keyframe every 30 frames.
 # count_prores.mov: the same as ProRes 422 Proxy (10-bit 4:2:2, every frame a keyframe).
+# count_426.mp4: the picture at 426x240, 30 frames, a width whose rows do not end on a SIMD block.
 set -eu
 cd "$(dirname "$0")"
 
@@ -42,6 +43,9 @@ count bt709 tv bt709 240 240 count_240_gop240.mp4
 recount yuv420p count_hevc.mp4 -c:v libx265 -preset slow -crf 16 -tag:v hvc1 \
     -x265-params log-level=error:keyint=30:min-keyint=30:scenecut=0:bframes=2:open-gop=0
 recount yuv422p10le count_prores.mov -c:v prores_ks -profile:v proxy -movflags +write_colr
+ffmpeg -v error -y -f lavfi -i "color=black:size=426x240:rate=30" -frames:v 30 -vf "$picture,format=yuv420p" \
+    -c:v libx264 -preset slow -crf 23 -g 30 -colorspace bt709 -color_primaries bt709 -color_trc bt709 \
+    -color_range tv count_426.mp4
 
 half() { head -c "$(($(wc -c < "$1") / 2))" "$1"; }
 
