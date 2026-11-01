@@ -275,3 +275,10 @@ jobs:
         with:
           name: nocturne-windows-installer
           path: build/installer/Nocturne-*-windows-x64-unsigned.exe
+      - name: The FFmpeg source the installer ships, for LGPL-2.1 section 6(d)
+        shell: pwsh
+        run: tools\ffmpeg-source.ps1 -BuildDir build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-windows-ffmpeg-source
+          path: build/installer/ffmpeg-source/
