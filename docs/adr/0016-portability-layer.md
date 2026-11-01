@@ -15,7 +15,7 @@ Nocturne gets a Windows port ([#35](https://github.com/Azylume/nocturne/issues/3
 - **Text: DirectWrite on Windows**; CoreText stays on the Mac.
 - **Tests: one harness for both.** It reads back through the GPU interface, writes PNG through stb on every platform, and checks the same goldens with the same tolerance. A file in `tests/golden/vulkan/` exists only where Vulkan output really differs, and each one is opened and listed in its PR.
 - **Toolchain: clang-cl with the MSVC STL, Ninja and a vcpkg manifest** on Windows. The Mac build stays as it is, Universal by default.
-- **CI:** a `windows` job on `windows-latest` builds, runs the tests that need no GPU and keeps an installer artifact. The GPU suite runs on a Windows machine with a GPU and its output goes in the PR.
+- **CI:** a `windows` job on `windows-2025` builds, runs the engine suite and keeps an installer artifact. The runner has no GPU: its GPU and golden cases render on Mesa's lavapipe, a CPU Vulkan driver used by the job only and never shipped. What needs real hardware (hardware video encoders, GPU timing, presenting at the panel's rate, a desktop session's Credential Manager) is listed in `.github/windows-ci-tests.txt` and runs on a Windows machine with a GPU; its output goes in the PR.
 - **Installer: Inno Setup.** Program Files, a Start menu entry, the VC++ runtime and FFmpeg DLLs, optional autostart through Task Scheduler; uninstall keeps `%LOCALAPPDATA%\Nocturne`. Unsigned for now, like the Mac preview (ADR 0015).
 
 New dependencies, all AGPL-compatible (ADR 0012): FFmpeg (LGPL build) with libopus, pocketfft, the Vulkan headers and loader, and Inno Setup as a build tool only.
