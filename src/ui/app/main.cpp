@@ -111,7 +111,7 @@ public:
         session_ = std::make_unique<azl::ui::Session>(
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
-        window_ = std::make_unique<Window>(*session_, !hidden);
+        window_ = std::make_unique<azl::ui::MainWindow>(*session_, azl::ui::MainComponent::defaultSettings(), !hidden);
         if (launcher_)
             keepalive_ = std::make_unique<EngineKeepalive>(*launcher_, *session_);
         if (interactive)
@@ -181,25 +181,10 @@ private:
         out.flush();
     }
 
-    class Window : public juce::DocumentWindow {
-    public:
-        Window(azl::ui::Session& session, bool visible)
-            : DocumentWindow("Nocturne", azl::ui::Look::palette().background, DocumentWindow::allButtons)
-        {
-            setUsingNativeTitleBar(true);
-            setContentOwned(new azl::ui::MainComponent(session, azl::ui::MainComponent::defaultSettings()), true);
-            setResizable(true, false);
-            setResizeLimits(1100, 700, 10000, 10000);
-            centreWithSize(getWidth(), getHeight());
-            setVisible(visible);
-        }
-        void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
-    };
-
     std::unique_ptr<azl::ui::EngineLauncher> launcher_;
     std::unique_ptr<EngineKeepalive> keepalive_;
     std::unique_ptr<azl::ui::Session> session_;
-    std::unique_ptr<Window> window_;
+    std::unique_ptr<azl::ui::MainWindow> window_;
 };
 
 } // namespace
