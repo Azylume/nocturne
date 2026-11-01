@@ -6,6 +6,10 @@
 #endif
 #include <doctest.h>
 
+#ifndef __APPLE__
+#include "gpu/gpu.hpp"
+#endif
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -50,17 +54,28 @@ size_t badPixels(const azl::Image& a, const azl::Image& b)
     return bad;
 }
 
-// tests/golden/<name>.png, or off Apple tests/golden/vulkan/<name>.png where Vulkan has its own: a case whose
-// difference from Metal was looked at and explained (see tests/AGENTS.md).
+#ifndef __APPLE__
+bool onLavapipe()
+{
+    static const bool lavapipe = azl::gpu::Device::systemDefault().name().find("llvmpipe") != std::string::npos;
+    return lavapipe;
+}
+#endif
+
+// tests/golden/<name>.png, or off Apple tests/golden/vulkan/<name>.png where Vulkan has its own, and on Mesa's
+// lavapipe (the Windows CI job's software Vulkan) tests/golden/lavapipe/<name>.png before that: a case whose
+// difference was looked at and explained (see tests/AGENTS.md).
 std::string goldenPath(const std::string& name, [[maybe_unused]] bool update)
 {
     const char* dir = std::getenv("NOCTURNE_GOLDEN_DIR");
     const std::string root = dir ? dir : NOCTURNE_GOLDEN_DIR;
 #ifndef __APPLE__
-    const std::string vulkan = root + "/vulkan/" + name + ".png";
     std::error_code ec;
-    if (update || std::filesystem::exists(vulkan, ec))
-        return vulkan;
+    for (const char* device : {onLavapipe() ? "/lavapipe/" : "/vulkan/", "/vulkan/"}) {
+        const std::string path = root + device + name + ".png";
+        if (update || std::filesystem::exists(path, ec))
+            return path;
+    }
 #endif
     return root + "/" + name + ".png";
 }

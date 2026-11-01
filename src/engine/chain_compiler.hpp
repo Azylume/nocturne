@@ -57,7 +57,8 @@ EffectList effectList(const std::vector<Effect>& effects);
 bool holdsText(const Layer& layer);
 
 // Whether the device can keep a pipeline cache. Apple's Paravirtual device (a macOS VM, as on CI runners) traps inside
-// Metal's compiler adding to an archive after an engine on it was killed (issue #29), so there it runs without one.
+// Metal's compiler adding to an archive after an engine on it was killed (issue #29), and Mesa's lavapipe (llvmpipe,
+// the software Vulkan of the Windows CI job) never adds to one, so on both it runs without one.
 bool archivesWork(std::string_view deviceName);
 
 // The pass's entry points and the fullscreen vertex shader as one Metal source, each function named

@@ -462,10 +462,6 @@ TEST_CASE("off Apple, a recording never makes its caller wait: a slow writer dro
 
 TEST_CASE("off Apple, ProRes 422 keeps up with 1080p at 60 frames a second without dropping one")
 {
-    if (std::thread::hardware_concurrency() < 6) {
-        MESSAGE("needs 6 cores, this machine has ", std::thread::hardware_concurrency());
-        return;
-    }
     TempDir dir;
     Options options("prores", dir.path / "hd.mov");
     options.width = 1920;

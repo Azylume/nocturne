@@ -19,3 +19,11 @@ off Apple, a recording cut off by a killed engine still plays up to its last fra
 # shows it on any Windows machine.
 off Apple, return video is H.264 with its parameter sets on key frames and decodes back to the pictures
 off Apple, the return video of moving noise stays inside its share of the budget
+# GPU timing reports, not checks: on the runner's software Vulkan (Mesa lavapipe) each takes minutes and the job runs
+# out of time. They run on a Windows machine with a GPU.
+*GPU time per effect at 1080p*
+*GPU time of Classic Shift Glitch on the reference show's base chain at 1080p*
+*GPU time of a gig-like show at 1080p*
+*GPU time of the half-resolution upscale*
+# Present timing: lavapipe rasterises on the CPU and presents below the panel's rate. Runs on a Windows machine's panel.
+*displays: the panel and a window present at the panel's rate*
