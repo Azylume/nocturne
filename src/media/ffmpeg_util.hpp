@@ -42,6 +42,10 @@ inline std::string describe(int error)
     return text;
 }
 
+// FFmpeg logs only its warnings and errors from now on, like the engine's own log: info lines such as an encoder's
+// closing statistics stay out of engine.log. Process-wide; call it once at the start.
+void logWarningsAndErrors();
+
 // The file's demuxer, or null with `error` set. The file may be renamed or deleted while it is open, as on POSIX: on
 // Windows it is read through a handle that shares deletion, which FFmpeg's own file protocol does not.
 Format openFormat(const std::filesystem::path& file, int& error);

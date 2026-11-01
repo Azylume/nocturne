@@ -11,9 +11,16 @@
 #include <condition_variable>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <thread>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -242,6 +249,45 @@ rec::Ended recordUntilEnded(Recording& recording)
         recording.frameWritten(i);
     REQUIRE(recording.writer().done);
     return recording.awaitEnded();
+}
+
+// What this process writes to stderr, where the engine's log comes from, while `run` runs.
+std::string stderrOf(const std::function<void()>& run)
+{
+    TempDir dir;
+    const fs::path file = dir.path / "stderr.txt";
+    std::fflush(stderr);
+    FILE* out = std::fopen(file.string().c_str(), "wb");
+    REQUIRE(out);
+#ifdef _WIN32
+    const int saved = _dup(2);
+    _dup2(_fileno(out), 2);
+    run();
+    std::fflush(stderr);
+    _dup2(saved, 2);
+    _close(saved);
+#else
+    const int saved = dup(2);
+    dup2(fileno(out), 2);
+    run();
+    std::fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+#endif
+    std::fclose(out);
+    std::ifstream in(file, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+// A short recording with sound: the AAC encoder logs its statistics at info level when it closes.
+void recordWithSound(const fs::path& file)
+{
+    Options options("hevc", file);
+    options.audio = true;
+    Recording recording(options);
+    for (int i = 0; i < 30; ++i)
+        recording.frameWritten(i, chunkOf(48000.0, true));
+    recording.stop();
 }
 
 } // namespace
@@ -525,4 +571,20 @@ TEST_CASE("off Apple, a recording cut off by a killed engine still plays up to i
     CHECK(movie.frames.size() <= size_t(kFrames));
     CHECK(movie.times[0] == doctest::Approx(0.0));
     CHECK(movie.audio.size() > 0);
+}
+
+TEST_CASE("off Apple, FFmpeg's info lines stay out of the engine log, its warnings reach it")
+{
+    TempDir dir;
+    av_log_set_level(AV_LOG_INFO);
+    const std::string chatty = stderrOf([&] { recordWithSound(dir.path / "chatty.mov"); });
+    REQUIRE(chatty.find("Qavg") != std::string::npos);
+
+    azl::ff::logWarningsAndErrors();
+    const std::string quiet = stderrOf([&] {
+        recordWithSound(dir.path / "quiet.mov");
+        av_log(nullptr, AV_LOG_WARNING, "a warning stays\n");
+    });
+    CHECK(quiet.find("Qavg") == std::string::npos);
+    CHECK(quiet.find("a warning stays") != std::string::npos);
 }
