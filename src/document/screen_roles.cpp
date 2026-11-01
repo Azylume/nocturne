@@ -60,4 +60,21 @@ bool recordRoles(RoleDisplays& roles, const Composition& composition)
     return changed;
 }
 
+void keepOffUiDisplay(Composition& composition, const std::vector<std::string>& attached, const std::string& uiDisplay)
+{
+    if (uiDisplay.empty())
+        return;
+    std::set<std::string> taken{uiDisplay};
+    for (const Screen& screen : composition.screens)
+        taken.insert(screen.display);
+    for (Screen& screen : composition.screens) {
+        if (screen.display != uiDisplay)
+            continue;
+        const auto free = std::find_if(attached.begin(), attached.end(),
+                                       [&taken](const std::string& d) { return !taken.contains(d); });
+        screen.display = free == attached.end() ? std::string() : *free;
+        taken.insert(screen.display);
+    }
+}
+
 } // namespace azl

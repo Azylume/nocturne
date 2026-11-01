@@ -1,6 +1,7 @@
 #include "net/websocket.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
+#include "ui/app/window_display.hpp"
 #include "ui/client/engine_launcher.hpp"
 
 #include <algorithm>
@@ -104,16 +105,18 @@ public:
         // sits beside this binary in Contents/MacOS (loopback only), and watch it (EngineKeepalive). It reuses an
         // engine that is already up and stops only one it started. A dev build with separate bundles has no engine
         // next to the UI, so this is a no-op there.
-        if (interactive && isLoopbackHost(host)) {
-            launcher_ = std::make_unique<azl::ui::EngineLauncher>(azl::ui::defaultEngineHooks(uint16_t(port)));
-            launcher_->ensureRunning();
-        }
+        // The engine starts once the window is up, told which display the window is on so it puts no output there.
+        if (interactive && isLoopbackHost(host))
+            launcher_ = std::make_unique<azl::ui::EngineLauncher>(
+                azl::ui::defaultEngineHooks(uint16_t(port), {}, [this] { return windowDisplay(); }));
         session_ = std::make_unique<azl::ui::Session>(
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
         window_ = std::make_unique<Window>(*session_, !hidden);
-        if (launcher_)
+        if (launcher_) {
+            launcher_->ensureRunning();
             keepalive_ = std::make_unique<EngineKeepalive>(*launcher_, *session_);
+        }
         if (interactive)
             session_->midi().start();
         if (!hidden && snapshot.isEmpty())
@@ -195,6 +198,12 @@ private:
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
+
+    std::string windowDisplay() const
+    {
+        juce::ComponentPeer* peer = window_ ? window_->getPeer() : nullptr;
+        return peer ? azl::ui::displayOfWindow(peer->getNativeHandle()) : std::string();
+    }
 
     std::unique_ptr<azl::ui::EngineLauncher> launcher_;
     std::unique_ptr<EngineKeepalive> keepalive_;

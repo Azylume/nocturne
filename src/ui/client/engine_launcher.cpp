@@ -105,7 +105,15 @@ void EngineLauncher::shutdown()
     ownedPid_ = 0;
 }
 
-EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
+std::vector<std::string> engineArgs(uint16_t port, const std::string& uiDisplay)
+{
+    std::vector<std::string> args{"--loopback", "--port", std::to_string(port)};
+    if (!uiDisplay.empty())
+        args.insert(args.end(), {"--ui-display", uiDisplay});
+    return args;
+}
+
+EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine, std::function<std::string()> uiDisplay)
 {
     if (engine.empty())
         engine = siblingExecutable("nocturne");
@@ -115,7 +123,7 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
     hooks.now = [] {
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     };
-    hooks.spawn = [port, started, engine]() -> int {
+    hooks.spawn = [port, started, engine, uiDisplay]() -> int {
         std::error_code ec;
         if (!fs::exists(engine, ec))
             return 0; // Not a single-bundle build (e.g. a dev build with separate bundles); do not spawn.
@@ -127,7 +135,7 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
         // writes a frame mark to the heartbeat and quits when the UI's read end closes, however the UI dies.
         std::optional<Process> process =
             spawnProcess({.program = engine,
-                          .args = {"--loopback", "--port", std::to_string(port)},
+                          .args = engineArgs(port, uiDisplay ? uiDisplay() : std::string()),
                           .heartbeat = pipe->write,
                           .environment = {{"NOCTURNE_SUPERVISED", std::nullopt}}});
         closeHandle(pipe->write);

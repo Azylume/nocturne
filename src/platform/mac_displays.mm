@@ -1,5 +1,7 @@
 #include "platform/mac_displays.hpp"
 
+#include "platform/display_identity_apple.hpp"
+
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -265,14 +267,7 @@ CGDirectDisplayID displayIdOf(NSScreen* screen)
 
 std::string identityOf(CGDirectDisplayID display)
 {
-    const uint32_t serial = CGDisplaySerialNumber(display);
-    char id[64];
-    if (serial)
-        std::snprintf(id, sizeof(id), "%x-%x-%x", CGDisplayVendorNumber(display), CGDisplayModelNumber(display), serial);
-    else
-        std::snprintf(id, sizeof(id), "%x-%x-u%u", CGDisplayVendorNumber(display), CGDisplayModelNumber(display),
-                      CGDisplayUnitNumber(display));
-    return id;
+    return displayIdentity(display);
 }
 
 std::string identityOf(NSScreen* screen)

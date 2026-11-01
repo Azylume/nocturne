@@ -22,4 +22,8 @@ void placeByRole(Composition& composition, const RoleDisplays& roles, std::vecto
 // its screens here. A role not mapped yet enters only with a display. True when `roles` changed.
 bool recordRoles(RoleDisplays& roles, const Composition& composition);
 
+// Keeps the screens off `uiDisplay`, the display of a UI on this machine: a screen there moves to the first `attached`
+// display that is not the UI's and that no screen has, else to no output. An empty `uiDisplay` changes nothing.
+void keepOffUiDisplay(Composition& composition, const std::vector<std::string>& attached, const std::string& uiDisplay);
+
 } // namespace azl

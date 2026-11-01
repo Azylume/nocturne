@@ -200,3 +200,11 @@ TEST_CASE("the default hooks start the engine with a heartbeat and ask it to qui
 
     CHECK(azl::ui::defaultEngineHooks(7499, "no-such-engine").spawn() == 0);
 }
+
+TEST_CASE("the UI starts its engine on loopback and names the display the UI is on")
+{
+    using Args = std::vector<std::string>;
+    CHECK(azl::ui::engineArgs(7400, "10ac-a0c4-u1") ==
+          Args{"--loopback", "--port", "7400", "--ui-display", "10ac-a0c4-u1"});
+    CHECK(azl::ui::engineArgs(7400, "") == Args{"--loopback", "--port", "7400"});
+}

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace azl::ui {
 
@@ -60,10 +61,15 @@ private:
     std::string failure_;
 };
 
+// The arguments a UI starts its engine with: loopback on `port`, and --ui-display when the UI knows its display, so
+// the engine puts no output on it.
+std::vector<std::string> engineArgs(uint16_t port, const std::string& uiDisplay);
+
 // The hooks the real app uses: probe 127.0.0.1:port; spawn `engine` (by default the `nocturne` beside the running
-// executable) with --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine
-// quits); reap or stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI
-// looks.
-EngineLauncher::Hooks defaultEngineHooks(uint16_t port, std::filesystem::path engine = {});
+// executable) with engineArgs and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine quits);
+// reap or stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI looks.
+// `uiDisplay`, when set, names the display the UI's window is on at each spawn.
+EngineLauncher::Hooks defaultEngineHooks(uint16_t port, std::filesystem::path engine = {},
+                                         std::function<std::string()> uiDisplay = {});
 
 }

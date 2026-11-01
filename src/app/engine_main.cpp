@@ -826,7 +826,10 @@ int runEngine(const EngineConfig& opt)
     if (saving && start.composition)
         saving->backup("load");
     std::atomic<azl::OutputService*> keeperOnMain{nullptr};
-    azl::DocumentServer document(startingDocument(start, saved, displays, opt.display, screenDisplays.roles()),
+    // No screen starts on the display of the UI that started this engine.
+    azl::Composition first = startingDocument(start, saved, displays, opt.display, screenDisplays.roles());
+    azl::keepOffUiDisplay(first, azl::displayIds(displays), opt.uiDisplay);
+    azl::DocumentServer document(std::move(first),
                                  [&engine, outputsOnMain, &keeperOnMain, saving, &screenDisplays](auto composition) {
                                      screenDisplays.keep(*composition);
                                      engine.setComposition(composition);
