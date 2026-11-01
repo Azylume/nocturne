@@ -122,6 +122,11 @@ bool fits(const AVFrame* frame, AVPixelFormat format, int width, int height)
 
 } // namespace
 
+void logWarningsAndErrors()
+{
+    av_log_set_level(AV_LOG_WARNING);
+}
+
 std::vector<uint8_t> scalePacked(SwsContext* scale, const uint8_t* const data[], const int linesize[], int sourceHeight,
                                  AVPixelFormat format, int width, int height, Frame& padded)
 {

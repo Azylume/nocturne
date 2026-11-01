@@ -3,6 +3,7 @@
 #include "app/main_thread.hpp"
 #include "app/safe_mode.hpp"
 #include "audio/audio_input.hpp"
+#include "media/ffmpeg_util.hpp"
 #include "platform/exit_trace.hpp"
 #include "platform/main_loop.hpp"
 #include "platform/process.hpp"
@@ -194,6 +195,7 @@ int engineProcess()
 int main()
 {
     azl::traceExits();
+    azl::ff::logWarningsAndErrors();
     const int code = engineProcess();
     azl::exitingNormally();
     return code;
