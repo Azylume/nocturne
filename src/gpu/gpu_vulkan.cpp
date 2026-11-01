@@ -153,6 +153,7 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     uint32_t family = 0;
     bool timestamps = false;
     bool presentWait = false;
+    std::shared_mutex presentationMutex;
     VkDeviceSize uniformAlign = 256;
     PFN_vkCmdPushDescriptorSetKHR pushDescriptorSet = nullptr;
     PFN_vkGetCalibratedTimestampsKHR calibratedTimestamps = nullptr;
@@ -178,6 +179,14 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     // Under doneMutex.
     uint64_t wakeValue = 0;
     std::atomic<bool> lost{false};
+
+    // Keeps every submission behind the submissions that signal the fences it waits for, so a wait never reaches a
+    // VkQueue first: two Queues sharing one VkQueue would deadlock on it. Commit never blocks on it.
+    std::mutex orderMutex;
+    std::condition_variable submittedCv;
+    // Under orderMutex: committed command buffers not submitted yet, in commit order, and scratch for submitHeld.
+    std::deque<CommandObject*> held;
+    std::vector<const QueueObject*> blocked;
 
     std::mutex calibrationMutex;
     // Under calibrationMutex: a device tick and the host seconds it was taken at.
@@ -381,6 +390,9 @@ void recycle(CommandObject* c)
     c->retained.clear();
     c->waits.clear();
     c->signals.clear();
+    c->fenceWaits.clear();
+    c->fenceSignals.clear();
+    c->value = 0;
     c->handlers.clear();
     c->written.clear();
     c->queue.reset();
@@ -693,6 +705,26 @@ VkPhysicalDevice pickPhysical(VkInstance instance)
     return best;
 }
 
+// Whether the device can sample its own clock together with the host clock hostTicks() reads.
+bool calibratesHostClock(VkInstance instance, VkPhysicalDevice physical, const char* extension)
+{
+    const bool khr = std::strcmp(extension, VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME) == 0;
+    const char* name =
+        khr ? "vkGetPhysicalDeviceCalibrateableTimeDomainsKHR" : "vkGetPhysicalDeviceCalibrateableTimeDomainsEXT";
+    auto domains =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR>(vkGetInstanceProcAddr(instance, name));
+    if (!domains)
+        return false;
+    uint32_t count = 0;
+    domains(physical, &count, nullptr);
+    std::vector<VkTimeDomainKHR> available(count);
+    domains(physical, &count, available.data());
+    const auto has = [&](VkTimeDomainKHR domain) {
+        return std::find(available.begin(), available.end(), domain) != available.end();
+    };
+    return has(VK_TIME_DOMAIN_DEVICE_KHR) && has(kHostDomain);
+}
+
 bool makeLogical(DeviceObject& d, uint32_t queues)
 {
     uint32_t count = 0;
@@ -709,6 +741,8 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
                               : hasExtension(available, VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)
                                   ? VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME
                                   : nullptr;
+    if (calibration && !calibratesHostClock(d.instance, d.physical, calibration))
+        calibration = nullptr;
     if (calibration)
         extensions.push_back(calibration);
 
@@ -1080,7 +1114,7 @@ void addHandler(CommandObject* c, std::function<void(const Completion&)> handler
 
 Completion completion(CommandObject* c)
 {
-    if (!c->committed)
+    if (!c->committed || c->value == 0)
         return {};
     DeviceObject& d = *c->device;
     if (d.lost || counter(d, c->queue->slot->timeline) < c->value)
@@ -1097,14 +1131,21 @@ Completion completion(CommandObject* c)
 
 void waitUntilCompleted(CommandObject* c)
 {
-    if (c->committed)
-        waitValue(*c->device, c->queue->slot->timeline, c->value, UINT64_MAX);
+    if (!c->committed)
+        return;
+    DeviceObject& d = *c->device;
+    {
+        std::unique_lock lock(d.orderMutex);
+        d.submittedCv.wait(lock, [c] { return c->value != 0; });
+    }
+    waitValue(d, c->queue->slot->timeline, c->value, UINT64_MAX);
 }
 
 void signal(CommandObject* c, FenceObject* fence, uint64_t value)
 {
     c->signals.push_back({VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, nullptr, fence->semaphore, value,
                           VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0});
+    c->fenceSignals.push_back({fence, value});
     retain(c, fence->shared_from_this());
 }
 
@@ -1112,8 +1153,55 @@ void wait(CommandObject* c, FenceObject* fence, uint64_t value)
 {
     c->waits.push_back({VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, nullptr, fence->semaphore, value,
                         VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0});
+    c->fenceWaits.push_back({fence, value});
     retain(c, fence->shared_from_this());
 }
+
+namespace {
+
+// Under orderMutex.
+bool waitsSubmitted(const CommandObject* c)
+{
+    return std::all_of(c->fenceWaits.begin(), c->fenceWaits.end(),
+                       [](const FenceValue& w) { return w.fence->submitted >= w.value; });
+}
+
+// Under orderMutex.
+void submitCommitted(CommandObject* c)
+{
+    VkCommandBufferSubmitInfo cmds[2] = {{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO},
+                                         {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO}};
+    uint32_t count = 0;
+    if (c->prologueOpen)
+        cmds[count++].commandBuffer = c->prologue;
+    cmds[count++].commandBuffer = c->cmd;
+    for (const FenceValue& s : c->fenceSignals)
+        s.fence->submitted = std::max(s.fence->submitted, s.value);
+    submit(*c->device, *c->queue->slot, cmds, count, c->waits, c->signals, c);
+}
+
+// Under orderMutex. Submits every held command buffer whose fence waits are submitted and whose Queue has no earlier
+// one still held, until none is left that can go.
+void submitHeld(DeviceObject& d)
+{
+    for (bool progress = true; progress;) {
+        progress = false;
+        d.blocked.clear();
+        for (auto it = d.held.begin(); it != d.held.end();) {
+            const QueueObject* queue = (*it)->queue.get();
+            if (std::find(d.blocked.begin(), d.blocked.end(), queue) != d.blocked.end() || !waitsSubmitted(*it)) {
+                d.blocked.push_back(queue);
+                ++it;
+                continue;
+            }
+            submitCommitted(*it);
+            it = d.held.erase(it);
+            progress = true;
+        }
+    }
+}
+
+} // namespace
 
 void commit(CommandObject* c)
 {
@@ -1122,17 +1210,21 @@ void commit(CommandObject* c)
     if (c->times)
         vkCmdWriteTimestamp2(c->cmd, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, c->times, 1);
     vkEndCommandBuffer(c->cmd);
-    VkCommandBufferSubmitInfo cmds[2] = {{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO},
-                                         {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO}};
-    uint32_t count = 0;
-    if (c->prologueOpen) {
+    if (c->prologueOpen)
         vkEndCommandBuffer(c->prologue);
-        cmds[count++].commandBuffer = c->prologue;
-    }
-    cmds[count++].commandBuffer = c->cmd;
     c->committed = true;
     c->refs.fetch_add(1, std::memory_order_acq_rel);
-    submit(*c->device, *c->queue->slot, cmds, count, c->waits, c->signals, c);
+    DeviceObject& d = *c->device;
+    {
+        std::lock_guard lock(d.orderMutex);
+        if (d.held.empty() && waitsSubmitted(c)) {
+            submitCommitted(c);
+        } else {
+            d.held.push_back(c);
+            submitHeld(d);
+        }
+    }
+    d.submittedCv.notify_all();
 }
 
 void transition(CommandObject* c, TextureObject* texture, uint8_t layout)
@@ -1903,9 +1995,15 @@ bool presentWait(const Device& device)
 
 VkResult present(const Queue& queue, const VkPresentInfoKHR& info)
 {
+    std::shared_lock presenting(queue.native()->device->presentationMutex);
     vk::QueueSlot& slot = *queue.native()->slot;
     std::lock_guard lock(slot.mutex);
     return vkQueuePresentKHR(slot.queue, &info);
+}
+
+std::shared_mutex& presentationMutex(const Device& device)
+{
+    return device.native()->presentationMutex;
 }
 
 #if defined(_WIN32)
@@ -1915,6 +2013,7 @@ VkSurfaceKHR makeSurface(const Device& device, void* hinstance, void* hwnd)
     info.hinstance = static_cast<HINSTANCE>(hinstance);
     info.hwnd = static_cast<HWND>(hwnd);
     VkSurfaceKHR surface = VK_NULL_HANDLE;
+    std::lock_guard lock(device.native()->presentationMutex);
     if (vkCreateWin32SurfaceKHR(device.native()->instance, &info, nullptr, &surface) != VK_SUCCESS)
         return VK_NULL_HANDLE;
     return surface;

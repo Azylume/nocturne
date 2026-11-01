@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <string>
 #include <thread>
 
 namespace azl {
@@ -84,6 +85,14 @@ void sleepUntil(std::chrono::steady_clock::time_point deadline)
         return;
     if (!waitOn(timer.handle, span))
         std::this_thread::sleep_until(deadline);
+}
+
+void setThreadName(std::string_view name)
+{
+    const int length = MultiByteToWideChar(CP_UTF8, 0, name.data(), int(name.size()), nullptr, 0);
+    std::wstring wide(size_t(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, name.data(), int(name.size()), wide.data(), length);
+    SetThreadDescription(GetCurrentThread(), wide.c_str());
 }
 
 } // namespace azl

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <string_view>
 
 namespace azl {
 
@@ -23,5 +24,10 @@ void setThreadRole(ThreadRole role);
 // Blocks the calling thread until `deadline`. The frame threads' timed wait: on Windows a high-resolution waitable
 // timer, which wakes within a fraction of a millisecond where a plain timed wait wakes up to a scheduler tick late.
 void sleepUntil(std::chrono::steady_clock::time_point deadline);
+
+#ifdef _WIN32
+// Names the calling thread for debuggers and the exit trace. Never blocks.
+void setThreadName(std::string_view name);
+#endif
 
 } // namespace azl

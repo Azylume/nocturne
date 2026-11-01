@@ -365,6 +365,7 @@ public:
     void transition(const Texture& texture, Layout layout);
 
     void signal(const Fence& fence, uint64_t value);
+    // The value may come from a command buffer committed later, on any Queue.
     void wait(const Fence& fence, uint64_t value);
 
     // Called once on a backend thread when the GPU is done with this command buffer, whether it ran or failed. Add
