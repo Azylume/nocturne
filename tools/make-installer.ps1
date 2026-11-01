@@ -43,6 +43,67 @@ function Copy-Binary([string]$name, [bool]$required)
     }
 }
 
+# Each folder under licenses\ gets the licence texts of one component of THIRD-PARTY-NOTICES.txt, copied from the
+# sources the build used: vcpkg's installed copyright files, FetchContent's checkouts and the vendored files.
+function Copy-Licences
+{
+    $licences = Join-Path $stage 'licenses'
+    $vcpkg = Join-Path $build 'vcpkg_installed\x64-windows\share'
+    $deps = Join-Path $build '_deps'
+    $juce = Join-Path $deps 'juce-src'
+    $files = [ordered]@{
+        'FFmpeg' = @("$vcpkg\ffmpeg\copyright")
+        'opus' = @("$vcpkg\opus\copyright")
+        'nv-codec-headers' = @("$vcpkg\ffnvcodec\copyright")
+        'pocketfft' = @("$vcpkg\pocketfft\copyright")
+        'glslang' = @("$deps\glslang-src\LICENSE.txt")
+        'SPIRV-Cross' = @("$deps\spirv_cross-src\LICENSE") + (Get-ChildItem "$deps\spirv_cross-src\LICENSES\*.txt").FullName
+        'JUCE' = @("$juce\LICENSE.md", "$juce\modules\juce_core\zip\zlib\README",
+            "$juce\modules\juce_graphics\image_formats\pnglib\LICENSE",
+            "$juce\modules\juce_graphics\image_formats\jpglib\README",
+            "$juce\modules\juce_graphics\fonts\harfbuzz\COPYING",
+            "$juce\modules\juce_graphics\unicode\sheenbidi\LICENSE")
+        'nlohmann-json' = @("$root\third_party\nlohmann\LICENSE.MIT")
+        'ISF-Files' = @("$root\third_party\isf\vidvox\LICENSE")
+        'gl-transitions' = @("$root\third_party\isf\gl-transitions\LICENSE",
+            "$root\third_party\isf\gl-transitions\LICENSE-ISF-Files")
+    }
+    foreach ($component in $files.Keys) {
+        $folder = New-Item -ItemType Directory -Force (Join-Path $licences $component)
+        foreach ($file in $files[$component]) {
+            if (-not (Test-Path $file)) { throw "no licence file $file" }
+            $name = Split-Path -Leaf $file
+            # JUCE's dependencies' files share names; their folder tells them apart.
+            if ($component -eq 'JUCE' -and $name -ne 'LICENSE.md') {
+                $name = (Split-Path -Leaf (Split-Path -Parent $file)) + '-' + $name
+            }
+            Copy-Item $file (Join-Path $folder $name)
+        }
+    }
+    # The vendored stb headers and the ported FSR shaders carry their licence inside the source file.
+    Save-Notice "$root\third_party\stb\stb_image_write.h" 'This software is available under 2 licenses' '^\*/$' "$licences\stb\LICENSE.txt"
+    Save-Notice "$root\src\engine\fsr_upscaler.cpp" '^// Copyright \(c\) 2021 Advanced Micro Devices' '^$' "$licences\AMD-FSR1\LICENSE.txt"
+    Copy-Item (Join-Path $root 'installer\THIRD-PARTY-NOTICES.txt') $stage
+    $ffmpeg = (Get-Content "$vcpkg\ffmpeg\vcpkg.spdx.json" -Raw | ConvertFrom-Json).packages[0].versionInfo -replace '#.*$'
+    if (-not (Select-String -Quiet -SimpleMatch "FFmpeg $ffmpeg " (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'))) {
+        throw "THIRD-PARTY-NOTICES.txt does not name the FFmpeg the build ships ($ffmpeg)"
+    }
+    "staged the licences of $($files.Count + 2) components"
+}
+
+# Writes the lines of a source file from the first that matches $from up to the next that matches $to (exclusive),
+# without their // comment markers.
+function Save-Notice([string]$source, [string]$from, [string]$to, [string]$destination)
+{
+    $lines = Get-Content $source
+    $start = ($lines | Select-String -Pattern $from | Select-Object -First 1).LineNumber - 1
+    if ($start -lt 0) { throw "no licence notice in $source" }
+    $end = $start + 1
+    while ($end -lt $lines.Count -and $lines[$end] -notmatch $to) { $end++ }
+    New-Item -ItemType Directory -Force (Split-Path -Parent $destination) | Out-Null
+    $lines[$start..($end - 1)] -replace '^// ?' | Set-Content $destination
+}
+
 $version = Select-String -Path (Join-Path $root 'CMakeLists.txt') -Pattern '^project\(nocturne VERSION ([0-9.]+)' |
     Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value }
 if (-not $version) { throw 'no project() version in CMakeLists.txt' }
@@ -66,6 +127,7 @@ if (-not $crt) { throw "no VC++ runtime under $env:VCToolsRedistDir\x64" }
 Copy-Item (Join-Path $crt.FullName '*.dll') $stage
 Copy-Item (Join-Path $root 'installer\autostart.ps1') $stage
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE.txt')
+Copy-Licences
 "staged $($dlls.Count) DLL(s) from the build and the VC++ runtime from $($crt.Name)"
 
 & $iscc /Q "/DAppVersion=$version" "/DStageDir=$stage" "/O$out" (Join-Path $root 'installer\nocturne.iss')

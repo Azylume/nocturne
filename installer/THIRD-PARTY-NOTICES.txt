@@ -1,0 +1,51 @@
+Nocturne for Windows: third-party notices
+
+Nocturne is licensed under the GNU Affero General Public License, version 3 or later (LICENSE.txt). Its source is at
+https://github.com/Azylume/nocturne. It contains or ships with the components below. The full licence text of each is
+in the licenses folder next to this file, under the folder named in brackets.
+
+FFmpeg 9.0.2 [licenses\FFmpeg]
+  The DLLs avcodec-63, avformat-63, avutil-61, swresample-7 and swscale-10.
+  Licence: GNU Lesser General Public License, version 2.1 or later. Built without --enable-gpl and without
+  --enable-nonfree, so no GPL or non-free part of FFmpeg is included.
+  Source: FFmpeg 9.0.2, https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz (git tag n9.0.2 of
+  https://git.ffmpeg.org/ffmpeg.git), built by the vcpkg port at vcpkg commit
+  9a5dfef5d1a0438a7d24856a85bd60f309d355e9 (https://github.com/microsoft/vcpkg/tree/9a5dfef5d1a0438a7d24856a85bd60f309d355e9/ports/ffmpeg,
+  whose patches and portfile are the exact build), triplet x64-windows, features avcodec, avformat, avdevice,
+  swresample, swscale, nvcodec and opus. Nocturne loads these DLLs dynamically: you may replace them with your own
+  build of the same FFmpeg version.
+
+libopus 1.6.1 [licenses\opus]
+  opus.dll, also used by FFmpeg. Licence: BSD-3-Clause.
+
+nv-codec-headers 13.1.15.0 [licenses\nv-codec-headers]
+  NVIDIA's codec headers, compiled into FFmpeg. Licence: MIT.
+
+JUCE 8.0.9 [licenses\JUCE]
+  Nocturne UI.exe. Licence: GNU Affero General Public License, version 3, as JUCE offers it. The JUCE modules it
+  uses contain zlib (zlib licence), libpng (libpng licence), the Independent JPEG Group's jpeglib (IJG licence),
+  HarfBuzz (Old MIT) and SheenBidi (Apache-2.0).
+
+glslang vulkan-sdk-1.4.363.0 [licenses\glslang]
+  Compiled into the engine. Licence: BSD-3-Clause, BSD-2-Clause, MIT and Apache-2.0, as its LICENSE.txt sets out.
+
+SPIRV-Cross vulkan-sdk-1.4.363.0 [licenses\SPIRV-Cross]
+  Compiled into the engine. Licence: Apache-2.0; a few files MIT or the Khronos free use licence.
+
+pocketfft (C++ header-only, commit 0fa0ef5, vcpkg port 2024-11-30) [licenses\pocketfft]
+  Compiled into the engine. Licence: BSD-3-Clause.
+
+nlohmann/json 3.12.0 [licenses\nlohmann-json]
+  Compiled into every program. Licence: MIT.
+
+stb_image_write.h 1.16 and stb_dxt.h 1.12 [licenses\stb]
+  Compiled into the engine. Licence: MIT or public domain, at your choice.
+
+AMD FidelityFX Super Resolution 1 (v1.20210629, EASU and RCAS) [licenses\AMD-FSR1]
+  Shaders ported into the engine. Licence: MIT.
+
+ISF-Files (commit 395072d) [licenses\ISF-Files] and gl-transitions [licenses\gl-transitions]
+  The ISF shaders of the engine's built-in effects, generators and transitions. Licence: MIT.
+
+Microsoft Visual C++ runtime
+  The msvcp140, vcruntime140 and related DLLs, redistributed under the Microsoft Visual Studio licence terms.
