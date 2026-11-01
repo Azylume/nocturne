@@ -112,7 +112,11 @@ void DeskServer::bindAll()
         if (fd == kNoSocket)
             continue;
         const int on = 1;
+#ifdef _WIN32
+        ::setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&on), sizeof on);
+#else
         ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof on);
+#endif
         noInherit(fd);
         if (::bind(fd, reinterpret_cast<sockaddr*>(&at), sizeof at) != 0 || ::listen(fd, 16) != 0) {
             std::printf("desk: cannot listen on %s:%u: %s\n", address.c_str(), unsigned(port_),

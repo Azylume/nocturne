@@ -6,6 +6,7 @@
 #include "test_paths.hpp"
 
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 
 namespace {
@@ -193,6 +194,12 @@ TEST_CASE("desk: an engine that closes the desk's connection gets a new one on t
         CHECK(httpGet(desk.port(), "/state").status == 503);
         engine = std::make_unique<azl::WebSocketServer>(harness.document(), enginePort);
     }
+}
+
+TEST_CASE("desk: a second desk cannot listen on the port a desk already listens on")
+{
+    azl::DeskServer first{{.port = 0, .loopbackOnly = true}};
+    CHECK_THROWS_AS(azl::DeskServer({.port = first.port(), .loopbackOnly = true}), std::runtime_error);
 }
 
 TEST_CASE("desk: killing the desk process leaves the engine's frames running")
