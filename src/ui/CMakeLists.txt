@@ -108,7 +108,7 @@ add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_S
   ${CMAKE_SOURCE_DIR}/tests/ui/local_previews_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/scroll_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/keys_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"

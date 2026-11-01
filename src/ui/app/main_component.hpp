@@ -89,4 +89,13 @@ private:
     int dragStartHeight_ = 0;
 };
 
+// The app's window around a MainComponent. When the system activates it, the keyboard focus goes to that
+// MainComponent, so its shortcuts work before anything in the window was clicked.
+class MainWindow : public juce::DocumentWindow {
+public:
+    MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible);
+    void focusGained(FocusChangeType cause) override;
+    void closeButtonPressed() override;
+};
+
 } // namespace azl::ui
