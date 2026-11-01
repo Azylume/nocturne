@@ -282,7 +282,7 @@ std::string stderrOf(const std::function<void()>& run)
 // A short recording with sound: the AAC encoder logs its statistics at info level when it closes.
 void recordWithSound(const fs::path& file)
 {
-    Options options("hevc", file);
+    Options options("prores", file);
     options.audio = true;
     Recording recording(options);
     for (int i = 0; i < 30; ++i)
