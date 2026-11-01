@@ -153,7 +153,7 @@ TEST_CASE("switches: a wall Cue, the UI and ctl each log one line with its cause
     {
         Client director(h.document());
         ::apply(director, azl::gigEdit(night(), h.document().document()));
-        director.send({{"type", "record"}, {"op", "start"}, {"codec", "hevc"}, {"path", dir.path.string()}});
+        director.send({{"type", "record"}, {"op", "start"}, {"codec", "prores"}, {"path", dir.path.string()}});
         for (Message m = director.next(); !(m["type"] == "record" && m["op"] == "start"); m = director.next())
             REQUIRE(m["type"] != "error");
     }
