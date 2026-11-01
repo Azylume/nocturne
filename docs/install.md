@@ -110,9 +110,10 @@ for admin rights (User Account Control): the installer writes to Program Files a
 
 ### What it installs
 
-- Everything in one folder, `C:\Program Files\Nocturne`: the UI (`Nocturne UI.exe`), the engine supervisor, the
-  venue desk, the FFmpeg DLLs and the Visual C++ runtime; the engine (`nocturne.exe`) and `nocturne-ctl.exe` join them
-  once they build on Windows. Start menu: **Nocturne** opens the UI.
+- Everything in one folder, `C:\Program Files\Nocturne`: the UI (`Nocturne UI.exe`), the engine (`nocturne.exe`),
+  the engine supervisor, the venue desk, `nocturne-ctl.exe`, the FFmpeg DLLs and the Visual C++ runtime, with
+  `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and the third-party licence texts in `licenses\`. Start menu: **Nocturne**
+  opens the UI.
 - Two inbound Windows Firewall rules, "Nocturne engine" and "Nocturne desk", so other machines (the Director, a phone
   on the desk page at port 7480) reach the engine without a firewall prompt. They apply on **Private** networks only:
   Windows marks a new network Public, so set the show network to Private, in **Settings > Network & internet > Wi-Fi**
