@@ -1063,7 +1063,7 @@ std::optional<VenueEntry> Session::currentVenue() const
     if (!venues_)
         return std::nullopt;
     for (const VenueEntry& entry : venues_->entries())
-        if (juce::String(entry.venue.host).equalsIgnoreCase(juce::String(host_)) && entry.venue.port == port_)
+        if (showsVenue(entry.venue, host_, port_))
             return entry;
     return std::nullopt;
 }

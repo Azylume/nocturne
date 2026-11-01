@@ -5,7 +5,6 @@
 #include "venues/gig.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <condition_variable>
 #include <future>
 #include <memory>
@@ -47,7 +46,7 @@ VenueSources VenueSources::system(TailscaleSettings settings, std::function<std:
     return {[settings] { return fetchTailscaleVenues(settings); },
             [browser] { return bonjourVenues(browser->services()); },
             [token](const Venue& venue) {
-                return probeVenue(venue.host, venue.port, std::chrono::milliseconds(4000),
+                return probeVenue(probeHost(venue), venue.port, std::chrono::milliseconds(4000),
                                   token ? token(venue) : std::string());
             },
             gigOn,
@@ -94,14 +93,9 @@ VenueScan scanVenues(const VenueSources& sources, const TailscaleList& tailscale
 std::vector<StripAlert> otherVenueAlerts(const std::vector<VenueEntry>& entries, const std::string& host,
                                          uint16_t port)
 {
-    const auto same = [](const std::string& a, const std::string& b) {
-        return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](unsigned char x, unsigned char y) {
-            return std::tolower(x) == std::tolower(y);
-        });
-    };
     std::vector<StripAlert> strip;
     for (const VenueEntry& entry : entries) {
-        if (entry.venue.port == port && same(entry.venue.host, host))
+        if (showsVenue(entry.venue, host, port))
             continue;
         for (const VenueAlert& alert : entry.alerts)
             if (alert.kind != AlertKind::VersionMismatch)

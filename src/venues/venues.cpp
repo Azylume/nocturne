@@ -1,5 +1,6 @@
 #include "venues/venues.hpp"
 
+#include "net/lan.hpp"
 #include "platform/app_paths.hpp"
 #include "platform/credentials.hpp"
 #include "protocol/messages.hpp"
@@ -207,6 +208,22 @@ std::vector<Venue> mergeVenues(const std::vector<Venue>& tailscale, const std::v
             if (machines.insert(shortName(venue.host) + ":" + std::to_string(venue.port)).second)
                 merged.push_back(venue);
     return merged;
+}
+
+bool thisMachine(const std::string& host)
+{
+    return host == "localhost" || loopbackAddress(host) || shortName(host) == shortName(bonjourName());
+}
+
+bool showsVenue(const Venue& venue, const std::string& host, uint16_t port)
+{
+    return venue.port == port &&
+           (shortName(venue.host) == shortName(host) || (thisMachine(venue.host) && thisMachine(host)));
+}
+
+std::string probeHost(const Venue& venue)
+{
+    return thisMachine(venue.host) ? "127.0.0.1" : venue.host;
 }
 
 namespace {
