@@ -300,11 +300,15 @@ if(APPLE)
   )
 else()
   find_package(FFMPEG REQUIRED)
-  # Opening and closing FFmpeg's demuxers (src/media/ffmpeg_util.hpp), for the media, recording and return video code.
-  add_library(nocturne_ffmpeg STATIC src/media/ffmpeg_util.cpp)
+  # Opening and closing FFmpeg's demuxers (src/media/ffmpeg_util.hpp) and the Media Foundation hardware encoder
+  # search (src/output/media_foundation.hpp), for the media, recording and return video code.
+  add_library(nocturne_ffmpeg STATIC src/media/ffmpeg_util.cpp src/output/media_foundation.cpp)
   target_include_directories(nocturne_ffmpeg PUBLIC src ${FFMPEG_INCLUDE_DIRS})
   target_link_directories(nocturne_ffmpeg PUBLIC ${FFMPEG_LIBRARY_DIRS})
   target_link_libraries(nocturne_ffmpeg PUBLIC ${FFMPEG_LIBRARIES})
+  if(WIN32)
+    target_link_libraries(nocturne_ffmpeg PRIVATE mfplat mfuuid ole32)
+  endif()
   target_link_libraries(nocturne_media PUBLIC nocturne_ffmpeg)
   target_sources(nocturne_media PRIVATE
     src/media/hap_movie_ffmpeg.cpp

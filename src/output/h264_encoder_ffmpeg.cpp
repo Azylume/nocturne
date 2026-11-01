@@ -1,5 +1,6 @@
 #include "output/h264_stream.hpp"
 
+#include "output/media_foundation.hpp"
 #include "output/picture_pool_ffmpeg.hpp"
 
 extern "C" {
@@ -133,8 +134,11 @@ H264Encoder::H264Encoder(uint32_t width, uint32_t height, double fps, uint32_t k
 {
     const char* software = std::getenv("NOCTURNE_SOFTWARE_ENCODE");
     const bool hardwareAllowed = !software || !*software || *software == '0';
+    const bool hardwareListed = hardwareAllowed && mf::hasHardwareEncoder(AV_CODEC_ID_H264);
     for (const Candidate& candidate : candidates()) {
         if (candidate.hardware && !hardwareAllowed)
+            continue;
+        if (!mf::worthOpening(candidate.name, candidate.hardware, hardwareListed))
             continue;
         if ((session_->codec = openEncoder(candidate, width, height, fps, kbps))) {
             hardware_ = candidate.hardware;

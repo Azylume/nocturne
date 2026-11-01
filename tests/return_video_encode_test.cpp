@@ -2,6 +2,7 @@
 #include "ffmpeg_movies.hpp"
 
 #include "output/h264_stream.hpp"
+#include "output/media_foundation.hpp"
 #include "return_video_packets.hpp"
 #include "test_files.hpp"
 
@@ -175,4 +176,18 @@ TEST_CASE("off Apple, the H.264 decoder returns 426-wide pictures without writin
         CHECK(meanError(rgb, card(plan.width, plan.height, i)) < 8.0);
     }
     CHECK(decoded == kCardFrames);
+}
+
+TEST_CASE("off Apple, a Media Foundation encoder asks for hardware only where Windows lists a hardware encoder")
+{
+    CHECK(azl::mf::worthOpening("h264_mf", true, true));
+    CHECK_FALSE(azl::mf::worthOpening("h264_mf", true, false));
+    CHECK_FALSE(azl::mf::worthOpening("hevc_mf", true, false));
+    CHECK(azl::mf::worthOpening("h264_mf", false, false));
+    CHECK(azl::mf::worthOpening("hevc_mf", false, false));
+    CHECK(azl::mf::worthOpening("h264_nvenc", true, false));
+    CHECK(azl::mf::worthOpening("hevc_nvenc", true, false));
+    CHECK_FALSE(azl::mf::hasHardwareEncoder(AV_CODEC_ID_MPEG2VIDEO));
+    MESSAGE("hardware encoders listed: H.264 ", azl::mf::hasHardwareEncoder(AV_CODEC_ID_H264), ", HEVC ",
+            azl::mf::hasHardwareEncoder(AV_CODEC_ID_HEVC), ", AV1 ", azl::mf::hasHardwareEncoder(AV_CODEC_ID_AV1));
 }

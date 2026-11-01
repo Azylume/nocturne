@@ -1,5 +1,7 @@
 #include "output/movie_encoder_ffmpeg.hpp"
 
+#include "output/media_foundation.hpp"
+
 extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
@@ -336,8 +338,11 @@ FfmpegEncoder::FfmpegEncoder(const std::string& codec, uint32_t width, uint32_t 
     : counts_(counts), packet_(av_packet_alloc())
 {
     checkCodec(codec);
+    const bool hardwareListed = codec == "hevc" && mf::hasHardwareEncoder(AV_CODEC_ID_HEVC);
     for (const Candidate& candidate : candidates(codec, precise)) {
         if (!only.empty() && only != candidate.name)
+            continue;
+        if (!mf::worthOpening(candidate.name, candidate.hardware, hardwareListed))
             continue;
         if ((codec_ = openEncoder(candidate, width, height, fps))) {
             layout_ = candidate.layout;
