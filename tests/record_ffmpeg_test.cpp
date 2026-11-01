@@ -461,6 +461,18 @@ TEST_CASE("off Apple, NOCTURNE_NO_DISK_IMAGES=1 keeps the disk image cases away 
     _putenv_s("NOCTURNE_NO_DISK_IMAGES", before.c_str());
 }
 
+TEST_CASE("off Apple, only a CI runner (GITHUB_ACTIONS=true) lets the disk image cases make a disk")
+{
+    const char* no = std::getenv("NOCTURNE_NO_DISK_IMAGES");
+    const char* ci = std::getenv("GITHUB_ACTIONS");
+    const std::string noBefore = no ? no : "", ciBefore = ci ? ci : "";
+    _putenv_s("NOCTURNE_NO_DISK_IMAGES", "");
+    _putenv_s("GITHUB_ACTIONS", "");
+    CHECK(diskImagesRefused() == "GITHUB_ACTIONS=true is not set");
+    _putenv_s("NOCTURNE_NO_DISK_IMAGES", noBefore.c_str());
+    _putenv_s("GITHUB_ACTIONS", ciBefore.c_str());
+}
+
 TEST_CASE("off Apple, a full disk stops the recording cleanly")
 {
     RETURN_WITHOUT_DISK_IMAGES();
