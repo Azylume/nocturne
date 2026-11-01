@@ -475,6 +475,18 @@ void calibrate(DeviceObject& d)
     d.lastCalibration = hostSeconds(hostTicks());
 }
 
+// Without calibrated timestamps, the device clock is tied to the host clock when a command buffer is first seen
+// complete: durations stay exact, and host times are late by at most that one completion's latency.
+void anchorUncalibrated(DeviceObject& d, uint64_t ticks)
+{
+    std::lock_guard lock(d.calibrationMutex);
+    if (d.calibrated)
+        return;
+    d.calibratedTicks = ticks;
+    d.calibratedSeconds = hostSeconds(hostTicks());
+    d.calibrated = true;
+}
+
 double secondsOf(DeviceObject& d, uint64_t ticks)
 {
     std::lock_guard lock(d.calibrationMutex);
@@ -1123,6 +1135,7 @@ Completion completion(CommandObject* c)
     uint64_t ticks[2] = {};
     if (c->times && vkGetQueryPoolResults(d.device, c->times, 0, 2, sizeof(ticks), ticks, sizeof(uint64_t),
                                           VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+        anchorUncalibrated(d, ticks[1]);
         done.gpuStart = secondsOf(d, ticks[0]);
         done.gpuEnd = secondsOf(d, ticks[1]);
     }
