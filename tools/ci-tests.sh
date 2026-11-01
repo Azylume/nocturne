@@ -88,7 +88,9 @@ run() {
     fi
     "$PYTHON" - "$REPORTS/$1.xml" "$1" <<'PY' || status=1
 import sys, xml.etree.ElementTree as ET
-tree = ET.parse(sys.argv[1])
+# After a crash doctest writes the report twice; the last one holds every case.
+text = open(sys.argv[1], encoding="utf-8").read()
+tree = ET.fromstring(text[text.rindex("<testsuites"):])
 cases = list(tree.iter("testcase"))
 failed = [c for c in cases if c.find("failure") is not None or c.find("error") is not None]
 for c in failed:
@@ -109,7 +111,8 @@ fi
 # The failed cases, from the JUnit report, rerun one by one. Python on Windows ends its lines with "\r\n".
 failed=$("$PYTHON" -c '
 import sys, xml.etree.ElementTree as ET
-tree = ET.parse(sys.argv[1])
+text = open(sys.argv[1], encoding="utf-8").read()
+tree = ET.fromstring(text[text.rindex("<testsuites"):])
 for case in tree.iter("testcase"):
     if case.find("failure") is not None or case.find("error") is not None:
         print(case.get("name"))

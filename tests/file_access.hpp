@@ -51,13 +51,48 @@ namespace {
     return set;
 }
 
+// A TOKEN_PRIVILEGES with room for the backup and the restore privilege.
+struct BackupPrivileges {
+    DWORD count = 0;
+    LUID_AND_ATTRIBUTES privileges[2]{};
+
+    TOKEN_PRIVILEGES* native() { return reinterpret_cast<TOKEN_PRIVILEGES*>(this); }
+};
+
+// Turns this process's backup and restore privileges off, or back to how they were. An elevated process (a CI runner,
+// an SSH session) has them on, and CreateDirectory opens with backup intent, so a folder's access list would not keep
+// it out of the folder.
+[[maybe_unused]] bool backupPrivileges(bool restore)
+{
+    static BackupPrivileges before;
+    const bool turnedOff = before.count != 0;
+    if (restore != turnedOff)
+        return true;
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
+        return false;
+    bool ok = false;
+    if (restore) {
+        ok = AdjustTokenPrivileges(token, FALSE, before.native(), 0, nullptr, nullptr);
+        before = {};
+    } else {
+        BackupPrivileges off{.count = 2};
+        DWORD size = sizeof(before);
+        ok = LookupPrivilegeValueW(nullptr, SE_BACKUP_NAME, &off.privileges[0].Luid) &&
+             LookupPrivilegeValueW(nullptr, SE_RESTORE_NAME, &off.privileges[1].Luid) &&
+             AdjustTokenPrivileges(token, FALSE, off.native(), sizeof(before), before.native(), &size);
+    }
+    CloseHandle(token);
+    return ok;
+}
+
 #endif
 
-// Lets this user create files in `folder`, or only read and enter it: mode 0700 or 0500 on POSIX.
+// Lets this user create files and folders in `folder`, or only read and enter it: mode 0700 or 0500 on POSIX.
 [[maybe_unused]] bool folderWritable(const std::filesystem::path& folder, bool writable)
 {
 #ifdef _WIN32
-    return userOnly(folder, writable ? L"FA" : L"FRFX");
+    return backupPrivileges(writable) && userOnly(folder, writable ? L"FA" : L"FRFX");
 #else
     return ::chmod(folder.c_str(), writable ? 0700 : 0500) == 0;
 #endif
