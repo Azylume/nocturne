@@ -28,6 +28,9 @@ long readHandle(NativeHandle handle, void* buffer, size_t size);
 long writeHandle(NativeHandle handle, const void* data, size_t size);
 // Never blocks: the bytes read, 0 while none are waiting, -1 at the end or on an error.
 long readAvailable(NativeHandle handle, void* buffer, size_t size);
+// Makes writes to a pipe's write end return at once: writeHandle() then gives 0 while the pipe is full and -1 once its
+// read end is closed. False when the system refuses.
+bool neverBlockWrites(NativeHandle handle);
 void closeHandle(NativeHandle handle);
 
 // Where one of the child's standard streams goes.

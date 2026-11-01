@@ -222,6 +222,12 @@ long writeHandle(NativeHandle handle, const void* data, size_t size)
     return WriteFile(handle, data, DWORD(size), &n, nullptr) ? long(n) : -1;
 }
 
+bool neverBlockWrites(NativeHandle handle)
+{
+    DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+    return SetNamedPipeHandleState(handle, &mode, nullptr, nullptr);
+}
+
 long readAvailable(NativeHandle handle, void* buffer, size_t size)
 {
     DWORD waiting = 0;

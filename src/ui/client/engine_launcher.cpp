@@ -129,6 +129,14 @@ struct StartedEngine {
     }
 };
 
+// Reads away the beats an engine wrote, so its pipe never fills. Never blocks.
+void drain(std::optional<NativeHandle> heartbeat)
+{
+    char beats[256];
+    while (heartbeat && readAvailable(*heartbeat, beats, sizeof beats) > 0) {
+    }
+}
+
 }
 
 EngineLauncher::EngineLauncher(Hooks hooks) : hooks_(std::move(hooks)) {}
@@ -228,6 +236,7 @@ EngineLauncher::Hooks defaultEngineHooks(uint16_t port, fs::path engine)
         return started->process->pid();
     };
     hooks.alive = [started](int pid) {
+        drain(started->heartbeat);
         if (!started->process || started->process->pid() != pid || !started->process->poll())
             return true;
         started->noteRefusal();

@@ -3,9 +3,14 @@
 #include "platform/process.hpp"
 #include "scoped_env.hpp"
 
+#include <chrono>
+#include <csignal>
 #include <filesystem>
+#include <future>
+#include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -214,4 +219,35 @@ TEST_CASE("platform: a pipe is read without waiting, and its end is told apart f
     azl::closeHandle(pipe->write);
     CHECK(azl::readAvailable(pipe->read, buffer, sizeof buffer) == -1);
     azl::closeHandle(pipe->read);
+}
+
+TEST_CASE("platform: beats to a pipe nobody reads never block, and a closed reader is told apart from a full pipe")
+{
+    const std::optional<azl::PipeEnds> pipe = azl::makePipe();
+    REQUIRE(pipe);
+    REQUIRE(azl::neverBlockWrites(pipe->write));
+#ifndef _WIN32
+    const auto previous = std::signal(SIGPIPE, SIG_IGN);
+#endif
+    // More than any pipe buffer holds, written by a thread so a write that blocks fails the check instead of the run.
+    auto fullWrites = std::make_shared<std::promise<long>>();
+    std::future<long> done = fullWrites->get_future();
+    std::thread([write = pipe->write, fullWrites] {
+        long full = 0;
+        for (int i = 0; i < 70000; ++i)
+            if (const long n = azl::writeHandle(write, "h", 1); n == 0)
+                ++full;
+            else if (n < 0)
+                break;
+        fullWrites->set_value(full);
+    }).detach();
+    const bool finished = done.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+    azl::closeHandle(pipe->read);
+    REQUIRE(finished);
+    CHECK(done.get() > 0);
+    CHECK(azl::writeHandle(pipe->write, "h", 1) == -1);
+    azl::closeHandle(pipe->write);
+#ifndef _WIN32
+    std::signal(SIGPIPE, previous);
+#endif
 }
