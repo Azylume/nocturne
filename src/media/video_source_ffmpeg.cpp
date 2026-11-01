@@ -75,8 +75,8 @@ bool deepOf(const AVCodecParameters* p)
     return format && format->comp[0].depth > 8;
 }
 
-// The hardware decoder every clip shares: D3D11VA (NVDEC on NVIDIA, the vendor's decoder elsewhere), then CUDA. Null
-// when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip decodes on the CPU.
+// The hardware decoder every clip larger than 1080p shares: D3D11VA (NVDEC on NVIDIA, the vendor's decoder elsewhere),
+// then CUDA. Null when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip decodes on the CPU.
 struct Hardware {
     AVBufferRef* device = nullptr;
     AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
@@ -99,6 +99,13 @@ const Hardware& hardware()
         return h;
     }();
     return shared;
+}
+
+// Up to 1080p the CPU decodes a frame faster than the GPU does and hands it back: a GPU-decoded picture comes back to
+// system memory through a wait for the GPU, behind the render thread's work.
+bool worthHardware(const AVCodecParameters* p)
+{
+    return int64_t(p->width) * p->height > int64_t(1920) * 1080;
 }
 
 AVPixelFormat hardwareFormat(const AVCodec* codec, AVHWDeviceType type)
@@ -186,7 +193,8 @@ private:
             throw MediaError(MediaStatus::Corrupt, "cannot set up the decoder");
         codec_->pkt_timebase = stream_->timeBase;
         const Hardware& h = hardware();
-        if (const AVPixelFormat wanted = h.device ? hardwareFormat(codec, h.type) : AV_PIX_FMT_NONE;
+        if (const AVPixelFormat wanted =
+                h.device && worthHardware(parameters) ? hardwareFormat(codec, h.type) : AV_PIX_FMT_NONE;
             wanted != AV_PIX_FMT_NONE) {
             codec_->hw_device_ctx = av_buffer_ref(h.device);
             codec_->opaque = reinterpret_cast<void*>(intptr_t(wanted));
