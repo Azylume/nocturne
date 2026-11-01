@@ -42,6 +42,9 @@ struct Options {
 
     std::string codec;
     fs::path path;
+    // Frames other than this size are filled by the test itself, not by Recording::frame().
+    uint32_t width = kWidth;
+    uint32_t height = kHeight;
     bool precise = false;
     bool audio = false;
     uint64_t maxBytes = 0;
@@ -61,8 +64,8 @@ public:
         rec::Settings settings;
         settings.codec = options.codec;
         settings.path = options.path;
-        settings.width = kWidth;
-        settings.height = kHeight;
+        settings.width = options.width;
+        settings.height = options.height;
         settings.precise = options.precise;
         settings.maxBytes = options.maxBytes;
         settings.maxSeconds = options.maxSeconds;
@@ -75,7 +78,7 @@ public:
                                                 [this](const rec::Ended& e) { ended(e); }, nullptr);
         writer_->open(
             [&](rec::MovieEncoder::Counts& counts) {
-                auto encoder = std::make_unique<rec::FfmpegEncoder>(options.codec, kWidth, kHeight, kFps,
+                auto encoder = std::make_unique<rec::FfmpegEncoder>(options.codec, options.width, options.height, kFps,
                                                                     options.precise, counts, options.only);
                 encoder_ = encoder.get();
                 return encoder;
@@ -455,6 +458,42 @@ TEST_CASE("off Apple, a recording never makes its caller wait: a slow writer dro
     CHECK(ended.dropped > 0);
     CHECK(ended.frames + ended.dropped == kFrames);
     CHECK(decodeMovie(dir.path / "slow.mov").frames.size() == ended.frames);
+}
+
+TEST_CASE("off Apple, ProRes 422 keeps up with 1080p at 60 frames a second without dropping one")
+{
+    if (std::thread::hardware_concurrency() < 6) {
+        MESSAGE("needs 6 cores, this machine has ", std::thread::hardware_concurrency());
+        return;
+    }
+    TempDir dir;
+    Options options("prores", dir.path / "hd.mov");
+    options.width = 1920;
+    options.height = 1080;
+    Recording recording(options);
+    // Every picture of the pool is filled up front, so the loop costs what the render thread's hand-over does.
+    std::vector<std::shared_ptr<azl::YCbCrPicture>> pool;
+    while (std::shared_ptr<azl::YCbCrPicture> picture = recording.encoder().newPicture()) {
+        fill(*picture, card(options.width, options.height, int(pool.size())));
+        pool.push_back(std::move(picture));
+    }
+    pool.clear();
+    constexpr int kFrames = 180;
+    const auto began = std::chrono::steady_clock::now();
+    for (int i = 0; i < kFrames; ++i) {
+        std::this_thread::sleep_until(began + std::chrono::microseconds(int64_t(i * 1e6 / kFps)));
+        std::shared_ptr<azl::YCbCrPicture> picture = recording.encoder().newPicture();
+        if (!picture) {
+            recording.writer().drop();
+            continue;
+        }
+        recording.writer().begin();
+        recording.writer().queued(picture, Recording::timeOf(i), true);
+    }
+    const rec::Ended ended = recording.stop();
+    MESSAGE(ended.frames, " frames, ", ended.dropped, " dropped");
+    CHECK(ended.dropped == 0);
+    CHECK(ended.frames == kFrames);
 }
 
 TEST_CASE("off Apple, a recording cut off by a killed engine still plays up to its last fragment and is recovered")

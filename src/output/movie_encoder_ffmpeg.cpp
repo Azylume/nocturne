@@ -12,6 +12,7 @@ extern "C" {
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,12 @@ namespace {
 // Bounds the pictures between the render thread and the file: those being filled, queued and held by the encoder.
 constexpr int kPictures = 8;
 constexpr AVRational kTimeBase{1, 90000};
+// ProRes encodes whole frames on parallel threads at a fixed quantiser: its rate control alone keeps a 6-core laptop
+// under 20 frames a second at 1080p, and its slice threads share only that search. At this quantiser frames decode
+// back as close to their pictures as with the rate control; the threads leave two cores to the engine.
+constexpr int kProResQuantiser = 4;
+constexpr int kEngineCores = 2;
+constexpr int kMaxProResThreads = 8;
 // A movie cut off before it is finished still plays up to its last fragment.
 constexpr const char* kFragmentMicros = "2000000";
 
@@ -77,8 +84,10 @@ ff::Codec openEncoder(const Candidate& candidate, uint32_t width, uint32_t heigh
         c->bit_rate = int64_t(double(width) * height * fps * 0.2);
         c->gop_size = std::max(1, int(std::lround(fps * 2.0)));
     } else {
-        c->thread_type = FF_THREAD_SLICE;
-        c->thread_count = 0;
+        c->thread_type = FF_THREAD_FRAME;
+        c->thread_count = std::clamp(int(std::thread::hardware_concurrency()) - kEngineCores, 1, kMaxProResThreads);
+        c->flags |= AV_CODEC_FLAG_QSCALE;
+        c->global_quality = kProResQuantiser * FF_QP2LAMBDA;
     }
     for (const auto& [key, value] : candidate.options)
         av_opt_set(c->priv_data, key, value, 0);
@@ -342,7 +351,9 @@ FfmpegEncoder::FfmpegEncoder(const std::string& codec, uint32_t width, uint32_t 
     parameters_.reset(avcodec_parameters_alloc());
     if (!parameters_ || avcodec_parameters_from_context(parameters_.get(), codec_.get()) < 0)
         throw std::runtime_error("cannot set up the " + codec + " encoder");
-    pool_ = std::make_unique<ff::PicturePool>(layout_, width, height, kPictures);
+    // A frame-threaded encoder holds a picture per thread.
+    const int held = codec_->active_thread_type == FF_THREAD_FRAME ? codec_->thread_count : 0;
+    pool_ = std::make_unique<ff::PicturePool>(layout_, width, height, kPictures + held);
 }
 
 FfmpegEncoder::~FfmpegEncoder() = default;

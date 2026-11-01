@@ -13,7 +13,7 @@ namespace azl::recording {
 // in QuickTime movies fragmented every 2 s. The bit rate and the colour tags are the Mac recorder's.
 //
 // Pictures come from newPicture() in layout(): 8-bit NV12 for HEVC, P010 for precise HEVC Main10, 10-bit planar 4:2:2
-// for ProRes. The encoder never delays a frame, so each packet goes into its file as soon as its frame is encoded.
+// for ProRes. Each packet goes into the file its frame was handed for, as soon as the encoder hands it out.
 class FfmpegEncoder final : public MovieEncoder {
 public:
     // `only` names the one FFmpeg encoder to try (for the tests); empty tries them in order. Throws std::runtime_error
