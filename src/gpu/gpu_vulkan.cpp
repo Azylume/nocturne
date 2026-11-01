@@ -2076,7 +2076,8 @@ bool validationEnabled()
 Device makeSeparateDevice()
 {
     // Never freed: its completion thread runs for the life of the process, as the system default's does.
-    const auto* kept = new std::shared_ptr<vk::DeviceObject>(vk::makeDevice());
+    std::string problem;
+    const auto* kept = new std::shared_ptr<vk::DeviceObject>(vk::makeDevice(problem));
     return Device::retain(kept->get());
 }
 
