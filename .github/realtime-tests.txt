@@ -52,3 +52,5 @@
 *clip previews turn on and off live*
 # A GPU timing report of three outputs under overload (issue #17), not a check: for the show machine.
 *under GPU overload: frames in flight on the GPU*
+# ProRes encodes on frame threads and keeps up with 60 fps only with six cores or more, which CI runners lack.
+*ProRes 422 keeps up with 1080p at 60 frames a second*

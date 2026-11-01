@@ -459,7 +459,7 @@ void mirrorUserIsf(const std::vector<IsfSource>& sources)
             continue;
         }
         const EffectDef* own = findEffect(shader->type);
-        if (own && !own->metal.empty() && !effects.contains(shader->type))
+        if (own && !own->glsl.empty() && !effects.contains(shader->type))
             continue;
         if (!effects.contains(shader->type) || effects.at(shader->type) != source.text)
             registerEffect(isfEffect(*shader));

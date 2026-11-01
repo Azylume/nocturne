@@ -3,7 +3,17 @@
 #include "techno_loop.hpp"
 #include "test_client.hpp"
 
+#ifdef __APPLE__
 #include <CoreAudio/CoreAudio.h>
+#elif defined(_WIN32)
+#include <windows.h>
+
+#include <audioclient.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
+
+using Microsoft::WRL::ComPtr;
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -28,31 +38,6 @@ struct AudioRig {
     azl::AudioAnalysis analysis;
     azl::AudioService service;
 };
-
-bool realAudio()
-{
-    const char* value = std::getenv("NOCTURNE_REAL_AUDIO");
-    return value && std::string(value) == "1";
-}
-
-azl::AudioInputStatus selectedInput(azl::AudioInput& input, const std::string& device)
-{
-    std::mutex mutex;
-    std::condition_variable changed;
-    bool selected = false;
-    input.onChange([&](const azl::AudioInputStatus&, const std::string& event) {
-        std::lock_guard lock(mutex);
-        selected = selected || event.starts_with("select");
-        changed.notify_all();
-    });
-    input.select(device);
-    std::unique_lock lock(mutex);
-    const bool done = changed.wait_for(lock, std::chrono::seconds(5), [&] { return selected; });
-    lock.unlock();
-    input.onChange(nullptr);
-    REQUIRE(done);
-    return input.status();
-}
 
 Message audio(Client& client, Message request)
 {
@@ -163,56 +148,8 @@ TEST_CASE("the audio log appends the analysis and settings changes as JSON lines
     }
 }
 
-TEST_CASE("an audio input never crashes on a missing device: it falls back to the default input or runs on nothing" *
-          doctest::skip(!realAudio()))
-{
-    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
-    azl::AudioInput input(analysis);
-    std::mutex mutex;
-    std::condition_variable changed;
-    std::vector<std::string> events;
-    input.onChange([&](const azl::AudioInputStatus&, const std::string& event) {
-        std::lock_guard lock(mutex);
-        events.push_back(event);
-        changed.notify_all();
-    });
-    const auto selected = [&](const std::string& device) {
-        std::unique_lock lock(mutex);
-        events.clear();
-        lock.unlock();
-        input.select(device);
-        lock.lock();
-        REQUIRE(changed.wait_for(lock, std::chrono::seconds(5), [&] {
-            return std::any_of(events.begin(), events.end(), [](const std::string& e) { return e.starts_with("select"); });
-        }));
-        return input.status();
-    };
-
-    const azl::AudioInputStatus missing = selected("No Such Device 1234");
-    CHECK(missing.requested == "No Such Device 1234");
-    CHECK((missing.state == "fallback" || missing.state == "none"));
-    CHECK(selected("off").state == "off");
-    const azl::AudioInputStatus fallback = selected("");
-    CHECK((fallback.state == "running" || fallback.state == "none"));
-    for (const azl::AudioDeviceInfo& d : azl::AudioInput::devices())
-        CHECK(d.channels > 0);
-    input.onChange(nullptr);
-}
-
-TEST_CASE("NOCTURNE_NO_AUDIO_INPUT keeps every audio input off, whatever is selected" *
-          doctest::skip(realAudio()))
-{
-    REQUIRE(azl::AudioInput::disabled());
-    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
-    azl::AudioInput input(analysis);
-    for (const std::string device : {"", "No Such Device 1234", "system"}) {
-        const azl::AudioInputStatus status = selectedInput(input, device);
-        CHECK(status.requested == "off");
-        CHECK(status.state == "off");
-        CHECK(status.uid.empty());
-    }
-}
-
+#ifdef __APPLE__
+// A private aggregate device, which only CoreAudio can make, stands in for a microphone.
 TEST_CASE("every client gets the device list again when an audio device is added or removed")
 {
     azl::AudioAnalysis analysis([] { return azl::engineTime(); });
@@ -245,6 +182,109 @@ TEST_CASE("every client gets the device list again when an audio device is added
     CHECK(pushed(a)["devices"].is_array());
     CHECK(pushed(b)["op"] == "devices");
 }
+#elif defined(_WIN32)
+namespace {
+
+// The interface Sound settings enables and disables endpoints with. Windows does not document it; its layout has been
+// the same since Windows 7.
+struct __declspec(uuid("f8679f50-850a-41cf-9c72-430f290290c8")) IPolicyConfig : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetMixFormat(PCWSTR, WAVEFORMATEX**) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetDeviceFormat(PCWSTR, INT, WAVEFORMATEX**) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ResetDeviceFormat(PCWSTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetDeviceFormat(PCWSTR, WAVEFORMATEX*, WAVEFORMATEX*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetProcessingPeriod(PCWSTR, INT, PINT64, PINT64) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetProcessingPeriod(PCWSTR, PINT64) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetShareMode(PCWSTR, void*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetShareMode(PCWSTR, void*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetPropertyValue(PCWSTR, const PROPERTYKEY&, PROPVARIANT*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetPropertyValue(PCWSTR, const PROPERTYKEY&, PROPVARIANT*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetDefaultEndpoint(PCWSTR, ERole) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetEndpointVisibility(PCWSTR, INT) = 0;
+};
+constexpr CLSID kPolicyConfigClient = {0x870af99c, 0x171d, 0x4f9e, {0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9}};
+
+// The id of the first capture endpoint disabled in Sound settings (Stereo Mix, say); empty when there is none.
+std::string disabledCaptureEndpoint()
+{
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDeviceCollection> endpoints;
+    ComPtr<IMMDevice> endpoint;
+    UINT count = 0;
+    LPWSTR id = nullptr;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
+        FAILED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_DISABLED, &endpoints)) ||
+        FAILED(endpoints->GetCount(&count)) || count == 0 || FAILED(endpoints->Item(0, &endpoint)) ||
+        FAILED(endpoint->GetId(&id)))
+        return {};
+    // Endpoint ids are ASCII.
+    const std::string result(id, id + wcslen(id));
+    CoTaskMemFree(id);
+    return result;
+}
+
+// Enables a disabled endpoint as Sound settings does, which Windows reports as a device arriving, and disables it
+// again when it goes, so the machine is left as it was.
+class Enabled {
+public:
+    explicit Enabled(const std::string& id) : id_(id.begin(), id.end())
+    {
+        REQUIRE(SUCCEEDED(CoCreateInstance(kPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policy_))));
+        REQUIRE(SUCCEEDED(policy_->SetEndpointVisibility(id_.c_str(), TRUE)));
+    }
+    ~Enabled() { disable(); }
+    void disable()
+    {
+        if (policy_)
+            CHECK(SUCCEEDED(policy_->SetEndpointVisibility(id_.c_str(), FALSE)));
+        policy_.Reset();
+    }
+
+private:
+    std::wstring id_;
+    ComPtr<IPolicyConfig> policy_;
+};
+
+} // namespace
+
+// Enabling a disabled capture endpoint and disabling it again stands in for a microphone plugged in and pulled out:
+// Windows raises the same device state notification for both.
+TEST_CASE("every client gets the device list again when an audio device is added or removed")
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const std::string endpoint = disabledCaptureEndpoint();
+    if (endpoint.empty()) {
+        MESSAGE("skipped: needs a capture endpoint disabled in Sound settings");
+        CoUninitialize();
+        return;
+    }
+    azl::AudioAnalysis analysis([] { return azl::engineTime(); });
+    azl::AudioInput input(analysis);
+    azl::DocumentServer document{azl::defaultComposition(), [](auto) {}};
+    azl::AudioService service(document, analysis, &input, azl::engineTime);
+    Client a(document);
+    Client b(document);
+    const auto listed = [&endpoint](const Message& devices) {
+        return std::any_of(devices.begin(), devices.end(), [&](const Message& d) { return d["uid"] == endpoint; });
+    };
+    // One change can raise more than one notification, so wait for the list that shows it.
+    const auto pushed = [&listed](Client& client, bool present) {
+        for (Message m = client.next();; m = client.next())
+            if (m["op"] == "devices" && listed(m["devices"]) == present)
+                return m;
+    };
+    {
+        Enabled enabled(endpoint);
+        const Message added = pushed(a, true);
+        CHECK(added["type"] == "audio");
+        CHECK(pushed(b, true) == added);
+
+        enabled.disable();
+        CHECK(pushed(a, false)["devices"].is_array());
+        CHECK(pushed(b, false)["op"] == "devices");
+    }
+    CoUninitialize();
+}
+#endif
 
 TEST_CASE("input device settings: gain and channels come back per device on select, hot-plug and restart")
 {

@@ -2,10 +2,10 @@
 
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <string>
-
-#include <sys/types.h>
+#include <vector>
 
 namespace azl::ui {
 
@@ -23,13 +23,16 @@ public:
         // True when an engine already answers on the local control port.
         std::function<bool()> reachable;
         // Starts the engine; returns its pid, or 0 when it could not start one.
-        std::function<pid_t()> spawn;
+        std::function<int()> spawn;
         // True while the engine with this pid is still running; reaps it (and frees its resources) when it has exited.
-        std::function<bool(pid_t)> alive;
+        std::function<bool(int)> alive;
         // Stops the running engine this launcher started.
-        std::function<void(pid_t)> stop;
+        std::function<void(int)> stop;
         // Seconds from a steady clock, for the restart window.
         std::function<double()> now;
+        // The line in which the engine with this pid, once alive() has seen it exit, said it cannot run on this machine
+        // (no usable GPU); empty when it did not. Such an engine is not restarted.
+        std::function<std::string(int)> refusal;
     };
 
     explicit EngineLauncher(Hooks hooks);
@@ -39,7 +42,8 @@ public:
     void ensureRunning();
 
     // Call periodically. Restarts an owned engine that has died, up to twice in 60 s; after that it gives up, stops
-    // trying, and failure() explains why. Does nothing for an engine it did not start.
+    // trying, and failure() explains why. An engine that refused to run is not restarted, and its line is the failure.
+    // Does nothing for an engine it did not start.
     void poll();
 
     // Stops the engine only when this launcher started it. Safe to call when it did not.
@@ -56,14 +60,21 @@ private:
     static constexpr double kWindowSeconds = 60.0;
 
     Hooks hooks_;
-    pid_t ownedPid_ = 0;
+    int ownedPid_ = 0;
     std::deque<double> restarts_;
     std::string failure_;
 };
 
-// The hooks the real app uses: probe 127.0.0.1:port; spawn the `nocturne` beside the running executable with
-// --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine quits); reap or
-// stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI looks.
-EngineLauncher::Hooks defaultEngineHooks(uint16_t port);
+// The arguments a UI starts its engine with: loopback on `port`, and --ui-display when the UI knows its display, so
+// the engine puts no output on it.
+std::vector<std::string> engineArgs(uint16_t port, const std::string& uiDisplay);
+
+// The hooks the real app uses: probe 127.0.0.1:port; spawn `engine` (by default the `nocturne` beside the running
+// executable) with engineArgs and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine quits);
+// reap or stop it, closing that pipe. The engine's stderr passes through the UI's own, and a refusal is the line it
+// printed before it exited with the no-GPU exit code. `port` is the port the UI connects to, so the engine listens
+// where the UI looks. `uiDisplay`, when set, names the display the UI's window is on at each spawn.
+EngineLauncher::Hooks defaultEngineHooks(uint16_t port, std::filesystem::path engine = {},
+                                         std::function<std::string()> uiDisplay = {});
 
 }

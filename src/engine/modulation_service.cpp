@@ -1,6 +1,8 @@
 #include "engine/modulation_service.hpp"
 
 #include "document/modulation_edits.hpp"
+#include "engine/macro_sets_file.hpp"
+#include "platform/app_paths.hpp"
 #include "protocol/messages.hpp"
 
 #include <algorithm>
@@ -184,7 +186,7 @@ nlohmann::json loadFile(const std::filesystem::path& file)
         return nlohmann::json::object();
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.contains("sets") || !j["sets"].is_object()) {
-        std::fprintf(stderr, "macro sets: ignoring unreadable %s\n", file.c_str());
+        std::fprintf(stderr, "macro sets: ignoring unreadable %s\n", file.string().c_str());
         return nlohmann::json::object();
     }
     return j["sets"];
@@ -206,8 +208,7 @@ ModulationService::~ModulationService()
 
 std::filesystem::path ModulationService::defaultFile()
 {
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home ? home : "/tmp") / "Library/Application Support/Nocturne/MacroSets.json";
+    return defaultMacroSetsFile();
 }
 
 void ModulationService::handle(const Message& message, const DocumentServer::Sink& reply)

@@ -1,16 +1,15 @@
 #include "djlink/djlink_receiver.hpp"
 
 #include "djlink/djlink_packets.hpp"
+#include "net/socket_compat.hpp"
 
-#include <arpa/inet.h>
-#include <cerrno>
-#include <chrono>
-#include <cstring>
+#ifdef _WIN32
+#include <iphlpapi.h>
+#else
 #include <net/if.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#endif
+
+#include <chrono>
 
 namespace azl::djlink {
 
@@ -18,27 +17,38 @@ namespace {
 
 constexpr int kPollMs = 250;
 
-int receiveSocket(const std::string& address, uint16_t port, unsigned index, std::string& error)
+// Other Pro DJ Link software on this machine may hold the same ports. On macOS the socket hears `index` alone;
+// elsewhere it hears every interface, as no portable call narrows what a socket receives.
+bool shareAndBind(Socket fd, unsigned index)
 {
-    const int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (fd < 0) {
-        error = std::string("socket: ") + std::strerror(errno);
-        return -1;
-    }
     const int on = 1;
-    sockaddr_in at{};
-    at.sin_len = sizeof at;
-    at.sin_family = AF_INET;
-    at.sin_port = htons(port);
-    const bool ok = inet_pton(AF_INET, address.c_str(), &at.sin_addr) == 1 &&
-                    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == 0 &&
-                    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof on) == 0 &&
-                    setsockopt(fd, IPPROTO_IP, IP_BOUND_IF, &index, sizeof index) == 0 &&
+    const char* flag = reinterpret_cast<const char*>(&on);
+#ifdef __APPLE__
+    return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, flag, sizeof on) == 0 &&
+           setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, flag, sizeof on) == 0 &&
+           setsockopt(fd, IPPROTO_IP, IP_BOUND_IF, &index, sizeof index) == 0;
+#elif defined(_WIN32)
+    return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, flag, sizeof on) == 0;
+#else
+    return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, flag, sizeof on) == 0 &&
+           setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, flag, sizeof on) == 0;
+#endif
+}
+
+Socket receiveSocket(const std::string& address, uint16_t port, unsigned index, std::string& error)
+{
+    const Socket fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (fd == kNoSocket) {
+        error = "socket: " + socketErrorText(socketError());
+        return kNoSocket;
+    }
+    sockaddr_in at = ipv4Endpoint({}, port);
+    const bool ok = inet_pton(AF_INET, address.c_str(), &at.sin_addr) == 1 && shareAndBind(fd, index) &&
                     bind(fd, reinterpret_cast<const sockaddr*>(&at), sizeof at) == 0;
     if (!ok) {
-        error = "port " + std::to_string(port) + ": " + std::strerror(errno);
-        ::close(fd);
-        return -1;
+        error = "port " + std::to_string(port) + ": " + socketErrorText(socketError());
+        closeSocket(fd);
+        return kNoSocket;
     }
     return fd;
 }
@@ -48,6 +58,7 @@ int receiveSocket(const std::string& address, uint16_t port, unsigned index, std
 Receiver::Receiver(Options options, OnDatagram onDatagram)
     : options_(std::move(options)), onDatagram_(std::move(onDatagram))
 {
+    startSockets();
     open();
     thread_ = std::thread([this] { run(); });
 }
@@ -81,7 +92,7 @@ bool Receiver::open()
     std::string error;
     for (size_t i = 0; i < sockets_.size(); ++i) {
         sockets_[i] = receiveSocket(options_.address, options_.ports[i], index_, error);
-        if (sockets_[i] < 0) {
+        if (sockets_[i] == kNoSocket) {
             setError(error);
             close();
             return false;
@@ -95,10 +106,10 @@ bool Receiver::open()
 void Receiver::close()
 {
     listening_ = false;
-    for (int& fd : sockets_) {
-        if (fd >= 0)
-            ::close(fd);
-        fd = -1;
+    for (Socket& fd : sockets_) {
+        if (fd != kNoSocket)
+            closeSocket(fd);
+        fd = kNoSocket;
     }
 }
 
@@ -125,12 +136,12 @@ void Receiver::run()
         pollfd fds[3];
         for (size_t i = 0; i < 3; ++i)
             fds[i] = {sockets_[i], POLLIN, 0};
-        if (poll(fds, 3, kPollMs) <= 0)
+        if (pollSockets(fds, 3, kPollMs) <= 0)
             continue;
         for (size_t i = 0; i < 3; ++i) {
             if (!(fds[i].revents & POLLIN))
                 continue;
-            const ssize_t n = recv(sockets_[i], buffer, sizeof buffer, 0);
+            const long n = receiveSome(sockets_[i], buffer, sizeof buffer);
             if (n <= 0)
                 continue;
             ++datagrams_;

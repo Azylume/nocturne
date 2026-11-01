@@ -1,6 +1,8 @@
 #include "net/websocket.hpp"
+#include "protocol/build_info.hpp"
 #include "ui/app/main_component.hpp"
 #include "ui/app/midi.hpp"
+#include "ui/app/window_display.hpp"
 #include "ui/client/engine_launcher.hpp"
 
 #include <algorithm>
@@ -55,7 +57,7 @@ private:
 class Application : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "Nocturne UI"; }
-    const juce::String getApplicationVersion() override { return "0.1"; }
+    const juce::String getApplicationVersion() override { return azl::versionLabel(); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String& commandLine) override
@@ -94,24 +96,28 @@ public:
             localRender = azl::ui::Session::LocalRender::Off;
         else if (args.contains("--local-previews"))
             localRender = azl::ui::Session::LocalRender::On;
+#if JUCE_MAC
         // The bundle starts as a background app, so a hidden run never flashes a Dock icon.
         if (!hidden)
             juce::Process::setDockIconVisible(true);
+#endif
         const bool interactive = !hidden && snapshot.isEmpty();
         // The single-bundle app owns its engine: if nothing answers on the local port, start the nocturne engine that
         // sits beside this binary in Contents/MacOS (loopback only), and watch it (EngineKeepalive). It reuses an
         // engine that is already up and stops only one it started. A dev build with separate bundles has no engine
         // next to the UI, so this is a no-op there.
-        if (interactive && isLoopbackHost(host)) {
-            launcher_ = std::make_unique<azl::ui::EngineLauncher>(azl::ui::defaultEngineHooks(uint16_t(port)));
-            launcher_->ensureRunning();
-        }
+        // The engine starts once the window is up, told which display the window is on so it puts no output there.
+        if (interactive && isLoopbackHost(host))
+            launcher_ = std::make_unique<azl::ui::EngineLauncher>(
+                azl::ui::defaultEngineHooks(uint16_t(port), {}, [this] { return windowDisplay(); }));
         session_ = std::make_unique<azl::ui::Session>(
             host, uint16_t(port), surfaces, localRender, azl::ui::LocalPreviews::Options{},
             interactive ? azl::ui::DirectorMedia::defaults() : azl::ui::DirectorMedia::Options{});
-        window_ = std::make_unique<Window>(*session_, !hidden);
-        if (launcher_)
+        window_ = std::make_unique<azl::ui::MainWindow>(*session_, azl::ui::MainComponent::defaultSettings(), !hidden);
+        if (launcher_) {
+            launcher_->ensureRunning();
             keepalive_ = std::make_unique<EngineKeepalive>(*launcher_, *session_);
+        }
         if (interactive)
             session_->midi().start();
         if (!hidden && snapshot.isEmpty())
@@ -179,25 +185,16 @@ private:
         out.flush();
     }
 
-    class Window : public juce::DocumentWindow {
-    public:
-        Window(azl::ui::Session& session, bool visible)
-            : DocumentWindow("Nocturne", azl::ui::Look::palette().background, DocumentWindow::allButtons)
-        {
-            setUsingNativeTitleBar(true);
-            setContentOwned(new azl::ui::MainComponent(session, azl::ui::MainComponent::defaultSettings()), true);
-            setResizable(true, false);
-            setResizeLimits(1100, 700, 10000, 10000);
-            centreWithSize(getWidth(), getHeight());
-            setVisible(visible);
-        }
-        void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
-    };
+    std::string windowDisplay() const
+    {
+        juce::ComponentPeer* peer = window_ ? window_->getPeer() : nullptr;
+        return peer ? azl::ui::displayOfWindow(peer->getNativeHandle()) : std::string();
+    }
 
     std::unique_ptr<azl::ui::EngineLauncher> launcher_;
     std::unique_ptr<EngineKeepalive> keepalive_;
     std::unique_ptr<azl::ui::Session> session_;
-    std::unique_ptr<Window> window_;
+    std::unique_ptr<azl::ui::MainWindow> window_;
 };
 
 } // namespace

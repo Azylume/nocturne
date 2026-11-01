@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <regex>
 #include <thread>
 
 namespace {
@@ -216,6 +217,8 @@ TEST_CASE("a machine subscriber gets status at its rate until it unsubscribes or
     CHECK(waitFor([&] { return harness.machine().subscribers() == 0; }));
 }
 
+// macOS reads the speed limit from pmset; Windows asks WMI (tests/platform_thermal_test.cpp).
+#ifdef __APPLE__
 TEST_CASE("the CPU speed limit comes from pmset, 100 while macOS has recorded none")
 {
     CHECK(azl::parseCpuSpeedLimit("2026-10-16 03:12:44 +0200 CPU Power notify\n\tCPU_Scheduler_Limit \t= 100\n"
@@ -224,6 +227,7 @@ TEST_CASE("the CPU speed limit comes from pmset, 100 while macOS has recorded no
                                   "Note: No CPU power status has been recorded\n") == 100.0);
     CHECK_FALSE(azl::parseCpuSpeedLimit(""));
 }
+#endif
 
 namespace {
 
@@ -238,16 +242,8 @@ Message ask(Client& client, Message request)
 
 std::pair<int, std::string> runCtl(uint16_t port, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(port) + " " + args + " 2>&1";
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        out += buffer;
-    const int status = pclose(pipe);
-    return {WEXITSTATUS(status), out};
+    const CtlOutput run = runNocturneCtl(port, args);
+    return {run.code, run.output};
 }
 
 bool identifying(azl::EngineHarness& harness, uint64_t screen)
@@ -549,4 +545,9 @@ TEST_CASE("nocturne-ctl machine update sends the bundle, waits for the installer
     CHECK(code == 1);
     CHECK(out.find("Show lock is on") != std::string::npos);
     CHECK(runCtl(port, "machine update '" + laptop.path.string() + "'").first == 1);
+}
+
+TEST_CASE("the version label names the project version and the commit the build came from")
+{
+    CHECK(std::regex_match(azl::versionLabel(), std::regex(R"(\d+\.\d+\.\d+ \(([0-9a-f]{7,}(-dirty)?|unknown)\))")));
 }

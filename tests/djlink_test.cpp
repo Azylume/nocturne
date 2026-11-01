@@ -5,13 +5,8 @@
 #include "djlink/djlink_state.hpp"
 #include "net/websocket.hpp"
 #include "test_client.hpp"
+#include "net/socket_compat.hpp"
 #include "test_paths.hpp"
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <cmath>
 #include <fstream>
@@ -24,6 +19,30 @@ namespace {
 namespace dj = azl::djlink;
 
 const fs::path kSource = sourceDir();
+
+// The loopback interface by the name if_nametoindex knows it.
+#ifdef _WIN32
+const std::string kLoopback = "loopback_0";
+#else
+const std::string kLoopback = "lo0";
+#endif
+
+sockaddr_in loopbackAt(uint16_t port)
+{
+    in_addr loopback{};
+    loopback.s_addr = htonl(INADDR_LOOPBACK);
+    return azl::ipv4Endpoint(loopback, port);
+}
+
+// A UDP socket bound to a free loopback port.
+azl::Socket boundUdp()
+{
+    azl::startSockets();
+    const azl::Socket fd = socket(AF_INET, SOCK_DGRAM, 0);
+    sockaddr_in at = loopbackAt(0);
+    REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&at), sizeof at) == 0);
+    return fd;
+}
 
 std::vector<uint8_t> fixture(const std::string& name)
 {
@@ -70,38 +89,29 @@ void feed(dj::LinkState& state, uint16_t port, const std::vector<uint8_t>& bytes
 
 uint16_t freeUdpPort()
 {
-    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    sockaddr_in at{.sin_len = sizeof(sockaddr_in), .sin_family = AF_INET};
-    at.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&at), sizeof at) == 0);
+    const azl::Socket fd = boundUdp();
+    sockaddr_in at{};
     socklen_t length = sizeof at;
     getsockname(fd, reinterpret_cast<sockaddr*>(&at), &length);
-    close(fd);
+    azl::closeSocket(fd);
     return ntohs(at.sin_port);
 }
 
 dj::Receiver::Options loopback()
 {
-    return {"lo0", "127.0.0.1", {freeUdpPort(), freeUdpPort(), freeUdpPort()}};
+    return {kLoopback, "127.0.0.1", {freeUdpPort(), freeUdpPort(), freeUdpPort()}};
 }
 
 // A test-side device on loopback: it plays the CDJs' part, and hears anything sent back to it.
 struct FakeDeck {
-    FakeDeck()
-    {
-        fd = socket(AF_INET, SOCK_DGRAM, 0);
-        sockaddr_in at{.sin_len = sizeof(sockaddr_in), .sin_family = AF_INET};
-        at.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&at), sizeof at) == 0);
-    }
-    ~FakeDeck() { close(fd); }
+    FakeDeck() : fd(boundUdp()) {}
+    ~FakeDeck() { azl::closeSocket(fd); }
 
     void play(uint16_t port, const std::vector<uint8_t>& bytes) const
     {
-        sockaddr_in to{.sin_len = sizeof(sockaddr_in), .sin_family = AF_INET, .sin_port = htons(port)};
-        to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        REQUIRE(sendto(fd, bytes.data(), bytes.size(), 0, reinterpret_cast<sockaddr*>(&to), sizeof to) ==
-                ssize_t(bytes.size()));
+        const sockaddr_in to = loopbackAt(port);
+        REQUIRE(sendto(fd, reinterpret_cast<const char*>(bytes.data()), int(bytes.size()), 0,
+                       reinterpret_cast<const sockaddr*>(&to), sizeof to) == int(bytes.size()));
     }
 
     // Datagrams that arrive within `ms`.
@@ -110,12 +120,12 @@ struct FakeDeck {
         int count = 0;
         pollfd p{fd, POLLIN, 0};
         uint8_t buffer[2048];
-        while (poll(&p, 1, ms) > 0 && recv(fd, buffer, sizeof buffer, 0) > 0)
+        while (azl::pollSockets(&p, 1, ms) > 0 && azl::receiveSome(fd, buffer, sizeof buffer) > 0)
             ++count;
         return count;
     }
 
-    int fd = -1;
+    azl::Socket fd = azl::kNoSocket;
 };
 
 double steadyNow()
@@ -137,16 +147,8 @@ bool waitFor(Done done, double seconds = 5.0)
 
 std::pair<int, std::string> runCtl(uint16_t port, const std::string& args)
 {
-    const fs::path binary = ctlPath();
-    const std::string command = "'" + binary.string() + "' --port " + std::to_string(port) + " " + args + " 2>&1";
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        out += buffer;
-    const int status = pclose(pipe);
-    return {WEXITSTATUS(status), out};
+    const CtlOutput run = runNocturneCtl(port, args);
+    return {run.code, run.output};
 }
 
 } // namespace
@@ -361,7 +363,8 @@ TEST_CASE("djlink: nothing in the module can send onto the network")
 {
     // The receive-only promise in code: no source in src/djlink calls anything that puts a packet on a socket,
     // connects one, or joins a multicast group.
-    const std::regex sending(R"(\b(send|sendto|sendmsg|sendmsg_x|sendfile|connect|connectx|write|writev|pwrite)\s*\(|)"
+    const std::regex sending(R"(\b(send|sendto|sendmsg|sendmsg_x|sendfile|sendSome|sendAll|connect|connectx|write|)"
+                             R"(writev|pwrite)\s*\(|)"
                              R"(\b(nw_connection_\w+|CFSocket\w*|IP_ADD_MEMBERSHIP|IP_MULTICAST_\w+|SO_BROADCAST)\b)");
     int files = 0;
     for (const auto& entry : fs::directory_iterator(kSource / "src/djlink")) {
@@ -383,7 +386,7 @@ TEST_CASE("djlink: the receiver hears a loopback feed, parses it, and sends noth
     azl::DocumentServer document(azl::defaultComposition(), [](auto) {});
     TempDir dir;
     const dj::Receiver::Options options = loopback();
-    dj::saveSettings(dir.path / "djlink.json", {true, "lo0"});
+    dj::saveSettings(dir.path / "djlink.json", {true, kLoopback});
     dj::Service service(document, steadyNow, dir.path / "djlink.json", options);
     REQUIRE(service.status()["listening"] == true);
 
@@ -441,17 +444,17 @@ TEST_CASE("djlink: the setting is remembered on the machine and set over the pro
         Client b(document);
         a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}});
         CHECK(a.next()["type"] == "error");
-        a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", "lo0"}});
+        a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", kLoopback}});
         const Message changed = b.next();
         CHECK(changed["op"] == "status");
         CHECK(changed["enabled"] == true);
-        CHECK(changed["interface"] == "lo0");
+        CHECK(changed["interface"] == kLoopback);
         CHECK(changed["listening"] == true);
         CHECK(a.next() == changed);
         a.send({{"type", "djlink"}, {"op", "frobnicate"}});
         CHECK(a.next()["type"] == "error");
     }
-    CHECK(dj::loadSettings(file) == dj::Settings{true, "lo0"});
+    CHECK(dj::loadSettings(file) == dj::Settings{true, kLoopback});
     {
         // After a restart it listens again by itself; off keeps the interface for the next on.
         dj::Service service(document, steadyNow, file, options);
@@ -460,11 +463,11 @@ TEST_CASE("djlink: the setting is remembered on the machine and set over the pro
         a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", false}});
         CHECK(a.next()["listening"] == false);
         a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}});
-        CHECK(a.next()["interface"] == "lo0");
+        CHECK(a.next()["interface"] == kLoopback);
         a.send({{"type", "djlink"}, {"op", "set"}, {"enabled", false}});
         a.next();
     }
-    CHECK(dj::loadSettings(file) == dj::Settings{false, "lo0"});
+    CHECK(dj::loadSettings(file) == dj::Settings{false, kLoopback});
 
     // A missing interface is kept and reported, so a USB adapter can be plugged in later.
     dj::Service service(document, steadyNow, {}, options);
@@ -483,20 +486,20 @@ TEST_CASE("djlink: nocturne-ctl turns the DJ link on and off and prints its stat
     azl::WebSocketServer server(harness.document(), 0);
     const uint16_t port = server.port();
 
-    auto [code, out] = runCtl(port, "djlink on lo0");
+    auto [code, out] = runCtl(port, "djlink on " + kLoopback);
     CHECK(code == 0);
     CHECK(out.find("\"listening\":true") != std::string::npos);
-    CHECK(dj::loadSettings(dir.path / "djlink.json") == dj::Settings{true, "lo0"});
+    CHECK(dj::loadSettings(dir.path / "djlink.json") == dj::Settings{true, kLoopback});
     std::tie(code, out) = runCtl(port, "djlink status");
     CHECK(code == 0);
     CHECK(out.find("\"op\":\"status\"") != std::string::npos);
-    CHECK(out.find("\"interface\":\"lo0\"") != std::string::npos);
+    CHECK(out.find("\"interface\":\"" + kLoopback + "\"") != std::string::npos);
     std::tie(code, out) = runCtl(port, "djlink off");
     CHECK(code == 0);
-    CHECK(dj::loadSettings(dir.path / "djlink.json") == dj::Settings{false, "lo0"});
+    CHECK(dj::loadSettings(dir.path / "djlink.json") == dj::Settings{false, kLoopback});
     std::tie(code, out) = runCtl(port, "djlink on");
     CHECK(code == 0);
-    CHECK(service.settings() == dj::Settings{true, "lo0"});
+    CHECK(service.settings() == dj::Settings{true, kLoopback});
     CHECK(runCtl(port, "djlink sideways").first == 2);
     CHECK(runCtl(port, "djlink off en7").first == 2);
 }
@@ -534,7 +537,7 @@ struct DjRig {
                    {.thread = false, .allowed = [this] { return allowed.load(); }})
     {
         Client director(harness.document());
-        director.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", "lo0"}});
+        director.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", kLoopback}});
         REQUIRE(director.next()["listening"] == true);
     }
 
@@ -731,30 +734,53 @@ struct Simulator {
 
     Simulator(const std::array<uint16_t, 3>& ports, const fs::path& scenario)
     {
-        const std::string command = "python3 '" + script().string() + "' --broadcast 127.0.0.1 --quiet --ports " +
-                                    std::to_string(ports[0]) + "," + std::to_string(ports[1]) + "," +
-                                    std::to_string(ports[2]) + " --scenario '" + scenario.string() + "' 2>&1";
-        pipe = popen(command.c_str(), "r");
-        REQUIRE(pipe);
+        const std::optional<azl::PipeEnds> ends = azl::makePipe();
+        REQUIRE(ends);
+        azl::SpawnOptions options{.program = kPython,
+                                  .args = {script().string(), "--broadcast", "127.0.0.1", "--quiet", "--ports",
+                                           std::to_string(ports[0]) + "," + std::to_string(ports[1]) + "," +
+                                               std::to_string(ports[2]),
+                                           "--scenario", scenario.string()},
+                                  .searchPath = true};
+        options.output = azl::Stdio::to(ends->write);
+        options.error = azl::Stdio::to(ends->write);
+        std::string error;
+        process = azl::spawnProcess(options, &error);
+        azl::closeHandle(ends->write);
+        out = ends->read;
+        REQUIRE_MESSAGE(process, error);
     }
     ~Simulator()
     {
-        if (pipe)
-            pclose(pipe);
+        if (process)
+            finish();
     }
     // Waits for the scenario to end; its exit code and output.
     std::pair<int, std::string> finish()
     {
-        std::string out;
+        std::string text;
         char buffer[512];
-        while (fgets(buffer, sizeof buffer, pipe))
-            out += buffer;
-        const int status = pclose(pipe);
-        pipe = nullptr;
-        return {WEXITSTATUS(status), out};
+        for (long n; (n = azl::readHandle(out, buffer, sizeof buffer)) > 0;)
+            text.append(buffer, size_t(n));
+        azl::closeHandle(out);
+        const int code = process->wait();
+        process.reset();
+        return {code, text};
     }
 
-    FILE* pipe = nullptr;
+    // Whether python runs here at all.
+    static bool available()
+    {
+        return runProgram({.program = kPython, .args = {"-c", ""}, .searchPath = true}).code == 0;
+    }
+
+#ifdef _WIN32
+    static constexpr const char* kPython = "python";
+#else
+    static constexpr const char* kPython = "python3";
+#endif
+    std::optional<azl::Process> process;
+    azl::NativeHandle out{};
 };
 
 // The DJ link on over loopback with the clock follower, the harness paced to the wall clock since the simulator plays
@@ -765,7 +791,7 @@ struct LiveRig {
           follower(service, harness.engine(), harness.document(), [this] { return now(); }, {.thread = false})
     {
         Client director(harness.document());
-        director.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", "lo0"}});
+        director.send({{"type", "djlink"}, {"op", "set"}, {"enabled", true}, {"interface", kLoopback}});
         REQUIRE(director.next()["listening"] == true);
     }
 
@@ -855,7 +881,7 @@ constexpr double kSimAligned = 0.06;
 
 TEST_CASE("djlink: the simulator's scenario drives the beat clock: follow, handover without a jump, tempo held on loss")
 {
-    if (!fs::exists(Simulator::script()) || std::system("python3 -c '' > /dev/null 2>&1") != 0) {
+    if (!fs::exists(Simulator::script()) || !Simulator::available()) {
         MESSAGE("skipped: needs the source tree's tools/djlink-sim and python3");
         return;
     }
@@ -937,7 +963,7 @@ Message machineStatus(azl::DocumentServer& document)
 
 TEST_CASE("djlink: the machine status and the per-second line carry a row per player the simulator plays")
 {
-    if (!fs::exists(Simulator::script()) || std::system("python3 -c '' > /dev/null 2>&1") != 0) {
+    if (!fs::exists(Simulator::script()) || !Simulator::available()) {
         MESSAGE("skipped: needs the source tree's tools/djlink-sim and python3");
         return;
     }
@@ -983,7 +1009,7 @@ TEST_CASE("djlink: the machine status and the per-second line carry a row per pl
 
     const std::string line = dj::statusLine(djlink);
     INFO(line);
-    CHECK(line.starts_with("djlink lo0, listening, "));
+    CHECK(line.starts_with("djlink " + kLoopback + ", listening, "));
     CHECK(line.find(", on air 2 at 128.00 BPM, following | player 2 128.00 BPM +0.00% playing beat ") !=
           std::string::npos);
     CHECK(line.find(" on air | player 3 127.50 BPM +2.00% playing beat ") != std::string::npos);

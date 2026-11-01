@@ -1,4 +1,5 @@
 #include "audio/audio_analysis.hpp"
+#include "net/lan.hpp"
 #include "net/websocket.hpp"
 #include "protocol/build_info.hpp"
 #include "techno_loop.hpp"
@@ -137,6 +138,21 @@ TEST_CASE("the strip lists every venue's alerts but the one in view's, and no bu
     CHECK(strip[1].alert.kind == AlertKind::NoAudio);
     CHECK(azl::otherVenueAlerts(entries, "club-c.ts.net", 7401).size() == 3);
     CHECK(azl::otherVenueAlerts({}, "club-c.ts.net", 7400).empty());
+}
+
+TEST_CASE("a venue is the one in view by its machine's short name, and one on this machine is probed over loopback")
+{
+    const azl::Venue tailscale{"club-c", "club-c.tail1234.ts.net", 7400, "tailscale", true};
+    CHECK(azl::showsVenue(tailscale, "Club-C.local", 7400));
+    CHECK_FALSE(azl::showsVenue(tailscale, "Club-C.local", 7401));
+    CHECK_FALSE(azl::showsVenue(tailscale, "club-d.local", 7400));
+    CHECK_FALSE(azl::showsVenue(tailscale, "127.0.0.1", 7400));
+    CHECK(azl::probeHost(tailscale) == tailscale.host);
+
+    const azl::Venue here{"here", azl::bonjourName(), 7400, "bonjour", true};
+    CHECK(azl::showsVenue(here, "127.0.0.1", 7400));
+    CHECK(azl::showsVenue(here, "localhost", 7400));
+    CHECK(azl::probeHost(here) == "127.0.0.1");
 }
 
 TEST_CASE("a Director polling three venue engines: a starved output and silent audio show in the strip, a stopped "

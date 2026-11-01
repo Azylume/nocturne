@@ -152,7 +152,7 @@ void SwitchLog::write(const Switch& s)
     out.flush();
     if (!out) {
         if (!failing_)
-            std::printf("switches: cannot write %s; deck switches go unlogged until it can\n", path.c_str());
+            std::printf("switches: cannot write %s; deck switches go unlogged until it can\n", path.string().c_str());
         failing_ = true;
         return;
     }

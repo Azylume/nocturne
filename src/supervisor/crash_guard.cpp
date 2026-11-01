@@ -1,6 +1,7 @@
 #include "supervisor/crash_guard.hpp"
 
 #include "document/composition_file.hpp"
+#include "platform/process.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -9,15 +10,21 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <fcntl.h>
 #include <fstream>
 #include <iterator>
 #include <mutex>
-#include <pthread.h>
 #include <set>
 #include <thread>
-#include <unistd.h>
 #include <utility>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <werapi.h>
+#else
+#include <fcntl.h>
+#include <pthread.h>
+#include <unistd.h>
+#endif
 
 namespace azl::crash {
 
@@ -36,8 +43,45 @@ State& state()
     return *s;
 }
 
-std::atomic<int> crashFd{-1};
 std::atomic_flag crashRecorded;
+
+#ifdef _WIN32
+const HANDLE kNoCrashFile = INVALID_HANDLE_VALUE;
+std::atomic<HANDLE> crashFile{kNoCrashFile};
+
+uint64_t currentThread()
+{
+    return GetCurrentThreadId();
+}
+
+HANDLE openCrashFile(const std::filesystem::path& path)
+{
+    return path.empty() ? kNoCrashFile
+                        : CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr,
+                                      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+}
+
+void closeCrashFile(HANDLE file)
+{
+    if (file != kNoCrashFile)
+        CloseHandle(file);
+}
+
+void writeCrashFile(const char* text, size_t size)
+{
+    OVERLAPPED start{};
+    DWORD written = 0;
+    WriteFile(crashFile.load(), text, DWORD(size), &written, &start);
+}
+
+[[noreturn]] void killSelf()
+{
+    TerminateProcess(GetCurrentProcess(), 1);
+    std::abort();
+}
+#else
+constexpr int kNoCrashFile = -1;
+std::atomic<int> crashFile{kNoCrashFile};
 
 uint64_t currentThread()
 {
@@ -45,6 +89,29 @@ uint64_t currentThread()
     pthread_threadid_np(nullptr, &thread);
     return thread;
 }
+
+int openCrashFile(const std::filesystem::path& path)
+{
+    return path.empty() ? kNoCrashFile : ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+}
+
+void closeCrashFile(int fd)
+{
+    if (fd != kNoCrashFile)
+        ::close(fd);
+}
+
+void writeCrashFile(const char* text, size_t size)
+{
+    [[maybe_unused]] ssize_t written = ::pwrite(crashFile.load(), text, size, 0);
+}
+
+[[noreturn]] void killSelf()
+{
+    ::kill(getpid(), SIGKILL);
+    std::abort();
+}
+#endif
 
 nlohmann::json markJson(const Mark& m)
 {
@@ -74,6 +141,63 @@ void append(char* text, size_t& n, uint64_t value)
         text[n++] = digits[--count];
 }
 
+#ifdef _WIN32
+// The C signal a structured exception stands for.
+int signalFor(DWORD exception)
+{
+    switch (exception) {
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+    case EXCEPTION_PRIV_INSTRUCTION:
+        return SIGILL;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+    case EXCEPTION_INT_OVERFLOW:
+    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+    case EXCEPTION_FLT_INVALID_OPERATION:
+    case EXCEPTION_FLT_OVERFLOW:
+    case EXCEPTION_FLT_UNDERFLOW:
+    case EXCEPTION_FLT_INEXACT_RESULT:
+    case EXCEPTION_FLT_DENORMAL_OPERAND:
+    case EXCEPTION_FLT_STACK_CHECK:
+        return SIGFPE;
+    default:
+        return SIGSEGV;
+    }
+}
+
+// True when this program is listed under Windows Error Reporting's ExcludedApplications, as the installer lists it.
+bool excludedFromErrorReports()
+{
+    wchar_t path[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    if (length == 0 || length == MAX_PATH)
+        return false;
+    const wchar_t* slash = wcsrchr(path, L'\\');
+    DWORD excluded = 0;
+    DWORD size = sizeof excluded;
+    const wchar_t* key = L"SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting\\ExcludedApplications";
+    return RegGetValueW(HKEY_LOCAL_MACHINE, key, slash ? slash + 1 : path, RRF_RT_REG_DWORD, nullptr, &excluded,
+                        &size) == ERROR_SUCCESS &&
+           excluded != 0;
+}
+
+// The handlers installed before ours, which run after them.
+LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
+void (*previousAbort)(int) = SIG_DFL;
+
+// Runs on the crashing thread; the process then dies of the exception as it would have.
+LONG WINAPI onCrash(EXCEPTION_POINTERS* info)
+{
+    recordCrash(signalFor(info->ExceptionRecord->ExceptionCode));
+    return previousFilter ? previousFilter(info) : EXCEPTION_CONTINUE_SEARCH;
+}
+
+void onAbort(int signal)
+{
+    recordCrash(signal);
+    if (previousAbort != SIG_DFL && previousAbort != SIG_IGN && previousAbort != SIG_ERR)
+        previousAbort(signal);
+}
+#else
 void onCrash(int signal, siginfo_t* info, void*)
 {
     recordCrash(signal);
@@ -83,6 +207,7 @@ void onCrash(int signal, siginfo_t* info, void*)
     if (info->si_code == SI_USER || info->si_code == SI_QUEUE)
         ::raise(signal);
 }
+#endif
 
 nlohmann::json readJson(const std::filesystem::path& path)
 {
@@ -101,7 +226,8 @@ void writeMarks(State& s)
     for (const Mark& m : s.marks)
         marks.push_back(markJson(m));
     try {
-        writeFileAtomically(s.marksFile, nlohmann::json{{"pid", getpid()}, {"marks", marks}}.dump() + "\n", false);
+        writeFileAtomically(s.marksFile, nlohmann::json{{"pid", currentProcessId()}, {"marks", marks}}.dump() + "\n",
+                            false);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "crash marks: %s\n", e.what());
     }
@@ -123,20 +249,17 @@ void injectFault(const Mark& mark)
         recordCrash(SIGSEGV);
     else
         std::thread([] { recordCrash(SIGSEGV); }).join();
-    ::kill(getpid(), SIGKILL);
+    killSelf();
 }
 
 } // namespace
 
 void setup(const std::filesystem::path& marksFile, const std::filesystem::path& skipFile,
-           const std::filesystem::path& crashFile)
+           const std::filesystem::path& crashFileName)
 {
     State& s = state();
     std::lock_guard lock(s.mutex);
-    const int fd = crashFile.empty() ? -1 : ::open(crashFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-    const int old = crashFd.exchange(fd);
-    if (old >= 0)
-        ::close(old);
+    closeCrashFile(crashFile.exchange(openCrashFile(crashFileName)));
     crashRecorded.clear();
     s.marksFile = marksFile;
     s.skips.clear();
@@ -154,8 +277,7 @@ bool skipped(const std::string& kind, const std::string& key)
 
 void recordCrash(int signal)
 {
-    const int fd = crashFd.load();
-    if (fd < 0 || crashRecorded.test_and_set())
+    if (crashFile.load() == kNoCrashFile || crashRecorded.test_and_set())
         return;
     char text[96];
     size_t n = 0;
@@ -164,17 +286,34 @@ void recordCrash(int signal)
     append(text, n, ",\"signal\":");
     append(text, n, uint64_t(signal));
     append(text, n, "}\n");
-    [[maybe_unused]] ssize_t written = ::pwrite(fd, text, n, 0);
+    writeCrashFile(text, n);
 }
 
 void installCrashHandlers()
 {
+#ifdef _WIN32
+    // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it. Windows Error
+    // Reporting runs, without its UI, only for a program it makes no report of, so it just writes the local dump.
+    if (excludedFromErrorReports()) {
+        SetErrorMode(SEM_FAILCRITICALERRORS);
+        WerSetFlags(WER_FAULT_REPORTING_NO_UI);
+    } else {
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    }
+    const LPTOP_LEVEL_EXCEPTION_FILTER filter = SetUnhandledExceptionFilter(onCrash);
+    if (filter != onCrash)
+        previousFilter = filter;
+    const auto abortHandler = std::signal(SIGABRT, onAbort);
+    if (abortHandler != onAbort)
+        previousAbort = abortHandler;
+#else
     struct sigaction action{};
     action.sa_sigaction = onCrash;
     action.sa_flags = SA_SIGINFO | SA_RESETHAND;
     sigemptyset(&action.sa_mask);
     for (int signal : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP})
         sigaction(signal, &action, nullptr);
+#endif
 }
 
 Scope::Scope(std::string kind, std::string key, std::string name)

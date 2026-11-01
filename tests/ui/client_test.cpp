@@ -294,12 +294,15 @@ TEST_CASE("media dropped from this machine is added to the engine's library, and
     Fed fed(true);
     fed.sent.clear();
     std::vector<std::string> added;
-    fed.client.addMedia({"/tmp/a/../clip.mp4"}, [&](const azl::ui::LibraryItem& item) { added.push_back(item.hash); });
+    const std::filesystem::path folder = std::filesystem::temp_directory_path();
+    const std::string clip = (folder / "clip.mp4").lexically_normal().string();
+    fed.client.addMedia({(folder / "a/../clip.mp4").string()},
+                        [&](const azl::ui::LibraryItem& item) { added.push_back(item.hash); });
     REQUIRE(fed.sent.size() == 1);
-    CHECK(fed.sent[0]["path"] == "/tmp/clip.mp4");
+    CHECK(fed.sent[0]["path"] == clip);
     fed.client.receive({{"type", "library"},
                         {"op", "add"},
-                        {"entry", {{"hash", "cccc"}, {"name", "clip.mp4"}, {"path", "/tmp/clip.mp4"}, {"status", "ok"}}}});
+                        {"entry", {{"hash", "cccc"}, {"name", "clip.mp4"}, {"path", clip}, {"status", "ok"}}}});
     CHECK(added == std::vector<std::string>{"cccc"});
     CHECK(fed.client.library().back().hash == "cccc");
 }

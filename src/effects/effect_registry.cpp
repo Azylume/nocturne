@@ -30,7 +30,12 @@ ParamDef options(ParamDef param, std::vector<std::string> names)
     return choice(std::move(param));
 }
 
-const std::vector<std::string> kOffOn{"Off", "On"};
+// A function, not a namespace-scope vector: other files define effects from their static initialisers too.
+const std::vector<std::string>& offOn()
+{
+    static const std::vector<std::string> values{"Off", "On"};
+    return values;
+}
 
 ParamDef in(const ParamUnit& unit, ParamDef param)
 {
@@ -60,14 +65,14 @@ EffectDef transform()
              wrapping(units::degrees, {"rotation", -180.0, 180.0, 0.0})},
             false,
             R"(
-    float2 centre = h.size * 0.5;
-    float2 q = px - centre - float2(p[0], -p[1]) * h.size;
-    if (p[3] != 0.0) {
-        float a = p[3] * (M_PI_F / 180.0);
+    vec2 centre = h.size * 0.5;
+    vec2 q = px - centre - vec2(pb[p + 0], -pb[p + 1]) * h.size;
+    if (pb[p + 3] != 0.0) {
+        float a = pb[p + 3] * (M_PI_F / 180.0);
         float s = sin(a), k = cos(a);
-        q = float2(k * q.x - s * q.y, s * q.x + k * q.y);
+        q = vec2(k * q.x - s * q.y, s * q.x + k * q.y);
     }
-    return q / max(p[2], 1e-4) + centre;
+    return q / max(pb[p + 2], 1e-4) + centre;
 )",
             {}};
 }
@@ -85,12 +90,12 @@ EffectDef colorize()
              percent({"alpha", 0.0, 1.0, 1.0})},
             false,
             R"(
-    if (p[4] == 0.0)
+    if (pb[p + 4] == 0.0)
         return c;
-    float3 tint = saturate(abs(fract(p[0] + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
-    tint = mix(float3(1.0), tint, p[1]) * p[2];
-    float y = dot(c.rgb, float3(0.2126, 0.7152, 0.0722));
-    return float4(mix(c.rgb, mix(y, 1.0 - y, p[3]) * tint, p[4]), c.a);
+    vec3 tint = saturate(abs(fract(pb[p + 0] + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    tint = mix(vec3(1.0), tint, pb[p + 1]) * pb[p + 2];
+    float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+    return vec4(mix(c.rgb, mix(y, 1.0 - y, pb[p + 3]) * tint, pb[p + 4]), c.a);
 )",
             {}};
 }
@@ -103,15 +108,15 @@ EffectDef edgeDetection()
             {in(units::times, {"multiplier", 0.0, 2.0, 0.25})},
             false,
             R"(
-    if (p[0] == 0.0)
-        return float4(0.0, 0.0, 0.0, t.sample(pix, px).a);
-    float3 k[9];
+    if (pb[p + 0] == 0.0)
+        return vec4(0.0, 0.0, 0.0, samplePixel(t, px).a);
+    vec3 k[9];
     for (int j = 0; j < 3; ++j)
         for (int i = 0; i < 3; ++i)
-            k[j * 3 + i] = t.sample(pix, px + float2(i - 1, j - 1)).rgb;
-    float3 gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
-    float3 gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
-    return float4(saturate(sqrt(gx * gx + gy * gy) * p[0]), t.sample(pix, px).a);
+            k[j * 3 + i] = samplePixel(t, px + vec2(i - 1, j - 1)).rgb;
+    vec3 gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
+    vec3 gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
+    return vec4(saturate(sqrt(gx * gx + gy * gy) * pb[p + 0]), samplePixel(t, px).a);
 )",
             {}};
 }
@@ -133,43 +138,44 @@ EffectDef edgeDetection()
 EffectDef stripper()
 {
     const std::string strip = R"(
-    float2 d = float2(cos(a), sin(a));
-    float perPixel = p[0] / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
+    vec2 d = vec2(cos(a), sin(a));
+    float perPixel = pb[p + 0] / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
     float moved = movement == 1 ? 0.5 * sin(2.0 * M_PI_F * phase)
                 : movement == 2 ? floor(phase) + smoothstep(0.0, 0.25, fract(phase)) : phase;
     float s = dot(px - h.size * 0.5, d) * perPixel - moved;
     float slot = floor(s);
     uint n = pcg(uint(int(slot) + seed));
     uint n1 = pcg(uint(int(slot) + seed + 7919));
-    float2 r = mix(float2(float(n & 0xffffu), float(n >> 16u)), float2(float(n1 & 0xffffu), float(n1 >> 16u)), morph) *
+    vec2 r = mix(vec2(float(n & 0xffffu), float(n >> 16u)), vec2(float(n1 & 0xffffu), float(n1 >> 16u)), morph) *
                    (2.0 / 65535.0) - 1.0;
-    float share = mix(p[11], p[12], mix(float((n * 2654435761u) >> 16u), float((n1 * 2654435761u) >> 16u), morph) /
-                                        65535.0) / max(p[12], 1e-4);
+    float share = mix(pb[p + 11], pb[p + 12],
+                      mix(float((n * 2654435761u) >> 16u), float((n1 * 2654435761u) >> 16u), morph) / 65535.0) /
+                  max(pb[p + 12], 1e-4);
     n = morph < 0.5 ? n : n1;
-    float width = saturate(p[4] * share * (1.0 + p[3] * r.y)) * mix(1.0, p[19], p[20]);
-    float shift = r.x * p[3];
-    if (p[18] > 0.0) {
+    float width = saturate(pb[p + 4] * share * (1.0 + pb[p + 3] * r.y)) * mix(1.0, pb[p + 19], pb[p + 20]);
+    float shift = r.x * pb[p + 3];
+    if (pb[p + 18] > 0.0) {
         uint t = uint(tick);
-        float2 j = float2(pcg(n ^ (t * 0x9e3779b9u)) & 0xffffu, pcg(n ^ ((t + 1u) * 0x9e3779b9u)) & 0xffffu);
+        vec2 j = vec2(pcg(n ^ (t * 0x9e3779b9u)) & 0xffffu, pcg(n ^ ((t + 1u) * 0x9e3779b9u)) & 0xffffu);
         j = j * (2.0 / 65535.0) - 1.0;
-        shift = clamp(shift + p[18] * mix(j.x, j.y, smoothstep(0.0, 1.0, fract(tick))), -1.0, 1.0);
+        shift = clamp(shift + pb[p + 18] * mix(j.x, j.y, smoothstep(0.0, 1.0, fract(tick))), -1.0, 1.0);
     }
     float v = s - slot - 0.5 - shift * (1.0 - width) * 0.5;
-    float e = max(p[5] * width * 0.5, 0.5 * perPixel);
+    float e = max(pb[p + 5] * width * 0.5, 0.5 * perPixel);
     float hw = width * (0.5 + 2.0 * e) - e;
 )";
     const std::string live = R"(
-    int movement = int(p[16] + 0.5);
-    float evolve = p[22] + max(floor(p[17]) - 1.0 + smoothstep(0.0, 0.5, fract(p[17])), 0.0);
+    int movement = int(pb[p + 16] + 0.5);
+    float evolve = pb[p + 22] + max(floor(pb[p + 17]) - 1.0 + smoothstep(0.0, 0.5, fract(pb[p + 17])), 0.0);
     int seed = int(evolve) * 7919;
     float morph = smoothstep(0.0, 1.0, fract(evolve));
     float tick = h.time * 8.0;
 )";
     const std::string end = R"(
-    float4 o = mix(float4(p[7], p[8], p[9], p[10]), c, mix(m, 1.0 - m, p[6]));
+    vec4 o = mix(vec4(pb[p + 7], pb[p + 8], pb[p + 9], pb[p + 10]), c, mix(m, 1.0 - m, pb[p + 6]));
     float sum = max(c.a, o.a);
-    float4 added = float4((c.rgb * c.a + o.rgb * o.a) / max(sum, 1e-4), sum);
-    return mix(c, mix(o, added, p[13]), mix(1.0, p[19], p[21]));
+    vec4 added = vec4((c.rgb * c.a + o.rgb * o.a) / max(sum, 1e-4), sum);
+    return mix(c, mix(o, added, pb[p + 13]), mix(1.0, pb[p + 19], pb[p + 21]));
 )";
     return {"stripper",
             StageKind::Pointwise,
@@ -198,34 +204,34 @@ EffectDef stripper()
              {"evolve", 0.0, 4.0, 0.0}},
             false,
             R"(
-    float a = p[1] * (M_PI_F / 180.0);
-    float2 d = float2(cos(a), sin(a));
-    float perPixel = p[0] / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
-    float s = dot(px - h.size * 0.5, d) * perPixel - p[2];
+    float a = pb[p + 1] * (M_PI_F / 180.0);
+    vec2 d = vec2(cos(a), sin(a));
+    float perPixel = pb[p + 0] / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
+    float s = dot(px - h.size * 0.5, d) * perPixel - pb[p + 2];
     float slot = floor(s);
     uint n = pcg(uint(int(slot)));
-    float2 r = float2(float(n & 0xffffu), float(n >> 16u)) * (2.0 / 65535.0) - 1.0;
-    float share = mix(p[11], p[12], float((n * 2654435761u) >> 16u) / 65535.0) / max(p[12], 1e-4);
-    float width = saturate(p[4] * share * (1.0 + p[3] * r.y));
-    float v = s - slot - 0.5 - r.x * p[3] * (1.0 - width) * 0.5;
-    float e = max(p[5] * width * 0.5, 0.5 * perPixel);
+    vec2 r = vec2(float(n & 0xffffu), float(n >> 16u)) * (2.0 / 65535.0) - 1.0;
+    float share = mix(pb[p + 11], pb[p + 12], float((n * 2654435761u) >> 16u) / 65535.0) / max(pb[p + 12], 1e-4);
+    float width = saturate(pb[p + 4] * share * (1.0 + pb[p + 3] * r.y));
+    float v = s - slot - 0.5 - r.x * pb[p + 3] * (1.0 - width) * 0.5;
+    float e = max(pb[p + 5] * width * 0.5, 0.5 * perPixel);
     float hw = width * (0.5 + 2.0 * e) - e;
     float m = 1.0 - smoothstep(hw - e, hw + e, abs(v));
-    float4 o = mix(float4(p[7], p[8], p[9], p[10]), c, mix(m, 1.0 - m, p[6]));
+    vec4 o = mix(vec4(pb[p + 7], pb[p + 8], pb[p + 9], pb[p + 10]), c, mix(m, 1.0 - m, pb[p + 6]));
     float sum = max(c.a, o.a);
-    float4 added = float4((c.rgb * c.a + o.rgb * o.a) / max(sum, 1e-4), sum);
-    return mix(o, added, p[13]);
+    vec4 added = vec4((c.rgb * c.a + o.rgb * o.a) / max(sum, 1e-4), sum);
+    return mix(o, added, pb[p + 13]);
 )",
             {},
             {{"cross",
               {"directionSpread", "speedSpread"},
               live + R"(
-    const float turn[4] = {0.0, -0.5, 1.0, -1.0};
-    const float pace[4] = {0.0, 1.0, -1.0, -0.5};
+    const float turn[4] = float[](0.0, -0.5, 1.0, -1.0);
+    const float pace[4] = float[](0.0, 1.0, -1.0, -0.5);
     float m = 0.0;
     for (int g = 0; g < 4; ++g) {
-    float a = (p[1] + p[14] * turn[g] * 90.0) * (M_PI_F / 180.0);
-    float phase = p[2] + 2.0 * pace[g] * p[15];
+    float a = (pb[p + 1] + pb[p + 14] * turn[g] * 90.0) * (M_PI_F / 180.0);
+    float phase = pb[p + 2] + 2.0 * pace[g] * pb[p + 15];
 )" + strip + R"(
     if (int((n * 0x9e3779b9u) >> 30u) == g)
         m = max(m, 1.0 - smoothstep(hw - e, hw + e, abs(v)));
@@ -234,8 +240,8 @@ EffectDef stripper()
              {"live",
               {"movement", "reshuffle", "jitter", "audioWidth", "audioMix", "evolve"},
               live + R"(
-    float a = p[1] * (M_PI_F / 180.0);
-    float phase = p[2];
+    float a = pb[p + 1] * (M_PI_F / 180.0);
+    float phase = pb[p + 2];
 )" + strip + R"(
     float m = 1.0 - smoothstep(hw - e, hw + e, abs(v));
 )" + end}}};
@@ -263,28 +269,28 @@ EffectDef reveal()
              {"evolve", 0.0, 4.0, 0.0}},
             false,
             R"(
-    float2 g = px / h.size * float2(p[1], p[2]);
-    float2 cell = floor(g);
-    float2 f = g - cell;
-    float2 cellPx = h.size / float2(p[1], p[2]);
-    float2 halfGap = p[3] * 0.5 * min(cellPx.x, cellPx.y) / cellPx;
-    float4 hidden = float4(0.0, 0.0, 0.0, p[7]);
-    if (any(f < halfGap) || any(f > 1.0 - halfGap))
+    vec2 g = px / h.size * vec2(pb[p + 1], pb[p + 2]);
+    vec2 cell = floor(g);
+    vec2 f = g - cell;
+    vec2 cellPx = h.size / vec2(pb[p + 1], pb[p + 2]);
+    vec2 halfGap = pb[p + 3] * 0.5 * min(cellPx.x, cellPx.y) / cellPx;
+    vec4 hidden = vec4(0.0, 0.0, 0.0, pb[p + 7]);
+    if (any(lessThan(f, halfGap)) || any(greaterThan(f, 1.0 - halfGap)))
         return hidden;
-    float evolve = p[8] + max(floor(p[5]) - 1.0 + smoothstep(0.0, 0.5, fract(p[5])), 0.0);
+    float evolve = pb[p + 8] + max(floor(pb[p + 5]) - 1.0 + smoothstep(0.0, 0.5, fract(pb[p + 5])), 0.0);
     float blend = smoothstep(0.0, 1.0, fract(evolve));
-    float soft = max(p[6], 1e-5);
+    float soft = max(pb[p + 6], 1e-5);
     float shown = 0.0;
     for (int i = 0; i < (blend > 0.0 ? 2 : 1); ++i) {
-        float seed = p[4] + floor(evolve) + float(i);
-        uint n = (uint(cell.x) * 73856093u) ^ (uint(cell.y) * 19349663u) ^ (as_type<uint>(seed) * 83492791u);
+        float seed = pb[p + 4] + floor(evolve) + float(i);
+        uint n = (uint(cell.x) * 73856093u) ^ (uint(cell.y) * 19349663u) ^ (floatBitsToUint(seed) * 83492791u);
         n = (n ^ 61u) ^ (n >> 16u);
         n *= 9u;
         n ^= n >> 4u;
         n *= 0x27d4eb2du;
         n ^= n >> 15u;
         float rank = float(n >> 8u) / 16777215.0;
-        shown += smoothstep(rank - soft, rank + soft, p[0]) * (i == 0 ? 1.0 - blend : blend);
+        shown += smoothstep(rank - soft, rank + soft, pb[p + 0]) * (i == 0 ? 1.0 - blend : blend);
     }
     return mix(hidden, c, shown);
 )",
@@ -301,14 +307,14 @@ EffectDef trails()
             {percent({"feedback", 0.0, 1.0, 0.9})},
             true,
             R"(
-    float4 o = a.sample(pix, px);
-    return float4(o.rgb / max(o.a, 1e-4), o.a);
+    vec4 o = samplePixel(a, px);
+    return vec4(o.rgb / max(o.a, 1e-4), o.a);
 )",
             {{1, true, R"(
-    float4 c = INPUT(px);
-    if (p[0] == 0.0)
-        return float4(c.rgb * c.a, c.a);
-    return max(float4(c.rgb * c.a, c.a), prev.sample(pix, px) * perFrame(p[0], h));
+    vec4 c = INPUT(px);
+    if (pb[p + 0] == 0.0)
+        return vec4(c.rgb * c.a, c.a);
+    return max(vec4(c.rgb * c.a, c.a), samplePixel(prev, px) * perFrame(pb[p + 0], h));
 )"}}};
 }
 
@@ -317,94 +323,94 @@ EffectDef trails()
 constexpr const char* kStyleGlobals = R"(
 #ifndef NOCTURNE_STYLES
 #define NOCTURNE_STYLES
-constant uint kStyleGlyphs[26] = {
+const uint kStyleGlyphs[26] = uint[](
     0xe8fe31u, 0x1e8fa3eu, 0xf8420fu, 0x1e8c63eu, 0x1f87a1fu, 0x1f87a10u, 0xf84e2fu, 0x118fe31u, 0x1f2109fu,
     0x710a4cu, 0x12a6292u, 0x108421fu, 0x11dd631u, 0x11cd671u, 0xe8c62eu, 0x1e8fa10u, 0xe8d64du, 0x1e8fa51u,
-    0xf8383eu, 0x1f21084u, 0x118c62eu, 0x118c544u, 0x118d771u, 0x1151151u, 0x1151084u, 0x1f1111fu};
+    0xf8383eu, 0x1f21084u, 0x118c62eu, 0x118c544u, 0x118d771u, 0x1151151u, 0x1151084u, 0x1f1111fu);
 
-constant float3 kStyleThermal[6] = {float3(0.0, 0.0, 0.1), float3(0.15, 0.1, 0.9), float3(0.85, 0.1, 0.75),
-                                    float3(1.0, 0.15, 0.1), float3(1.0, 0.85, 0.1), float3(1.0)};
+const vec3 kStyleThermal[6] = vec3[](vec3(0.0, 0.0, 0.1), vec3(0.15, 0.1, 0.9), vec3(0.85, 0.1, 0.75),
+                                     vec3(1.0, 0.15, 0.1), vec3(1.0, 0.85, 0.1), vec3(1.0));
 
-float styleLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+float styleLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
-float3 styleAccent(float hue) { return saturate(abs(fract(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0); }
+vec3 styleAccent(float hue) { return saturate(abs(fract(hue + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0); }
 
-float3 styleRamp(float y, float3 accent)
+vec3 styleRamp(float y, vec3 accent)
 {
-    return y < 0.5 ? accent * (y * 2.0) : mix(accent, float3(1.0), y * 2.0 - 1.0);
+    return y < 0.5 ? accent * (y * 2.0) : mix(accent, vec3(1.0), y * 2.0 - 1.0);
 }
 
-float styleSobel(texture2d<float> t, float2 px, float s)
+float styleSobel(texture2D t, vec2 px, float s)
 {
     float k[9];
     for (int j = 0; j < 3; ++j)
         for (int i = 0; i < 3; ++i)
-            k[j * 3 + i] = styleLuma(t.sample(pix, px + 0.5 + float2(i - 1, j - 1) * s).rgb);
+            k[j * 3 + i] = styleLuma(samplePixel(t, px + 0.5 + vec2(i - 1, j - 1) * s).rgb);
     float gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
     float gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
     return sqrt(gx * gx + gy * gy);
 }
 
-float3 styleThermal(float y, float3 accent, float colour)
+vec3 styleThermal(float y, vec3 accent, float colour)
 {
     float x = saturate(y) * 5.0;
     int i = min(int(x), 4);
     return mix(styleRamp(y, accent), mix(kStyleThermal[i], kStyleThermal[i + 1], x - float(i)), colour);
 }
 
-float3 styleGrain(float2 px, float y, float time)
+vec3 styleGrain(vec2 px, float y, float time)
 {
     uint n = pcg(uint(px.x) * 1973u + uint(px.y) * 9277u + uint(time * 24.0) * 26699u);
-    return float3(float(n >> 8u) / 16777215.0 < smoothstep(0.05, 0.6, y) ? 1.0 : 0.0);
+    return vec3(float(n >> 8u) / 16777215.0 < smoothstep(0.05, 0.6, y) ? 1.0 : 0.0);
 }
 
-float3 styleLetters(texture2d<float> t, float2 px, float rows, float time, float2 size)
+vec3 styleLetters(texture2D t, vec2 px, float rows, float time, vec2 size)
 {
     float g = max(6.0, floor(size.y / rows));
-    float2 cell = floor(px / g);
-    float yc = styleLuma(t.sample(pix, (cell + 0.5) * g).rgb);
-    int2 b = int2(floor((px - cell * g) / g * 7.0)) - 1;
-    if (yc < 0.12 || any(b < 0) || any(b > 4))
-        return float3(0.0);
+    vec2 cell = floor(px / g);
+    float yc = styleLuma(samplePixel(t, (cell + 0.5) * g).rgb);
+    ivec2 b = ivec2(floor((px - cell * g) / g * 7.0)) - 1;
+    if (yc < 0.12 || any(lessThan(b, ivec2(0))) || any(greaterThan(b, ivec2(4))))
+        return vec3(0.0);
     uint ch = pcg(uint(cell.x) * 0x8da6b343u ^ uint(cell.y) * 0xd8163841u ^ uint(time * 6.0) * 0xcb1ab31fu) % 26u;
     bool on = ((kStyleGlyphs[ch] >> uint(24 - b.y * 5 - b.x)) & 1u) != 0u;
-    return on ? float3(smoothstep(0.12, 0.5, yc)) : float3(0.0);
+    return on ? vec3(smoothstep(0.12, 0.5, yc)) : vec3(0.0);
 }
 
-float3 styleInvert(float4 c, float colour)
+vec3 styleInvert(vec4 c, float colour)
 {
-    return mix(float3(1.0 - styleLuma(c.rgb)), 1.0 - c.rgb, colour);
+    return mix(vec3(1.0 - styleLuma(c.rgb)), 1.0 - c.rgb, colour);
 }
 
-float3 styleDots(texture2d<float> t, float2 px, float rows, float3 ink, float2 size)
+vec3 styleDots(texture2D t, vec2 px, float rows, vec3 ink, vec2 size)
 {
     float g = max(4.0, floor(size.y / rows));
-    float2 centre = (floor(px / g) + 0.5) * g;
-    float r = sqrt(saturate(styleLuma(t.sample(pix, centre).rgb) * 1.5)) * 0.5 * g;
+    vec2 centre = (floor(px / g) + 0.5) * g;
+    float r = sqrt(saturate(styleLuma(samplePixel(t, centre).rgb) * 1.5)) * 0.5 * g;
     return ink * saturate(r - length(px - centre) + 0.5);
 }
 
-float3 styleEdges(texture2d<float> t, float2 px, float3 accent, float2 size)
+vec3 styleEdges(texture2D t, vec2 px, vec3 accent, vec2 size)
 {
-    return mix(accent, float3(1.0), 0.35) * saturate((styleSobel(t, px, max(1.0, size.y / 540.0)) - 0.1) * 3.0);
+    return mix(accent, vec3(1.0), 0.35) * saturate((styleSobel(t, px, max(1.0, size.y / 540.0)) - 0.1) * 3.0);
 }
 
-float3 styleDuotone(float y, float3 accent)
+vec3 styleDuotone(float y, vec3 accent)
 {
-    return mix(accent * 0.3, float3(1.0), smoothstep(0.2, 0.8, y));
+    return mix(accent * 0.3, vec3(1.0), smoothstep(0.2, 0.8, y));
 }
 
-float3 styleOutline(texture2d<float> t, float2 px, float3 accent, float2 size)
+vec3 styleOutline(texture2D t, vec2 px, vec3 accent, vec2 size)
 {
     float r = max(3.0, size.y / 240.0);
-    float lit = smoothstep(0.25, 0.35, styleLuma(t.sample(pix, px + 0.5).rgb));
+    float lit = smoothstep(0.25, 0.35, styleLuma(samplePixel(t, px + 0.5).rgb));
     float hit = 0.0;
     for (int k = 0; k < 8; ++k) {
         float a = float(k) * (M_PI_F / 4.0);
-        float2 q = px + 0.5 + r * float2(cos(a), sin(a));
-        hit = max(hit, abs(smoothstep(0.25, 0.35, styleLuma(t.sample(pix, q).rgb)) - lit));
+        vec2 q = px + 0.5 + r * vec2(cos(a), sin(a));
+        hit = max(hit, abs(smoothstep(0.25, 0.35, styleLuma(samplePixel(t, q).rgb)) - lit));
     }
-    return mix(accent, float3(1.0), 0.15) * hit;
+    return mix(accent, vec3(1.0), 0.15) * hit;
 }
 #endif
 )";
@@ -413,7 +419,7 @@ constexpr const char* kSlicerGlobals = R"(
 float slicerRand(uint a, uint b) { return float(pcg(a * 0x9e3779b9u ^ pcg(b)) >> 8u) / 16777215.0; }
 
 // The slot of u (0..1) among n slots of random widths, and its distance to the nearest cut between two slots.
-float2 slicerSlot(float u, int n, uint base, uint tick, float spread, float glide)
+vec2 slicerSlot(float u, int n, uint base, uint tick, float spread, float glide)
 {
     float w[17];
     float total = 0.0;
@@ -426,14 +432,14 @@ float2 slicerSlot(float u, int n, uint base, uint tick, float spread, float glid
     for (int i = 0; i < n; ++i) {
         float end = at + w[i] / total;
         if (u < end || i == n - 1)
-            return float2(float(i), min(i > 0 ? u - at : 1e4, i < n - 1 ? end - u : 1e4));
+            return vec2(float(i), min(i > 0 ? u - at : 1e4, i < n - 1 ? end - u : 1e4));
         at = end;
     }
-    return float2(0.0, 1e4);
+    return vec2(0.0, 1e4);
 }
 
-float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 accent, float colour, float pick,
-                   float time, float2 size)
+vec3 slicerStyle(int style, texture2D t, vec2 px, vec4 c, vec3 accent, float colour, float pick,
+                   float time, vec2 size)
 {
     float y = styleLuma(c.rgb);
     switch (style) {
@@ -441,11 +447,11 @@ float3 slicerStyle(int style, texture2d<float> t, float2 px, float4 c, float3 ac
     case 2: return styleGrain(px, y, time);
     case 3: return styleLetters(t, px, 45.0, time, size);
     case 4: return styleInvert(c, colour);
-    case 5: return styleDots(t, px, 70.0, pick < 0.5 ? float3(1.0) : accent, size);
+    case 5: return styleDots(t, px, 70.0, pick < 0.5 ? vec3(1.0) : accent, size);
     case 6: return styleEdges(t, px, accent, size);
     case 7: return styleDuotone(y, accent);
     case 8: return styleOutline(t, px, accent, size);
-    case 9: return pick < 0.5 ? float3(1.0) : accent;
+    case 9: return pick < 0.5 ? vec3(1.0) : accent;
     default: return c.rgb;
     }
 }
@@ -698,7 +704,7 @@ void slicerDerive(const float* p, const float*, float, float beat, float* out)
 
 ParamDef style(std::string name, double on = 1.0)
 {
-    ParamDef param = options({std::move(name), 0.0, 1.0, on}, kOffOn);
+    ParamDef param = options({std::move(name), 0.0, 1.0, on}, offOn());
     param.group = "Styles";
     return param;
 }
@@ -744,30 +750,30 @@ EffectDef slicer()
                    in(units::whole, options({"movement", 0.0, 3.0, 3.0}, {"Still", "Slide", "Bounce", "Drift"})),
                    in(units::perSecond, {"speed", -2.0, 2.0, 0.1, ParamDrive::Phase}),
                    percent({"size", 0.05, 0.6, 0.25}),
-                   options({"corners", 0.0, 1.0, 0.0}, kOffOn),
-                   options({"links", 0.0, 1.0, 1.0}, kOffOn)},
+                   options({"corners", 0.0, 1.0, 0.0}, offOn()),
+                   options({"links", 0.0, 1.0, 1.0}, offOn())},
                   false,
                   R"(
-    float4 c = t.sample(pix, px);
-    int direction = int(p[1] + 0.5);
-    int animation = int(p[2] + 0.5);
-    int rate = int(p[3] + 0.5);
+    vec4 c = samplePixel(t, px);
+    int direction = int(pb[p + 1] + 0.5);
+    int animation = int(pb[p + 2] + 0.5);
+    int rate = int(pb[p + 3] + 0.5);
     float clock = animation == 0 || rate == 0 ? 0.0 : max(h.beat, 0.0) / exp2(float(rate - 3));
     uint tick = uint(floor(clock));
     float glide = animation == 2 ? smoothstep(0.0, 1.0, fract(clock)) : 0.0;
-    uint seed = pcg(uint(p[5]) + 1u);
-    float width = floor(p[6] + 0.5);
+    uint seed = pcg(uint(pb[p + 5]) + 1u);
+    float width = floor(pb[p + 6] + 0.5);
     int cell = -1;
     float line = 0.0;
     if (direction >= 4) {
-        int n = clamp(int(p[0]), 1, 32);
-        constant float* shape = q + )" + shapes + R"(;
+        int n = clamp(int(pb[p + 0]), 1, 32);
+        int shape = q + )" + shapes + R"(;
         if (direction == 5) {
             float d1 = 1e9, d2 = 1e9;
-            float2 s1 = 0.0, s2 = 0.0;
+            vec2 s1 = vec2(0.0), s2 = vec2(0.0);
             for (int i = 0; i < n; ++i) {
-                float2 s = float2(shape[4 * i], shape[4 * i + 1]) * h.size;
-                float d = distance_squared(px, s);
+                vec2 s = vec2(pb[shape + 4 * i], pb[shape + 4 * i + 1]) * h.size;
+                float d = distanceSquared(px, s);
                 if (d < d1) {
                     d2 = d1;
                     s2 = s1;
@@ -783,57 +789,59 @@ EffectDef slicer()
             line = float(edge < width * 0.5);
         } else {
             for (int i = 0; i < n; ++i) {
-                constant float* b = shape + 4 * i;
-                float2 extent = float2(b[2], b[3]) * h.size.y;
-                float2 inner = extent - abs(px - float2(b[0], b[1]) * h.size);
+                int b = shape + 4 * i;
+                vec2 extent = vec2(pb[b + 2], pb[b + 3]) * h.size.y;
+                vec2 inner = extent - abs(px - vec2(pb[b + 0], pb[b + 1]) * h.size);
                 if (inner.x <= 0.0 || inner.y <= 0.0)
                     continue;
                 cell = i;
                 float corner = 0.25 * min(extent.x, extent.y);
-                bool frame = p[22] > 0.5 ? (inner.x < width && inner.y < corner) || (inner.y < width && inner.x < corner)
-                                         : min(inner.x, inner.y) < width;
+                bool frame = pb[p + 22] > 0.5
+                                 ? (inner.x < width && inner.y < corner) || (inner.y < width && inner.x < corner)
+                                 : min(inner.x, inner.y) < width;
                 line = float(frame);
             }
-            if (p[23] > 0.5)
+            if (pb[p + 23] > 0.5)
                 for (int i = 0; i < n; ++i) {
-                    float2 a = float2(shape[4 * i], shape[4 * i + 1]) * h.size;
+                    vec2 a = vec2(pb[shape + 4 * i], pb[shape + 4 * i + 1]) * h.size;
                     line = max(line, saturate(width * 1.5 + 2.0 - length(px - a)));
                     for (int k = 0; k < 2; ++k) {
-                        int j = int(q[)" + links + R"( + 2 * i + k]);
+                        int j = int(pb[q + )" + links + R"( + 2 * i + k]);
                         if (j < 0)
                             continue;
-                        float2 e = float2(shape[4 * j], shape[4 * j + 1]) * h.size - a, w = px - a;
-                        float2 x = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-3));
+                        vec2 e = vec2(pb[shape + 4 * j], pb[shape + 4 * j + 1]) * h.size - a, w = px - a;
+                        vec2 x = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-3));
                         line = max(line, saturate(width * 0.5 + 0.5 - length(x)));
                     }
                 }
         }
     } else if (direction == 3) {
-        int n = clamp(int(p[0]), 1, 16);
-        float2 d = px - h.size * 0.5;
+        int n = clamp(int(pb[p + 0]), 1, 16);
+        vec2 d = px - h.size * 0.5;
         float rmax = length(h.size * 0.5);
-        float2 ring = slicerSlot(length(d) / rmax, n, seed, tick, p[4], glide);
+        vec2 ring = slicerSlot(length(d) / rmax, n, seed, tick, pb[p + 4], glide);
         uint r = uint(ring.x);
         float offset = mix(slicerRand(seed ^ r, tick), slicerRand(seed ^ r, tick + 1u), glide);
-        float turn = fract(atan2(d.y, d.x) / (2.0 * M_PI_F) + 0.5 + offset);
-        float2 spoke = slicerSlot(turn, n + 2, seed ^ (r * 0x632be5abu + 7u), tick, p[4], glide);
+        float turn = fract(atan(d.y, d.x) / (2.0 * M_PI_F) + 0.5 + offset);
+        vec2 spoke = slicerSlot(turn, n + 2, seed ^ (r * 0x632be5abu + 7u), tick, pb[p + 4], glide);
         cell = int(r) * 18 + int(spoke.x);
         float edge = min(ring.y * rmax, min(spoke.y, min(turn, 1.0 - turn)) * 2.0 * M_PI_F * length(d));
         line = saturate(width * 0.5 + 0.5 - edge);
     } else {
-        int n = clamp(int(p[0]), 1, 16);
-        float2 uv = px / h.size;
-        float2 x = direction != 1 ? slicerSlot(uv.x, n + 1, seed, tick, p[4], glide) : float2(0.0, 1e4);
-        float2 y = direction != 0 ? slicerSlot(uv.y, direction == 1 ? n + 1 : n, seed ^ (uint(x.x) * 0x632be5abu + 0x2fu),
-                                               tick, p[4], glide)
-                                  : float2(0.0, 1e4);
+        int n = clamp(int(pb[p + 0]), 1, 16);
+        vec2 uv = px / h.size;
+        vec2 x = direction != 1 ? slicerSlot(uv.x, n + 1, seed, tick, pb[p + 4], glide) : vec2(0.0, 1e4);
+        vec2 y = direction != 0 ? slicerSlot(uv.y, direction == 1 ? n + 1 : n, seed ^ (uint(x.x) * 0x632be5abu + 0x2fu),
+                                               tick, pb[p + 4], glide)
+                                  : vec2(0.0, 1e4);
         cell = int(x.x) * 16 + int(y.x);
         line = float(min(x.y * h.size.x, y.y * h.size.y) < width * 0.5);
     }
-    int style = cell < 0 ? 0 : int((uint(q[cell / 6]) >> (4u * uint(cell % 6))) & 15u);
+    int style = cell < 0 ? 0 : int((uint(pb[q + cell / 6]) >> (4u * uint(cell % 6))) & 15u);
     uint key = seed + uint(max(cell, 0)) * 0x9e3779b9u;
-    float3 o = slicerStyle(style, t, px, c, styleAccent(p[7]), p[8], slicerRand(key, tick * 3u + 3u), h.time, h.size);
-    return float4(mix(o, float3(1.0), line), max(c.a, line));
+    vec3 o = slicerStyle(style, t, px, c, styleAccent(pb[p + 7]), pb[p + 8], slicerRand(key, tick * 3u + 3u), h.time,
+                         h.size);
+    return vec4(mix(o, vec3(1.0), line), max(c.a, line));
 )",
                   {}};
     def.globals = std::string(kStyleGlobals) + kSlicerGlobals;
@@ -842,9 +850,9 @@ EffectDef slicer()
     return def;
 }
 
-EffectDef styleEffect(std::string type, StageKind kind, std::vector<ParamDef> params, std::string metal)
+EffectDef styleEffect(std::string type, StageKind kind, std::vector<ParamDef> params, std::string glsl)
 {
-    EffectDef def{std::move(type), kind, std::move(params), false, std::move(metal), {}};
+    EffectDef def{std::move(type), kind, std::move(params), false, std::move(glsl), {}};
     def.globals = kStyleGlobals;
     return def;
 }
@@ -855,7 +863,7 @@ EffectDef thermal()
 {
     return styleEffect("thermal", StageKind::Pointwise,
                        {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}), percent({"colour", 0.0, 1.0, 1.0})}, R"(
-    return float4(styleThermal(styleLuma(c.rgb), styleAccent(p[0]), p[1]), c.a);
+    return vec4(styleThermal(styleLuma(c.rgb), styleAccent(pb[p + 0]), pb[p + 1]), c.a);
 )");
 }
 
@@ -863,7 +871,7 @@ EffectDef thermal()
 EffectDef grain()
 {
     return styleEffect("grain", StageKind::Pointwise, {}, R"(
-    return float4(styleGrain(px, styleLuma(c.rgb), h.time), c.a);
+    return vec4(styleGrain(px, styleLuma(c.rgb), h.time), c.a);
 )");
 }
 
@@ -872,7 +880,7 @@ EffectDef grain()
 EffectDef letters()
 {
     return styleEffect("letters", StageKind::Neighbourhood, {in(kRows, {"rows", 10.0, 120.0, 45.0})}, R"(
-    return float4(styleLetters(t, px, p[0], h.time, h.size), t.sample(pix, px).a);
+    return vec4(styleLetters(t, px, pb[p + 0], h.time, h.size), samplePixel(t, px).a);
 )");
 }
 
@@ -884,7 +892,8 @@ EffectDef dots()
                        {in(kRows, {"rows", 20.0, 200.0, 70.0}), wrapping(units::turns, {"hue", 0.0, 1.0, 0.7}),
                         percent({"tint", 0.0, 1.0, 0.0})},
                        R"(
-    return float4(styleDots(t, px, p[0], mix(float3(1.0), styleAccent(p[1]), p[2]), h.size), t.sample(pix, px).a);
+    return vec4(styleDots(t, px, pb[p + 0], mix(vec3(1.0), styleAccent(pb[p + 1]), pb[p + 2]), h.size),
+                samplePixel(t, px).a);
 )");
 }
 
@@ -892,7 +901,7 @@ EffectDef dots()
 EffectDef duotone()
 {
     return styleEffect("duotone", StageKind::Pointwise, {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7})}, R"(
-    return float4(styleDuotone(styleLuma(c.rgb), styleAccent(p[0])), c.a);
+    return vec4(styleDuotone(styleLuma(c.rgb), styleAccent(pb[p + 0])), c.a);
 )");
 }
 
@@ -900,7 +909,7 @@ EffectDef duotone()
 EffectDef outline()
 {
     return styleEffect("outline", StageKind::Neighbourhood, {wrapping(units::turns, {"hue", 0.0, 1.0, 0.7})}, R"(
-    return float4(styleOutline(t, px, styleAccent(p[0]), h.size), t.sample(pix, px).a);
+    return vec4(styleOutline(t, px, styleAccent(pb[p + 0]), h.size), samplePixel(t, px).a);
 )");
 }
 
@@ -932,9 +941,9 @@ ParamDef shortened(std::string label, ParamDef param)
 std::string addMixer(int blendMode, int opacity)
 {
     const std::string b = std::to_string(blendMode), m = std::to_string(opacity);
-    return "    if (p[" + b + "] < 0.5)\n        return o;\n    float w = max(p[" + m + "], 1e-4);\n"
-           "    float3 faded = c.rgb * min(1.0, 2.0 - 2.0 * w) + o.rgb * min(1.0, 2.0 * w);\n"
-           "    return float4(c.rgb + (faded - c.rgb) / w, o.a);\n";
+    return "    if (pb[p + " + b + "] < 0.5)\n        return o;\n    float w = max(pb[p + " + m + "], 1e-4);\n"
+           "    vec3 faded = c.rgb * min(1.0, 2.0 - 2.0 * w) + o.rgb * min(1.0, 2.0 * w);\n"
+           "    return vec4(c.rgb + (faded - c.rgb) / w, o.a);\n";
 }
 
 constexpr int kClassicStrips = 10;
@@ -947,13 +956,13 @@ uint32_t pcg(uint32_t n)
     return (n >> 22u) ^ n;
 }
 
-// A Metal array of f(i) for each strip i.
+// A GLSL array of f(i) for each strip i.
 std::string hashTable(const char* name, uint32_t (*f)(uint32_t))
 {
-    std::string out = "    const uint " + std::string(name) + "[" + std::to_string(kClassicStrips) + "] = {";
+    std::string out = "    const uint " + std::string(name) + "[" + std::to_string(kClassicStrips) + "] = uint[](";
     for (uint32_t i = 0; i < kClassicStrips; ++i)
         out += (i ? ", " : "") + std::to_string(f(i)) + "u";
-    return out + "};\n";
+    return out + ");\n";
 }
 
 uint32_t stripHash(uint32_t i)
@@ -986,34 +995,34 @@ int classicMovement(float value)
 std::string classicStrips(const std::string& perStrip)
 {
     return std::string(R"(
-    int mode = min(int(p[1] * 6.0 + 0.5), 6);
-    int movement = p[4] >= 0.8 ? 2 : min(int(p[4] * 2.0 + 0.5), 1);
-    int count = min(int(p[0] * 10.0 + 1e-4), 10);
-    const float turn[4] = {0.0, -0.5, 1.0, -1.0};
-    const float pace[4] = {0.0, 1.0, -1.0, -0.5};
+    int mode = min(int(pb[p + 1] * 6.0 + 0.5), 6);
+    int movement = pb[p + 4] >= 0.8 ? 2 : min(int(pb[p + 4] * 2.0 + 0.5), 1);
+    int count = min(int(pb[p + 0] * 10.0 + 1e-4), 10);
+    const float turn[4] = float[](0.0, -0.5, 1.0, -1.0);
+    const float pace[4] = float[](0.0, 1.0, -1.0, -0.5);
 )") + hashTable("stripHash", stripHash) + hashTable("stripWidth", stripWidthHash) + R"(
-    float2 uv = float2(px.x / h.size.x - 0.5, 0.5 - px.y / h.size.y) * 2.0;
-    uint draw = uint(q[2]);
-    float wrap = q[1];
+    vec2 uv = vec2(px.x / h.size.x - 0.5, 0.5 - px.y / h.size.y) * 2.0;
+    uint draw = uint(pb[q + 2]);
+    float wrap = pb[q + 1];
     float e = 0.5 / h.size.x;
-    int turns = p[3] == 0.0 ? 1 : 4;
-    float2 dirs[4];
+    int turns = pb[p + 3] == 0.0 ? 1 : 4;
+    vec2 dirs[4];
     for (int g = 0; g < turns; ++g) {
-        float a = (p[2] + p[3] * turn[g] * 0.25) * 2.0 * M_PI_F;
-        dirs[g] = float2(cos(a), sin(a));
+        float a = (pb[p + 2] + pb[p + 3] * turn[g] * 0.25) * 2.0 * M_PI_F;
+        dirs[g] = vec2(cos(a), sin(a));
     }
     float m = 0.0;
     for (int i = 0; i < count; ++i) {
         uint n = stripHash[i];
-        float2 d = dirs[i & (turns - 1)];
-        float centre = float(n & 0xffffu) / 32767.5 - 1.0 + (p[5] + 2.0 * pace[i & 3] * p[6]) * 17.5;
+        vec2 d = dirs[i & (turns - 1)];
+        float centre = float(n & 0xffffu) / 32767.5 - 1.0 + (pb[p + 5] + 2.0 * pace[i & 3] * pb[p + 6]) * 17.5;
         if (movement == 1)
             centre = 1.0 - abs(fract(centre * 0.25 + 0.25) * 4.0 - 2.0);
         centre = movement == 2 ? float(pcg(n ^ (draw * 0x9e3779b9u)) & 0xffffu) / 65535.0 * 3.0 - 1.5
                                : fract(centre * 0.5 + 0.5) * 2.0 - 1.0;
         float s = dot(uv, d) - centre;
         s -= wrap * round(s * wrap * 0.25);
-        float width = 6.0 * p[7] * mix(p[8], p[9], float(stripWidth[i]) / 65535.0);
+        float width = 6.0 * pb[p + 7] * mix(pb[p + 8], pb[p + 9], float(stripWidth[i]) / 65535.0);
         float off = abs(s);
         float k = off <= width * 0.5 - e ? 1.0
                 : off >= width * 0.5 + 2.0 * e ? 0.0
@@ -1059,19 +1068,19 @@ void classicStripperStrips(const float* p, const float* rates, float time, float
 
 // The plain Classic Stripper's mask from the strips the CPU worked out (q).
 constexpr const char* kClassicStripMask = R"(
-    int count = int(q[0]);
-    float wrap = q[1];
-    float2 uv = float2(px.x / h.size.x - 0.5, 0.5 - px.y / h.size.y) * 2.0;
+    int count = int(pb[q + 0]);
+    float wrap = pb[q + 1];
+    vec2 uv = vec2(px.x / h.size.x - 0.5, 0.5 - px.y / h.size.y) * 2.0;
     float e = 0.5 / h.size.x;
     float m = 0.0;
     for (int i = 0; i < count; ++i) {
-        constant float* strip = q + 3 + 4 * i;
-        float s = dot(uv, float2(strip[0], strip[1])) - strip[2];
+        int strip = q + 3 + 4 * i;
+        float s = dot(uv, vec2(pb[strip + 0], pb[strip + 1])) - pb[strip + 2];
         s -= wrap * round(s * wrap * 0.25);
         float off = abs(s);
-        float k = off <= strip[3] - e ? 1.0
-                : off >= strip[3] + 2.0 * e ? 0.0
-                : 1.0 - smoothstep(strip[3] - e, strip[3] + e, off);
+        float k = off <= pb[strip + 3] - e ? 1.0
+                : off >= pb[strip + 3] + 2.0 * e ? 0.0
+                : 1.0 - smoothstep(pb[strip + 3] - e, pb[strip + 3] + e, off);
         m = max(m, k);
         if (m >= 1.0)
             break;
@@ -1117,11 +1126,13 @@ bool classicStripperBlackOutside(const float* p)
 EffectDef classicStripper()
 {
     const std::string pointwise = R"(
-    float4 fill = mode == 5 ? float4(1.0 - c.rgb, c.a) : mode == 6 ? c : float4(p[11], p[12], p[13], p[14]);
-    float4 inside = mode == 6 ? float4((c.gbg + (1.0 - c.a) * c.rgb) / (2.0 - c.a), c.a * (2.0 - c.a)) : c;
+    vec4 fill = mode == 5 ? vec4(1.0 - c.rgb, c.a)
+              : mode == 6 ? c
+                          : vec4(pb[p + 11], pb[p + 12], pb[p + 13], pb[p + 14]);
+    vec4 inside = mode == 6 ? vec4((c.gbg + (1.0 - c.a) * c.rgb) / (2.0 - c.a), c.a * (2.0 - c.a)) : c;
     if (mode == 2 || mode == 5)
         m = 1.0 - m;
-    float4 o = mix(fill, inside, m);
+    vec4 o = mix(fill, inside, m);
 )";
     EffectDef def{"classicStripper",
             StageKind::Pointwise,
@@ -1144,17 +1155,17 @@ EffectDef classicStripper()
              classic("alpha", "Alpha", 1.0),
              options(classic("blendMode", "Blend Mode", 0.0), {"Alpha", "Add"})},
             false,
-            "\n    int mode = min(int(p[1] * 6.0 + 0.5), 6);" + pointwise + addMixer(15, 16),
+            "\n    int mode = min(int(pb[p + 1] * 6.0 + 0.5), 6);" + pointwise + addMixer(15, 16),
             {},
             {{"resample", {"mode"}, R"(
-    float4 c = t.sample(pix, px);
-    float4 sum = 0.0;
+    vec4 c = samplePixel(t, px);
+    vec4 sum = vec4(0.0);
 )" + classicStrips(R"(
         if (k > 0.0) {
             float shift = mode == 4 ? float(pcg(n ^ 0x5bd1e995u) & 0xffffu) / 32767.5 - 1.0 : 0.0;
-            float2 at = float2(s / 3.0 + shift, dot(uv, float2(-d.y, d.x)) * 0.5);
-            float4 x = t.sample(pix, (at * float2(0.5, -0.5) + 0.5) * h.size);
-            sum += k * float4(x.rgb * x.a, x.a);
+            vec2 at = vec2(s / 3.0 + shift, dot(uv, vec2(-d.y, d.x)) * 0.5);
+            vec4 x = samplePixel(t, (at * vec2(0.5, -0.5) + 0.5) * h.size);
+            sum += k * vec4(x.rgb * x.a, x.a);
         }
 )") + pointwise + R"(
     if (mode == 3 || mode == 4) {
@@ -1191,33 +1202,33 @@ EffectDef classicColorize()
              classic("colorBlue", "Color Blue", 0.0),
              classic("colorAlpha", "Color Alpha", 1.0),
              options(classic("mode", "Mode", 0.0), {"Color", "Palette"}),
-             options(classic("weighted", "Weighted", 1.0), kOffOn),
-             options(classic("greysKeep", "Keep", 0.0), kOffOn),
+             options(classic("weighted", "Weighted", 1.0), offOn()),
+             options(classic("greysKeep", "Keep", 0.0), offOn()),
              classic("greysTolerance", "Tolerance", 0.3),
-             options(classic("invert", "Invert", 0.0), kOffOn),
+             options(classic("invert", "Invert", 0.0), offOn()),
              classic("contrast", "Contrast", 0.2),
              options(classic("blendMode", "Blend Mode", 0.0), {"Alpha", "Add"})},
             false,
             R"(
-    float4 o = c;
-    if (p[3] != 0.0) {
+    vec4 o = c;
+    if (pb[p + 3] != 0.0) {
         float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b));
-        float y = p[5] > 0.5 ? dot(c.rgb, float3(0.3594, 0.4010, 0.2396)) : (hi + lo) * 0.5;
-        y = saturate(y * 5.0 * p[9]);
-        y = mix(y, 1.0 - y, p[8]);
-        float3 tint = y * float3(p[0], p[1], p[2]);
-        if (p[4] > 0.5) {
-            const float3 stops[9] = {float3(0.0), float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(1.0, 1.0, 0.0),
-                                     float3(0.5), float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 1.0), float3(0.0, 1.0, 1.0),
-                                     float3(1.0)};
+        float y = pb[p + 5] > 0.5 ? dot(c.rgb, vec3(0.3594, 0.4010, 0.2396)) : (hi + lo) * 0.5;
+        y = saturate(y * 5.0 * pb[p + 9]);
+        y = mix(y, 1.0 - y, pb[p + 8]);
+        vec3 tint = y * vec3(pb[p + 0], pb[p + 1], pb[p + 2]);
+        if (pb[p + 4] > 0.5) {
+            const vec3 stops[9] = vec3[](vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 1.0, 0.0),
+                                     vec3(0.5), vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 1.0), vec3(0.0, 1.0, 1.0),
+                                     vec3(1.0));
             float s = y * 8.0;
             int i = min(int(s), 7);
             tint = mix(stops[i], stops[i + 1], s - float(i));
         }
         float keep = 0.0;
-        if (p[6] > 0.5)
-            keep = exp(-pow((hi - lo) / max(0.475 * pow(p[7], 1.5), 1e-5), 1.5));
-        o = float4(mix(mix(c.rgb, tint, p[3]), c.rgb, keep), c.a);
+        if (pb[p + 6] > 0.5)
+            keep = exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], 1.5), 1e-5), 1.5));
+        o = vec4(mix(mix(c.rgb, tint, pb[p + 3]), c.rgb, keep), c.a);
     }
 )" + addMixer(10, 11),
             {},
@@ -1245,13 +1256,13 @@ ParamDef classicBlend()
 
 ParamDef classicFlag(std::string name, std::string label, double defaultValue = 0.0)
 {
-    return classicChoice(std::move(name), std::move(label), defaultValue, kOffOn);
+    return classicChoice(std::move(name), std::move(label), defaultValue, offOn());
 }
 
 // Fills what the effect leaves transparent with black when blackBG (p[i]) is on. Expects the result in `o`.
 std::string blackBackground(int i)
 {
-    return "    if (p[" + std::to_string(i) + "] > 0.5)\n        o = float4(o.rgb * o.a, 1.0);\n";
+    return "    if (pb[p + " + std::to_string(i) + "] > 0.5)\n        o = vec4(o.rgb * o.a, 1.0);\n";
 }
 
 // Each colour channel is read from its own place: shifted by amount = R, G or B x distance in picture sizes (y down),
@@ -1272,20 +1283,20 @@ EffectDef classicShiftRgb()
              classicBlend()},
             false,
             R"(
-    float4 c = t.sample(pix, px);
-    int mode = int(p[1] + 0.5);
-    float2 x = px - h.size * 0.5;
+    vec4 c = samplePixel(t, px);
+    int mode = int(pb[p + 1] + 0.5);
+    vec2 x = px - h.size * 0.5;
     float depth = h.size.y * 0.5 / tan(M_PI_F / 8.0);
-    float4 o = 0.0;
+    vec4 o = vec4(0.0);
     float last = 0.0;
     bool inside = false;
-    float4 v = 0.0;
+    vec4 v = vec4(0.0);
     for (int i = 0; i < 3; ++i) {
-        float a = p[2 + i] * p[0];
+        float a = pb[p + 2 + i] * pb[p + 0];
         if (i == 0 || a != last) {
             last = a;
             float sn = sin(a * M_PI_F), cs = cos(a * M_PI_F);
-            float2 s = x;
+            vec2 s = x;
             float facing = 1.0;
             if (mode == 0)
                 s.x -= a * h.size.x;
@@ -1300,13 +1311,13 @@ EffectDef classicShiftRgb()
                 s.x = x.x * depth / facing;
                 s.y = x.y * (depth - s.x * sn) / depth;
             } else if (mode == 4)
-                s = float2(cs * x.x - sn * x.y, sn * x.x + cs * x.y);
+                s = vec2(cs * x.x - sn * x.y, sn * x.x + cs * x.y);
             else
                 s = x * (a >= 0.0 ? 1.0 - 0.95 * a : 1.0 - 8.5 * a);
-            float2 q = s + h.size * 0.5;
-            inside = facing > 0.0 && all(q >= 0.0) && all(q <= h.size);
+            vec2 q = s + h.size * 0.5;
+            inside = facing > 0.0 && all(greaterThanEqual(q, vec2(0.0))) && all(lessThanEqual(q, h.size));
             if (inside)
-                v = all(q == px) ? c : t.sample(pix, q);
+                v = q == px ? c : samplePixel(t, q);
         }
         if (inside) {
             o[i] = v[i];
@@ -1336,13 +1347,13 @@ EffectDef classicMirror()
              classicBlend()},
             false,
             R"(
-    float2 t = px / h.size;
-    float2 fold = float2(p[0], p[1]);
-    bool2 mirrored = bool2(p[3] > 0.5, p[4] < 0.5);
-    float2 open = p[2] * fold + abs(t - fold);
-    float2 folded = 1.0 - p[2] * (1.0 - fold) - abs(t - (1.0 - fold));
-    float2 s = fract(select(open, folded, mirrored));
-    return clamp(s * h.size, float2(0.5), h.size - 0.5);
+    vec2 t = px / h.size;
+    vec2 fold = vec2(pb[p + 0], pb[p + 1]);
+    bvec2 mirrored = bvec2(pb[p + 3] > 0.5, pb[p + 4] < 0.5);
+    vec2 open = pb[p + 2] * fold + abs(t - fold);
+    vec2 folded = 1.0 - pb[p + 2] * (1.0 - fold) - abs(t - (1.0 - fold));
+    vec2 s = fract(mix(open, folded, mirrored));
+    return clamp(s * h.size, vec2(0.5), h.size - 0.5);
 )",
             {},
             {},
@@ -1365,17 +1376,17 @@ EffectDef classicKaleidoscope()
              classicBlend()},
             false,
             R"(
-    float n = floor(p[0] * 12.0 + 1e-4);
+    float n = floor(pb[p + 0] * 12.0 + 1e-4);
     if (n < 1.0)
-        return float2(-4.0);
-    float2 span = ceil(h.size / 16.0) * 16.0;
-    float2 uv = (px - h.size * 0.5) / span * float2(1.0, -1.0);
+        return vec2(-4.0);
+    vec2 span = ceil(h.size / 16.0) * 16.0;
+    vec2 uv = (px - h.size * 0.5) / span * vec2(1.0, -1.0);
     float wedge = M_PI_F / n;
-    float a = atan2(uv.y, uv.x) - 2.0 * M_PI_F * p[1];
+    float a = atan(uv.y, uv.x) - 2.0 * M_PI_F * pb[p + 1];
     a -= 2.0 * wedge * floor(a / (2.0 * wedge));
-    a = (a < wedge ? a : 2.0 * wedge - a) + 2.0 * M_PI_F * p[3];
-    float2 s = length(uv) * p[2] * float2(cos(a), -sin(a));
-    return clamp(h.size * 0.5 + s * span, float2(0.5), h.size - 0.5);
+    a = (a < wedge ? a : 2.0 * wedge - a) + 2.0 * M_PI_F * pb[p + 3];
+    vec2 s = length(uv) * pb[p + 2] * vec2(cos(a), -sin(a));
+    return clamp(h.size * 0.5 + s * span, vec2(0.5), h.size - 0.5);
 )",
             {},
             {},
@@ -1394,9 +1405,9 @@ EffectDef classicMirrorQuad()
             false,
             R"(
     // In whole pixels, without a division: the fold lands exactly on texel edges, the same on every GPU.
-    float2 fold = abs(2.0 * px - h.size);
-    float2 s = select(h.size - fold, fold, bool2(p[0] > 0.5, p[1] > 0.5));
-    return clamp(s, float2(0.5), h.size - 0.5);
+    vec2 fold = abs(2.0 * px - h.size);
+    vec2 s = mix(h.size - fold, fold, bvec2(pb[p + 0] > 0.5, pb[p + 1] > 0.5));
+    return clamp(s, vec2(0.5), h.size - 0.5);
 )",
             {},
             {},
@@ -1419,10 +1430,11 @@ EffectDef classicPolarKaleido()
              classicBlend()},
             false,
             R"(
-    float2 d = (px - h.size * 0.5) * float2(1.0, -1.0);
-    float turn = atan2(d.y, d.x) / (2.0 * M_PI_F) + 0.75;
-    float2 s = fract(float2(round(p[1]) * turn - p[2], length(d) / (h.size.x * 0.5) * (round(p[0]) + 1.0) * 0.5));
-    return clamp(s * h.size, float2(0.5), h.size - 0.5);
+    vec2 d = (px - h.size * 0.5) * vec2(1.0, -1.0);
+    float turn = atan(d.y, d.x) / (2.0 * M_PI_F) + 0.75;
+    vec2 s = fract(vec2(round(pb[p + 1]) * turn - pb[p + 2],
+                        length(d) / (h.size.x * 0.5) * (round(pb[p + 0]) + 1.0) * 0.5));
+    return clamp(s * h.size, vec2(0.5), h.size - 0.5);
 )",
             {},
             {},
@@ -1438,7 +1450,7 @@ EffectDef classicTwitch()
     auto twitch = [](std::string name, std::string label) {
         return in(units::plain, classic(std::move(name), std::move(label), 0.0));
     };
-    return {"classicTwitch",
+    EffectDef def{"classicTwitch",
             StageKind::Neighbourhood,
             {in(units::plain, classic("globalTwitch", "Global Twitch", 1.0)),
              twitch("maxPosX", "Max Pos X"),
@@ -1458,46 +1470,50 @@ EffectDef classicTwitch()
              classicBlend()},
             false,
             R"(
-    float4 c = t.sample(pix, px);
+    vec4 c = samplePixel(t, px);
     uint tick = uint(max(h.time, 0.0) * 60.0);
     float amount[6];
     for (uint k = 0; k < 6; ++k) {
-        float f = p[3 + 2 * k];
+        float f = pb[p + 3 + 2 * k];
         bool on = float(pcg(tick * 16u + k) & 0xffffu) / 65535.0 < min(1.0, 8.0 * f * f * f * f);
         amount[k] = on ? float(pcg(tick * 16u + k + 8u) & 0xffffu) / 65535.0 : -1.0;
     }
-    float g = p[0];
-    float2 shift = amount[0] < 0.0 ? 0.0 : (float2(amount[0], float(pcg(tick * 16u + 7u) & 0xffffu) / 65535.0) * 2.0 - 1.0)
-                                          * float2(p[1], p[2]) * g;
-    float zoom = amount[1] < 0.0 ? 1.0 : exp2((amount[1] * 2.0 - 1.0) * p[4] * g);
-    float2 q = h.size * 0.5 + (px - h.size * 0.5) / zoom - shift * h.size;
-    float split = amount[4] < 0.0 ? 0.0 : (amount[4] * 2.0 - 1.0) * p[10] * g * 0.05 * h.size.x;
-    float blur = amount[5] < 0.0 ? 0.0 : amount[5] * p[12] * g * 40.0;
-    float4 o = 0.0;
+    float g = pb[p + 0];
+    vec2 shift = amount[0] < 0.0 ? vec2(0.0)
+                                 : (vec2(amount[0], float(pcg(tick * 16u + 7u) & 0xffffu) / 65535.0) * 2.0 - 1.0) *
+                                       vec2(pb[p + 1], pb[p + 2]) * g;
+    float zoom = amount[1] < 0.0 ? 1.0 : exp2((amount[1] * 2.0 - 1.0) * pb[p + 4] * g);
+    vec2 q = h.size * 0.5 + (px - h.size * 0.5) / zoom - shift * h.size;
+    float split = amount[4] < 0.0 ? 0.0 : (amount[4] * 2.0 - 1.0) * pb[p + 10] * g * 0.05 * h.size.x;
+    float blur = amount[5] < 0.0 ? 0.0 : amount[5] * pb[p + 12] * g * 40.0;
+    vec4 o = vec4(0.0);
     float taps = 0.0;
     int reach = blur > 0.0 ? 1 : 0;
     for (int j = -reach; j <= reach; ++j)
         for (int i = -reach; i <= reach; ++i) {
-            float2 at = q + float2(i, j) * blur;
-            float4 m = all(at >= 0.0) && all(at <= h.size) ? t.sample(pix, at) : 0.0;
+            vec2 at = q + vec2(i, j) * blur;
+            vec4 m = inPicture(at, h.size) ? samplePixel(t, at) : vec4(0.0);
             if (split != 0.0) {
-                float2 ar = at + float2(split, 0.0), ab = at - float2(split, 0.0);
-                float4 r = all(ar >= 0.0) && all(ar <= h.size) ? t.sample(pix, ar) : 0.0;
-                float4 b = all(ab >= 0.0) && all(ab <= h.size) ? t.sample(pix, ab) : 0.0;
-                m = float4(r.r, m.g, b.b, max(m.a, max(r.a, b.a)));
+                vec2 ar = at + vec2(split, 0.0), ab = at - vec2(split, 0.0);
+                vec4 r = inPicture(ar, h.size) ? samplePixel(t, ar) : vec4(0.0);
+                vec4 b = inPicture(ab, h.size) ? samplePixel(t, ab) : vec4(0.0);
+                m = vec4(r.r, m.g, b.b, max(m.a, max(r.a, b.a)));
             }
             o += m;
             taps += 1.0;
         }
     o /= taps;
     if (amount[3] >= 0.0)
-        o.rgb *= 1.0 + 4.0 * amount[3] * p[8] * g;
+        o.rgb *= 1.0 + 4.0 * amount[3] * pb[p + 8] * g;
     if (amount[2] >= 0.0)
-        o.a *= 1.0 - p[6] * g * (0.3 + 0.35 * amount[2]);
+        o.a *= 1.0 - pb[p + 6] * g * (0.3 + 0.35 * amount[2]);
 )" + blackBackground(14) + addMixer(15, 16),
             {},
             {},
             "Classic"};
+    def.globals = "\nbool inPicture(vec2 q, vec2 size)\n"
+                  "{\n    return all(greaterThanEqual(q, vec2(0.0))) && all(lessThanEqual(q, size));\n}\n";
+    return def;
 }
 
 // The picture's alpha becomes a mask from its colour, so black turns transparent: Rec. 601 luma, or for Red, Green or
@@ -1512,11 +1528,11 @@ EffectDef classicAutoMask()
              classicFlag("invert", "Invert")},
             false,
             R"(
-    int channel = int(p[0] + 0.5);
-    float m = channel == 0 ? dot(c.rgb, float3(0.299, 0.587, 0.114))
+    int channel = int(pb[p + 0] + 0.5);
+    float m = channel == 0 ? dot(c.rgb, vec3(0.299, 0.587, 0.114))
             : channel == 1 ? c.g + c.b : channel == 2 ? c.r + c.b : c.r + c.g;
-    float gain = p[1] <= 0.5 ? 2.0 * p[1] : 1.0 + 10.0 * (p[1] - 0.5);
-    return float4(c.rgb, c.a * saturate((p[2] > 0.5 ? 1.0 - m : m) * gain));
+    float gain = pb[p + 1] <= 0.5 ? 2.0 * pb[p + 1] : 1.0 + 10.0 * (pb[p + 1] - 0.5);
+    return vec4(c.rgb, c.a * saturate((pb[p + 2] > 0.5 ? 1.0 - m : m) * gain));
 )",
             {},
             {},
@@ -1537,8 +1553,8 @@ EffectDef classicBrightnessContrast()
              classicBlend()},
             false,
             R"(
-    float gain = 1.0 + (p[1] < 0.0 ? p[1] : 5.0 * p[1]);
-    float4 o = float4(saturate((c.rgb + p[0]) * gain), c.a);
+    float gain = 1.0 + (pb[p + 1] < 0.0 ? pb[p + 1] : 5.0 * pb[p + 1]);
+    vec4 o = vec4(saturate((c.rgb + pb[p + 0]) * gain), c.a);
 )" + addMixer(2, 3),
             {},
             {},
@@ -1557,8 +1573,8 @@ EffectDef classicLevels()
              classicBlend()},
             false,
             R"(
-    float3 x = select(pow(c.rgb, float3(2.0 * (1.0 - p[1]))), float3(0.0), c.rgb <= 0.0);
-    float4 o = float4(saturate(x * (4.0 * p[2] * p[2]) + 4.0 * (p[0] - 0.5)), c.a);
+    vec3 x = mix(pow(c.rgb, vec3(2.0 * (1.0 - pb[p + 1]))), vec3(0.0), lessThanEqual(c.rgb, vec3(0.0)));
+    vec4 o = vec4(saturate(x * (4.0 * pb[p + 2] * pb[p + 2]) + 4.0 * (pb[p + 0] - 0.5)), c.a);
 )" + addMixer(3, 4),
             {},
             {},
@@ -1589,12 +1605,12 @@ EffectDef classicThreshold()
              classicBlend()},
             false,
             R"(
-    float y = dot(c.rgb, float3(0.30, 0.59, 0.11));
-    float soft = p[1] * 0.5;
-    float below = soft > 0.0 ? smoothstep(max(y - soft, 0.0), min(y + soft, 1.0), p[0]) : float(y <= p[0]);
-    float4 one = float4(p[2], p[3], p[4], p[5]), two = float4(p[6], p[7], p[8], p[9]);
-    float4 o = mix(float4(one.rgb * one.a, one.a), float4(two.rgb * two.a, two.a), below);
-    int alpha = int(p[10] + 0.5);
+    float y = dot(c.rgb, vec3(0.30, 0.59, 0.11));
+    float soft = pb[p + 1] * 0.5;
+    float below = soft > 0.0 ? smoothstep(max(y - soft, 0.0), min(y + soft, 1.0), pb[p + 0]) : float(y <= pb[p + 0]);
+    vec4 one = vec4(pb[p + 2], pb[p + 3], pb[p + 4], pb[p + 5]), two = vec4(pb[p + 6], pb[p + 7], pb[p + 8], pb[p + 9]);
+    vec4 o = mix(vec4(one.rgb * one.a, one.a), vec4(two.rgb * two.a, two.a), below);
+    int alpha = int(pb[p + 10] + 0.5);
     o.a = alpha == 0 ? c.a : alpha == 1 ? o.a * c.a : 1.0;
 )" + addMixer(11, 12),
             {},
@@ -1618,10 +1634,10 @@ EffectDef classicHueRotate()
     float l = (hi + lo) * 0.5;
     float s = d / max(1.0 - abs(2.0 * l - 1.0), 1e-5);
     float hue = d <= 0.0 ? 0.0 : hi == c.r ? (c.g - c.b) / d : hi == c.g ? 2.0 + (c.b - c.r) / d : 4.0 + (c.r - c.g) / d;
-    hue = fract(hue / 6.0 * p[0] + p[1]);
-    s = saturate(s * 2.0 * p[2]);
-    float3 pure = saturate(abs(fract(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
-    float4 o = float4(saturate(l + (pure - 0.5) * s * (1.0 - abs(2.0 * l - 1.0))), c.a);
+    hue = fract(hue / 6.0 * pb[p + 0] + pb[p + 1]);
+    s = saturate(s * 2.0 * pb[p + 2]);
+    vec3 pure = saturate(abs(fract(hue + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    vec4 o = vec4(saturate(l + (pure - 0.5) * s * (1.0 - abs(2.0 * l - 1.0))), c.a);
 )" + addMixer(3, 4),
             {},
             {},
@@ -1645,28 +1661,28 @@ EffectDef classicTrails()
              classicBlend()},
             false,
             R"(
-    float4 kept = a.sample(pix, px);
-    float4 o = float4(kept.rgb / max(kept.a, 1e-4), kept.a);
+    vec4 kept = samplePixel(a, px);
+    vec4 o = vec4(kept.rgb / max(kept.a, 1e-4), kept.a);
 )" + addMixer(2, 3),
             {{1, true, R"(
-    float4 c = INPUT(px);
+    vec4 c = INPUT(px);
     c.rgb *= c.a;
-    float4 kept = prev.sample(pix, px);
+    vec4 kept = samplePixel(prev, px);
     if (kept.a <= 0.0)
         return c;
-    int mode = int(p[1] + 0.5);
+    int mode = int(pb[p + 1] + 0.5);
     if (mode == 1)
-        return dot(kept.rgb, float3(0.299, 0.587, 0.114)) > 1.0 - p[0] ? kept : c;
+        return dot(kept.rgb, vec3(0.299, 0.587, 0.114)) > 1.0 - pb[p + 0] ? kept : c;
     if (mode == 2) {
         float tick = floor(h.time * 20.0 + 1e-3) - floor((h.time - h.dt) * 20.0 + 1e-3);
-        float4 ground = round(c * 255.0);
-        float4 excess = max(kept * 255.0 - ground, 0.0);
-        float4 next = min(round(excess * perFrame(pow(p[0], 0.38), h)), max(excess - tick, 0.0));
+        vec4 ground = round(c * 255.0);
+        vec4 excess = max(kept * 255.0 - ground, 0.0);
+        vec4 next = min(round(excess * perFrame(pow(pb[p + 0], 0.38), h)), max(excess - tick, 0.0));
         return max(c, (ground + next) / 255.0);
     }
-    float4 mixed = mix(c, kept, perFrame(sqrt(p[0]), h));
-    float4 delta = mixed - kept;
-    float4 moving = step(0.5 / 255.0, abs(c - kept) * (1.0 - p[0]));
+    vec4 mixed = mix(c, kept, perFrame(sqrt(pb[p + 0]), h));
+    vec4 delta = mixed - kept;
+    vec4 moving = step(0.5 / 255.0, abs(c - kept) * (1.0 - pb[p + 0]));
     return kept + sign(delta) * max(abs(delta), moving * frames60(h) / 255.0);
 )"}},
             {},
@@ -1691,11 +1707,13 @@ EffectDef classicStrobe()
              classicBlend()},
             false,
             R"(
-    float period = 2.0 * (1.0 - p[0]);
-    float clock = p[6] > 0.5 ? h.beat * 0.5 : h.time;
+    float period = 2.0 * (1.0 - pb[p + 0]);
+    float clock = pb[p + 6] > 0.5 ? h.beat * 0.5 : h.time;
     float ramp = period > 0.0 ? 1.0 - abs(2.0 * fract(clock / period) - 1.0) : 1.0;
-    float flash = p[0] <= 0.0 ? 0.0 : p[1] > 0.5 ? ramp : step(0.5, ramp);
-    float4 o = mix(c, float4(p[2], p[3], p[4], p[5]), flash);
+    float flash = pb[p + 0] <= 0.0 ? 0.0 : pb[p + 1] > 0.5 ? ramp : step(0.5, ramp);
+    // On its nearest 8-bit step, a half rounding up: a GPU may store a colour of exactly half a step either way.
+    vec3 colour = floor(vec3(pb[p + 2], pb[p + 3], pb[p + 4]) * 255.0 + 0.5) / 255.0;
+    vec4 o = mix(c, vec4(colour, pb[p + 5]), flash);
 )" + addMixer(7, 8),
             {},
             {},
@@ -1753,28 +1771,28 @@ EffectDef classicShiftGlitch()
              classicBlend()},
             false,
             R"(
-    float period = 1.0 - p[0];
-    float clock = p[5] > 0.5 ? h.beat * 0.5 : h.time;
+    float period = 1.0 - pb[p + 0];
+    float clock = pb[p + 5] > 0.5 ? h.beat * 0.5 : h.time;
     uint pattern = period > 0.0 ? uint(floor(max(clock, 0.0) / period)) : uint(max(h.time, 0.0) * 60.0);
-    bool cached = q[2] > 0.0 && uint(q[0]) + (uint(q[1]) << 16u) == pattern;
+    bool cached = pb[q + 2] > 0.0 && uint(pb[q + 0]) + (uint(pb[q + 1]) << 16u) == pattern;
     // The topmost band over this pixel on each axis: rows (horizontal bands) along y, then columns along x. A column
     // band below the row band's index cannot lie on top, so the columns stop there.
-    int2 count = p[3] > 0.0 ? int2(ceil(12.0 * float2(p[2], p[1]) - 1e-4)) : int2(0);
-    int2 top = int2(-1);
-    float2 from = px;
+    ivec2 count = pb[p + 3] > 0.0 ? ivec2(ceil(12.0 * vec2(pb[p + 2], pb[p + 1]) - 1e-4)) : ivec2(0);
+    ivec2 top = ivec2(-1);
+    vec2 from = px;
     for (int axis = 0; axis < 2; ++axis) {
         float dim = axis == 0 ? h.size.y : h.size.x, at = axis == 0 ? px.y : px.x;
         uint seed = pcg(pattern * 2u + uint(axis));
         for (int i = count[axis] - 1; i >= (axis == 0 ? 0 : max(top.x, 0)); --i) {
-            float4 b;
+            vec4 b;
             if (cached) {
-                constant float* band = q + 3 + (axis * 12 + i) * 4;
-                b = float4(band[0], band[1], band[2], band[3]);
+                int band = q + 3 + (axis * 12 + i) * 4;
+                b = vec4(pb[band + 0], pb[band + 1], pb[band + 2], pb[band + 3]);
             } else {
                 uint n = pcg(seed ^ (uint(i + 1) * 0x9e3779b9u)), m = pcg(n);
-                b = float4(float(n & 0xffffu), float(n >> 16u), float(m & 0xffffu), float(m >> 16u));
+                b = vec4(float(n & 0xffffu), float(n >> 16u), float(m & 0xffffu), float(m >> 16u));
             }
-            float high = max(1.0, b.x / 65535.0 * 0.5 * p[3] * dim);
+            float high = max(1.0, b.x / 65535.0 * 0.5 * pb[p + 3] * dim);
             float start = b.y / 65536.0 * dim;
             if (at < start || at >= start + high)
                 continue;
@@ -1784,12 +1802,12 @@ EffectDef classicShiftGlitch()
             break;
         }
     }
-    float2 s = px;
+    vec2 s = px;
     if (top.y >= 0 && top.y >= top.x)
         s.x = from.x;
     else if (top.x >= 0)
         s.y = from.y;
-    return clamp(s, float2(0.5), h.size - 0.5);
+    return clamp(s, vec2(0.5), h.size - 0.5);
 )",
             {},
             {},
@@ -1822,29 +1840,29 @@ EffectDef classicEdgeDetection()
              classicBlend()},
             false,
             R"(
-    float4 c = t.sample(pix, px);
-    float3 e = 0.0;
-    if (p[1] != 0.0) {
-        float3 k[9];
+    vec4 c = samplePixel(t, px);
+    vec3 e = vec3(0.0);
+    if (pb[p + 1] != 0.0) {
+        vec3 k[9];
         for (int j = 0; j < 3; ++j)
             for (int i = 0; i < 3; ++i) {
-                float4 v = t.sample(pix, px + float2(i - 1, j - 1));
+                vec4 v = samplePixel(t, px + vec2(i - 1, j - 1));
                 k[j * 3 + i] = round(v.rgb * v.a * 255.0) / (255.0 * max(v.a, 1e-4));
             }
-        if (p[0] > 0.5) {
-            float3 gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
-            float3 gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
-            e = sqrt(gx * gx + gy * gy) * (5.0 * p[1]);
+        if (pb[p + 0] > 0.5) {
+            vec3 gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
+            vec3 gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
+            e = sqrt(gx * gx + gy * gy) * (5.0 * pb[p + 1]);
         } else {
-            float3 lo = k[0];
+            vec3 lo = k[0];
             for (int i = 1; i < 9; ++i)
                 lo = min(lo, k[i]);
-            e = (k[4] - lo) * (15.0 * p[1]);
+            e = (k[4] - lo) * (15.0 * pb[p + 1]);
         }
     }
-    if (p[2] > 0.5)
-        e = saturate(dot(e, float3(0.299, 0.587, 0.114))) * float3(p[3], p[4], p[5]) * p[6];
-    float4 o = float4(saturate(e), c.a);
+    if (pb[p + 2] > 0.5)
+        e = saturate(dot(e, vec3(0.299, 0.587, 0.114))) * vec3(pb[p + 3], pb[p + 4], pb[p + 5]) * pb[p + 6];
+    vec4 o = vec4(saturate(e), c.a);
 )" + addMixer(8, 9),
             {},
             {},
@@ -1853,9 +1871,9 @@ EffectDef classicEdgeDetection()
 
 // Generators draw their own picture in straight colour and ignore their input. Angles are degrees, 0 = vertical lines;
 // sizes count across the composition's height, so a picture keeps its look at any aspect.
-EffectDef generator(std::string type, std::vector<ParamDef> params, std::string metal)
+EffectDef generator(std::string type, std::vector<ParamDef> params, std::string glsl)
 {
-    EffectDef def{std::move(type), StageKind::Pointwise, std::move(params), false, std::move(metal), {}};
+    EffectDef def{std::move(type), StageKind::Pointwise, std::move(params), false, std::move(glsl), {}};
     def.generator = true;
     return def;
 }
@@ -1878,14 +1896,14 @@ std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef
 EffectDef blank()
 {
     return generator("blank", {}, R"(
-    return float4(0.0);
+    return vec4(0.0);
 )");
 }
 
 EffectDef solid()
 {
     return generator("solid", colour(), R"(
-    return float4(p[0], p[1], p[2], 1.0);
+    return vec4(pb[p + 0], pb[p + 1], pb[p + 2], 1.0);
 )");
 }
 
@@ -1897,7 +1915,7 @@ EffectDef strobe()
                              percent({"duty", 0.0, 1.0, 0.5})},
                             colour()),
                      R"(
-    return fract(p[0]) < p[1] ? float4(p[2], p[3], p[4], 1.0) : float4(0.0);
+    return fract(pb[p + 0]) < pb[p + 1] ? vec4(pb[p + 2], pb[p + 3], pb[p + 4], 1.0) : vec4(0.0);
 )");
 }
 
@@ -1913,16 +1931,16 @@ EffectDef lines()
                              percent({"softness", 0.0, 1.0, 0.0})},
                             colour()),
                      R"(
-    float a = p[2] * (M_PI_F / 180.0);
-    float2 d = float2(cos(a), sin(a));
-    float perPixel = p[0] / h.size.y;
-    float s = dot(px - h.size * 0.5, d) * perPixel - p[3];
+    float a = pb[p + 2] * (M_PI_F / 180.0);
+    vec2 d = vec2(cos(a), sin(a));
+    float perPixel = pb[p + 0] / h.size.y;
+    float s = dot(px - h.size * 0.5, d) * perPixel - pb[p + 3];
     float v = abs(fract(s + 0.5) - 0.5);
-    float hw = p[1] * 0.5;
-    float w = max(perPixel, p[4] * 0.5);
+    float hw = pb[p + 1] * 0.5;
+    float w = max(perPixel, pb[p + 4] * 0.5);
     float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
                   max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
-    return float4(p[5], p[6], p[7], saturate(cover / w));
+    return vec4(pb[p + 5], pb[p + 6], pb[p + 7], saturate(cover / w));
 )");
 }
 
@@ -1939,15 +1957,15 @@ EffectDef rings()
                              percent({"y", -0.5, 0.5, 0.0})},
                             colour()),
                      R"(
-    float perPixel = p[0] / (0.5 * h.size.y);
-    float2 centre = h.size * (0.5 + float2(p[4], -p[5]));
-    float s = length(px - centre) * perPixel - p[2];
+    float perPixel = pb[p + 0] / (0.5 * h.size.y);
+    vec2 centre = h.size * (0.5 + vec2(pb[p + 4], -pb[p + 5]));
+    float s = length(px - centre) * perPixel - pb[p + 2];
     float v = abs(fract(s + 0.5) - 0.5);
-    float hw = p[1] * 0.5;
-    float w = max(perPixel, p[3] * 0.5);
+    float hw = pb[p + 1] * 0.5;
+    float w = max(perPixel, pb[p + 3] * 0.5);
     float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
                   max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
-    return float4(p[6], p[7], p[8], saturate(cover / w));
+    return vec4(pb[p + 6], pb[p + 7], pb[p + 8], saturate(cover / w));
 )");
 }
 
@@ -1961,15 +1979,15 @@ EffectDef checker()
                              in(units::cellsPerSecond, {"speed", -8.0, 8.0, 0.0, ParamDrive::Phase})},
                             colour()),
                      R"(
-    float a = p[1] * (M_PI_F / 180.0);
+    float a = pb[p + 1] * (M_PI_F / 180.0);
     float s = sin(a), k = cos(a);
-    float perPixel = p[0] / h.size.y;
-    float2 q = px - h.size * 0.5;
-    q = float2(k * q.x + s * q.y, -s * q.x + k * q.y) * perPixel;
-    q.x -= p[2];
-    float2 lo = q - 0.5 * perPixel, hi = q + 0.5 * perPixel;
-    float2 sq = (abs(fract(lo) - 0.5) - abs(fract(hi) - 0.5)) / perPixel;
-    return float4(p[3], p[4], p[5], saturate(0.5 + 0.5 * sq.x * sq.y));
+    float perPixel = pb[p + 0] / h.size.y;
+    vec2 q = px - h.size * 0.5;
+    q = vec2(k * q.x + s * q.y, -s * q.x + k * q.y) * perPixel;
+    q.x -= pb[p + 2];
+    vec2 lo = q - 0.5 * perPixel, hi = q + 0.5 * perPixel;
+    vec2 sq = (abs(fract(lo) - 0.5) - abs(fract(hi) - 0.5)) / perPixel;
+    return vec4(pb[p + 3], pb[p + 4], pb[p + 5], saturate(0.5 + 0.5 * sq.x * sq.y));
 )");
 }
 
@@ -1984,12 +2002,12 @@ EffectDef gradient()
                                    colour("", 0.0)),
                             colour("to", 1.0)),
                      R"(
-    float a = p[0] * (M_PI_F / 180.0);
-    float2 d = float2(cos(a), sin(a));
+    float a = pb[p + 0] * (M_PI_F / 180.0);
+    vec2 d = vec2(cos(a), sin(a));
     float t = dot(px - h.size * 0.5, d) / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
-    t = t * p[1] + 0.5 - p[2];
+    t = t * pb[p + 1] + 0.5 - pb[p + 2];
     t = 1.0 - abs(1.0 - 2.0 * fract(t * 0.5));
-    return float4(mix(float3(p[3], p[4], p[5]), float3(p[6], p[7], p[8]), t), 1.0);
+    return vec4(mix(vec3(pb[p + 3], pb[p + 4], pb[p + 5]), vec3(pb[p + 6], pb[p + 7], pb[p + 8]), t), 1.0);
 )");
 }
 
@@ -2003,26 +2021,26 @@ EffectDef noise()
                              in(units::times, {"contrast", 0.0, 4.0, 1.0})},
                             colour()),
                      R"(
-    if (p[2] == 0.0)
-        return float4(float3(p[3], p[4], p[5]) * 0.5, 1.0);
-    float2 xy = (px - h.size * 0.5) * (p[0] / h.size.y);
-    float3 q = float3(0.8 * xy.x - 0.6 * xy.y, 0.6 * xy.x + 0.8 * xy.y, p[1]);
-    float3 i = floor(q), f = fract(q);
+    if (pb[p + 2] == 0.0)
+        return vec4(vec3(pb[p + 3], pb[p + 4], pb[p + 5]) * 0.5, 1.0);
+    vec2 xy = (px - h.size * 0.5) * (pb[p + 0] / h.size.y);
+    vec3 q = vec3(0.8 * xy.x - 0.6 * xy.y, 0.6 * xy.x + 0.8 * xy.y, pb[p + 1]);
+    vec3 i = floor(q), f = fract(q);
     f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    uint3 cell = uint3(int3(i));
+    uvec3 cell = uvec3(ivec3(i));
     float v[8];
     for (uint k = 0; k < 8; ++k) {
-        uint3 e = cell + uint3(k & 1u, (k >> 1u) & 1u, k >> 2u);
+        uvec3 e = cell + uvec3(k & 1u, (k >> 1u) & 1u, k >> 2u);
         uint n = e.x * 0x8da6b343u + e.y * 0xd8163841u + e.z * 0xcb1ab31fu;
         n ^= n >> 15u;
         n *= 0x2c1b3c6du;
         n ^= n >> 12u;
         v[k] = float(n >> 8u) / 16777215.0;
     }
-    float4 z = mix(float4(v[0], v[2], v[4], v[6]), float4(v[1], v[3], v[5], v[7]), f.x);
-    float2 y = mix(z.xz, z.yw, f.y);
-    float g = saturate((mix(y.x, y.y, f.z) - 0.5) * p[2] + 0.5);
-    return float4(float3(p[3], p[4], p[5]) * g, 1.0);
+    vec4 z = mix(vec4(v[0], v[2], v[4], v[6]), vec4(v[1], v[3], v[5], v[7]), f.x);
+    vec2 y = mix(z.xz, z.yw, f.y);
+    float g = saturate((mix(y.x, y.y, f.z) - 0.5) * pb[p + 2] + 0.5);
+    return vec4(vec3(pb[p + 3], pb[p + 4], pb[p + 5]) * g, 1.0);
 )");
 }
 
@@ -2040,7 +2058,7 @@ std::deque<EffectDef> withVariants(std::deque<EffectDef> effects)
         for (const EffectVariant& variant : effects[i].variants) {
             EffectDef def = effects[i];
             def.type += "_" + variant.name;
-            def.metal = variant.metal;
+            def.glsl = variant.glsl;
             def.kind = variant.kind.value_or(def.kind);
             def.variants.clear();
             def.variant = true;
@@ -2228,7 +2246,7 @@ void retireEffect(const std::string& type)
         r.effects.push_back(EffectDef{.type = type, .retired = true});
 }
 
-void setEffectShader(const std::string& type, std::string globals, std::string metal)
+void setEffectShader(const std::string& type, std::string globals, std::string glsl)
 {
     Registry& r = registry();
     std::unique_lock lock(r.mutex);
@@ -2236,7 +2254,7 @@ void setEffectShader(const std::string& type, std::string globals, std::string m
     if (it == r.effects.rend())
         return;
     it->globals = std::move(globals);
-    it->metal = std::move(metal);
+    it->glsl = std::move(glsl);
 }
 
 std::string effectRegistryVersion()

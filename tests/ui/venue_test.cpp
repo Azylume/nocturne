@@ -1,3 +1,4 @@
+#include "net/lan.hpp"
 #include "net/websocket.hpp"
 #include "protocol/build_info.hpp"
 #include "test_client.hpp"
@@ -284,4 +285,29 @@ TEST_CASE("the alert strip shows the other venues' alerts under the top bar, tak
     session.venues()->refresh();
     REQUIRE(runUntil([&] { return !main.alerts().isVisible(); }));
     CHECK(main.grid().getY() == top);
+}
+
+TEST_CASE("the engine in view is its venue under its Bonjour name too: no strip alert for it, the button names it")
+{
+    Venue here(128.0);
+    Session session("127.0.0.1", here.server.port());
+    azl::ui::MainComponent main(session);
+    main.setSize(1600, 950);
+    azl::VenueSources sources;
+    sources.bonjour = [port = here.server.port()] {
+        return std::vector<azl::Venue>{{"stage-pc", azl::bonjourName(), port, "bonjour", true}};
+    };
+    sources.probe = [](const azl::Venue& venue) {
+        if (!azl::loopbackAddress(azl::probeHost(venue)))
+            return azl::VenueProbe{.reachable = true, .error = "the engine closed the connection",
+                                   .engineError = "this engine lets in other machines only with its pairing token"};
+        return azl::probeVenue(azl::probeHost(venue), venue.port);
+    };
+    session.startVenues(sources);
+    REQUIRE(runUntil([&] { return session.client().synced() && session.venues()->scans() > 0; }));
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+    CHECK(main.alerts().lines().isEmpty());
+    CHECK_FALSE(main.alerts().isVisible());
+    CHECK(main.transport().venueButton().label() == "stage-pc");
+    CHECK(main.transport().venueButton().dot() == azl::VenueDot::Ok);
 }

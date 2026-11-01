@@ -7,11 +7,11 @@ namespace azl {
 
 namespace {
 
-bool readsClock(const std::string& metal)
+bool readsClock(const std::string& glsl)
 {
     static const char* const clocks[] = {"h.time", "h.beat", "h.dt", "perFrame(", "frames60("};
     return std::any_of(std::begin(clocks), std::end(clocks),
-                       [&](const char* clock) { return metal.find(clock) != std::string::npos; });
+                       [&](const char* clock) { return glsl.find(clock) != std::string::npos; });
 }
 
 bool staticSource(SourceKind source)
@@ -27,9 +27,9 @@ bool clockFree(const EffectDef& effect)
     const bool plain = std::all_of(effect.params.begin(), effect.params.end(),
                                    [](const ParamDef& param) { return param.drive == ParamDrive::Value; });
     const bool timeless = std::none_of(effect.sidePasses.begin(), effect.sidePasses.end(), [](const SidePass& side) {
-        return side.persistent || readsClock(side.metal);
+        return side.persistent || readsClock(side.glsl);
     });
-    return plain && timeless && !readsClock(effect.metal) && !readsClock(effect.mask) &&
+    return plain && timeless && !readsClock(effect.glsl) && !readsClock(effect.mask) &&
            !readsClock(effect.globals);
 }
 

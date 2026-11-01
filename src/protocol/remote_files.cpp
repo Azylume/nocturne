@@ -1,7 +1,8 @@
 #include "protocol/remote_files.hpp"
 
+#include "platform/app_paths.hpp"
+
 #include <algorithm>
-#include <cstdlib>
 #include <iterator>
 #include <map>
 
@@ -14,8 +15,8 @@ namespace {
 fs::path expanded(const std::string& path)
 {
     if (path.starts_with("~/"))
-        if (const char* home = std::getenv("HOME"))
-            return fs::path(home) / path.substr(2);
+        if (const fs::path home = homeFolder(); !home.empty())
+            return home / path.substr(2);
     return path;
 }
 

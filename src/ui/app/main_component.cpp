@@ -1,5 +1,6 @@
 #include "ui/app/main_component.hpp"
 
+#include "protocol/build_info.hpp"
 #include "ui/app/midi.hpp"
 
 namespace azl::ui {
@@ -265,6 +266,27 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
         return true;
     }
     return false;
+}
+
+MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible)
+    : DocumentWindow("Nocturne " + juce::String(versionLabel()), Look::palette().background, DocumentWindow::allButtons)
+{
+    setUsingNativeTitleBar(true);
+    setContentOwned(new MainComponent(session, std::move(settings)), true);
+    setResizable(true, false);
+    setResizeLimits(1100, 700, 10000, 10000);
+    centreWithSize(getWidth(), getHeight());
+    setVisible(visible);
+}
+
+void MainWindow::focusGained(FocusChangeType)
+{
+    getContentComponent()->grabKeyboardFocus();
+}
+
+void MainWindow::closeButtonPressed()
+{
+    juce::JUCEApplication::getInstance()->systemRequestedQuit();
 }
 
 } // namespace azl::ui

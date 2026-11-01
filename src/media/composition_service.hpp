@@ -2,9 +2,8 @@
 
 #include "media/composition_media.hpp"
 #include "media/media_library.hpp"
+#include "platform/work_queue.hpp"
 #include "protocol/document_server.hpp"
-
-#include <dispatch/dispatch.h>
 
 #include <functional>
 #include <string>
@@ -58,7 +57,7 @@ private:
     AttachedDisplays displays_;
     ShowFolders folders_;
     std::function<void()> beforeLoad_;
-    dispatch_queue_t queue_;
+    WorkQueue queue_;
 };
 
 } // namespace azl

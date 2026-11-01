@@ -1,6 +1,7 @@
 #include "document/composition_file.hpp"
 #include "import/resolume_import.hpp"
 #include "media/composition_media.hpp"
+#include "platform/process.hpp"
 
 #include <doctest.h>
 
@@ -8,7 +9,6 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <unistd.h>
 
 namespace {
 
@@ -31,7 +31,7 @@ std::string read(const fs::path& path)
 // The media of the trimmed fixture as transcodes and links would name them, all but closer_moon1.
 fs::path mediaFolder()
 {
-    const fs::path dir = fs::temp_directory_path() / ("nocturne-import-" + std::to_string(::getpid()));
+    const fs::path dir = fs::temp_directory_path() / ("nocturne-import-" + std::to_string(azl::currentProcessId()));
     fs::create_directories(dir);
     for (const char* name : {"opener_sun1.mp4", "opener_sun2.mp4", "loop-01.mp4", "loop-02.mp4", "still_logo.mp4",
                              "text_title.mp4"})

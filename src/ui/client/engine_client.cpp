@@ -2,14 +2,11 @@
 
 #include "effects/effect_registry.hpp"
 #include "effects/isf.hpp"
+#include "platform/preview_channel.hpp"
 #include "protocol/build_info.hpp"
 #include "protocol/bundle_push.hpp"
 #include "protocol/prepare.hpp"
-#include "protocol/preview_surface.hpp"
 
-#include <IOSurface/IOSurface.h>
-
-#include <cstring>
 #include <filesystem>
 #include <optional>
 
@@ -58,52 +55,20 @@ bool isLocalHost(const std::string& host)
 
 // The ring of shared surfaces the engine paints one source into.
 struct EngineClient::Surfaces {
-    std::vector<IOSurfaceRef> surfaces;
-
-    ~Surfaces()
-    {
-        for (IOSurfaceRef surface : surfaces)
-            if (surface)
-                CFRelease(surface);
-    }
-
-    static std::optional<int64_t> frameIn(IOSurfaceRef surface)
-    {
-        CFTypeRef value = IOSurfaceCopyValue(surface, previewFrameKey());
-        if (!value)
-            return std::nullopt;
-        int64_t frame = -1;
-        if (CFGetTypeID(value) == CFNumberGetTypeID())
-            CFNumberGetValue(static_cast<CFNumberRef>(value), kCFNumberSInt64Type, &frame);
-        CFRelease(value);
-        return frame;
-    }
+    std::vector<std::unique_ptr<PreviewChannelReader>> readers;
 
     // The engine may have painted the surface again since it named it, or be painting it now: the picture is taken
     // only when the surface held one finished frame throughout the copy, and is of that frame.
     bool read(size_t index, PreviewPicture& picture) const
     {
-        if (index >= surfaces.size() || !surfaces[index])
+        PreviewChannelReader::Picture shared;
+        if (index >= readers.size() || !readers[index] || !readers[index]->read(shared))
             return false;
-        IOSurfaceRef surface = surfaces[index];
-        const std::optional<int64_t> before = frameIn(surface);
-        if (before && *before < 0)
-            return false;
-        picture.width = uint32_t(IOSurfaceGetWidth(surface));
-        picture.height = uint32_t(IOSurfaceGetHeight(surface));
-        const size_t row = size_t(picture.width) * 4;
-        picture.bgra.resize(row * picture.height);
-        IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
-        const auto* base = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(surface));
-        const size_t stride = IOSurfaceGetBytesPerRow(surface);
-        for (uint32_t y = 0; y < picture.height; ++y)
-            std::memcpy(picture.bgra.data() + y * row, base + y * stride, row);
-        IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
-        if (!before)
-            return true;
-        if (frameIn(surface) != before)
-            return false;
-        picture.frame = uint64_t(*before);
+        picture.width = shared.width;
+        picture.height = shared.height;
+        picture.bgra = std::move(shared.bgra);
+        if (shared.frame)
+            picture.frame = *shared.frame;
         return true;
     }
 };
@@ -707,7 +672,7 @@ void EngineClient::receivePreview(const Message& message, std::vector<std::funct
     if (op == "surfaces") {
         auto ring = std::make_unique<Surfaces>();
         for (const auto& id : message.value("surfaces", Message::array()))
-            ring->surfaces.push_back(IOSurfaceLookup(id.get<IOSurfaceID>()));
+            ring->readers.push_back(PreviewChannelReader::open(id.get<uint64_t>()));
         surfaces_[source] = std::move(ring);
         return;
     }

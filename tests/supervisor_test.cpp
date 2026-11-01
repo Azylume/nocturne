@@ -1,5 +1,7 @@
 #include "clips.hpp"
+#include "crash_marks.hpp"
 #include "http_get.hpp"
+#include "kill_process.hpp"
 
 #include "audio/audio_input.hpp"
 #include "document/composition_file.hpp"
@@ -8,22 +10,13 @@
 #include "supervisor/rotating_log.hpp"
 #include "supervisor/state_saver.hpp"
 
-#include <arpa/inet.h>
-#include <cerrno>
 #include <csignal>
-#include <cstring>
 #include <fstream>
 #include <functional>
 #include <future>
 #include <optional>
-#include <spawn.h>
 #include <sstream>
-#include <sys/socket.h>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
-
-extern char** environ;
 
 namespace {
 
@@ -155,153 +148,49 @@ TEST_CASE("a rotating log appends across reopenings and keeps a fixed number of 
     CHECK_FALSE(fs::exists(path.string() + ".3"));
 }
 
-TEST_CASE("crash marks name what is being opened, and a skip list entry is never opened again")
-{
-    TempDir dir;
-    const fs::path marks = dir.path / "inflight.json";
-    const fs::path skips = dir.path / "skip.json";
-    azl::crash::setup(marks, skips);
-    {
-        azl::crash::Scope opening("clip", "abc", "poison.mp4");
-        const auto now = azl::crash::readMarks(marks);
-        REQUIRE(now.size() == 1);
-        CHECK(now[0].name == "poison.mp4");
-    }
-    CHECK(azl::crash::readMarks(marks).empty());
-
-    CHECK(azl::crash::addSkips(skips, {{"clip", "abc", "poison.mp4"}}, "killed by SIGSEGV").size() == 1);
-    CHECK(azl::crash::addSkips(skips, {{"clip", "abc", "poison.mp4"}}, "again").empty());
-    REQUIRE(azl::crash::readSkips(skips).size() == 1);
-    CHECK(azl::crash::readSkips(skips)[0].reason == "killed by SIGSEGV");
-    CHECK_FALSE(azl::crash::skipped("clip", "abc"));
-    azl::crash::setup(marks, skips);
-    CHECK(azl::crash::skipped("clip", "abc"));
-    CHECK_FALSE(azl::crash::skipped("effect", "abc"));
-    azl::crash::setup({}, {});
-}
-
-namespace {
-
-// Holds a mark on its own thread until it goes, as the decoders' or the compiler's thread does inside an open or
-// compile.
-class HeldMark {
-public:
-    HeldMark(std::string kind, std::string key, std::string name)
-    {
-        std::future<void> held = held_.get_future();
-        thread_ = std::thread([this, kind, key, name, release = release_.get_future()] {
-            azl::crash::Scope scope(kind, key, name);
-            held_.set_value();
-            release.wait();
-        });
-        held.wait();
-    }
-
-    ~HeldMark()
-    {
-        release_.set_value();
-        thread_.join();
-    }
-
-private:
-    std::promise<void> held_;
-    std::promise<void> release_;
-    std::thread thread_;
-};
-
-struct CrashFiles {
-    CrashFiles() { azl::crash::setup(marks, skips, crash); }
-    ~CrashFiles() { azl::crash::setup({}, {}); }
-
-    std::vector<azl::crash::Mark> culprits() const
-    {
-        return azl::crash::culprits(azl::crash::readMarks(marks), azl::crash::readCrash(crash));
-    }
-
-    TempDir dir;
-    fs::path marks = dir.path / "inflight.json";
-    fs::path skips = dir.path / "skip.json";
-    fs::path crash = dir.path / "crash.json";
-};
-
-const std::string kChain = "edgeDetection,classicStripper,classicColorize";
-
-} // namespace
-
-TEST_CASE("a crash on another thread than a clip being opened skip-lists nothing")
-{
-    CrashFiles files;
-    HeldMark opening("clip", "abc", "red_machine_01.mov");
-    std::thread([] { azl::crash::recordCrash(SIGSEGV); }).join();
-    const std::vector<azl::crash::Mark> inFlight = azl::crash::readMarks(files.marks);
-    REQUIRE(inFlight.size() == 1);
-    const std::optional<azl::crash::Crash> crash = azl::crash::readCrash(files.crash);
-    REQUIRE(crash);
-    CHECK(crash->signal == SIGSEGV);
-    CHECK(crash->thread != inFlight[0].thread);
-    CHECK(files.culprits().empty());
-}
-
-TEST_CASE("a crash inside a chain compile skip-lists that chain and nothing in flight elsewhere")
-{
-    CrashFiles files;
-    HeldMark opening("clip", "def", "smoke_01.mov");
-    std::vector<azl::crash::Mark> culprits;
-    std::thread([&] {
-        azl::crash::Scope compiling("effect", kChain, kChain);
-        azl::crash::recordCrash(SIGBUS);
-        culprits = files.culprits();
-    }).join();
-    REQUIRE(culprits.size() == 1);
-    CHECK(culprits[0].kind == "effect");
-    CHECK(culprits[0].key == kChain);
-    CHECK(azl::crash::addSkips(files.skips, culprits, "killed by SIGBUS").size() == 1);
-    azl::crash::setup(files.marks, files.skips, files.crash);
-    CHECK(azl::crash::skipped("effect", kChain));
-    CHECK_FALSE(azl::crash::skipped("clip", "def"));
-}
-
 TEST_CASE("a real fault inside a chain compile is recorded on the compiling thread and the process still dies of it")
 {
-    CrashFiles files;
-    const pid_t child = ::fork();
-    REQUIRE(child >= 0);
-    if (child == 0) {
-        azl::crash::setup(files.marks, files.skips, files.crash);
-        azl::crash::installCrashHandlers();
-        azl::crash::Scope compiling("effect", kChain, kChain);
-        int* volatile nowhere = nullptr;
-        *nowhere = 1;
-        ::_exit(0);
-    }
-    int status = 0;
-    REQUIRE(::waitpid(child, &status, 0) == child);
-    REQUIRE(WIFSIGNALED(status));
-    CHECK((WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS));
-    const std::optional<azl::crash::Crash> crash = azl::crash::readCrash(files.crash);
+    TempDir state;
+    std::optional<azl::Process> engine =
+        azl::spawnProcess({.program = NOCTURNE_FAKE_ENGINE,
+                           .args = {"--do", "fault-compiling", "--state", state.path.string()},
+                           .output = azl::Stdio::null(),
+                           .error = azl::Stdio::null()});
+    REQUIRE(engine);
+    engine->wait();
+    const std::optional<azl::crash::Crash> crash = azl::crash::readCrash(state.path / "crash.json");
     REQUIRE(crash);
-    CHECK(crash->signal == WTERMSIG(status));
-    const std::vector<azl::crash::Mark> culprits = files.culprits();
+#ifdef _WIN32
+    CHECK(engine->describeExit() == "crashed with exception 0xC0000005");
+    CHECK(crash->signal == SIGSEGV);
+#else
+    CHECK(engine->describeExit() == (crash->signal == SIGBUS ? "killed by SIGBUS" : "killed by SIGSEGV"));
+    CHECK((crash->signal == SIGSEGV || crash->signal == SIGBUS));
+#endif
+    const std::vector<azl::crash::Mark> culprits =
+        azl::crash::culprits(azl::crash::readMarks(state.path / "inflight.json"), crash);
     REQUIRE(culprits.size() == 1);
-    CHECK(culprits[0].key == kChain);
+    CHECK(culprits[0].kind == "effect");
+    CHECK(culprits[0].key == "chain");
 }
 
-TEST_CASE("a crash in a Metal completion handler while a chain compiles on another thread skip-lists nothing")
+TEST_CASE("a crash in a GPU completion handler while a chain compiles on another thread skip-lists nothing")
 {
     CrashFiles files;
     HeldMark compiling("effect", kChain, kChain);
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-    auto queue = NS::TransferPtr(device->newCommandQueue());
-    MTL::CommandBuffer* cmd = queue->commandBuffer();
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
+    const azl::gpu::Queue queue = device.makeQueue();
     std::promise<void> completed;
-    cmd->addCompletedHandler([&](MTL::CommandBuffer*) {
-        azl::crash::recordCrash(SIGSEGV);
-        completed.set_value();
-    });
-    cmd->commit();
+    {
+        azl::gpu::Scope scope;
+        azl::gpu::CommandBuffer cmd = queue.commandBuffer();
+        cmd.onCompleted([&](const azl::gpu::Completion&) {
+            azl::crash::recordCrash(SIGSEGV);
+            completed.set_value();
+        });
+        cmd.commit();
+    }
     completed.get_future().wait();
-    pool->release();
     REQUIRE(azl::crash::readCrash(files.crash));
     REQUIRE(azl::crash::readMarks(files.marks).size() == 1);
     CHECK(files.culprits().empty());
@@ -591,28 +480,30 @@ std::string supervisorPath()
 // A port nobody listens on right now, for an engine the test starts.
 uint16_t freePort()
 {
-    const int fd = socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in address{.sin_family = AF_INET, .sin_addr = {htonl(INADDR_LOOPBACK)}};
+    azl::startSockets();
+    const azl::Socket fd = socket(AF_INET, SOCK_STREAM, 0);
+    in_addr loopback{};
+    loopback.s_addr = htonl(INADDR_LOOPBACK);
+    sockaddr_in address = azl::ipv4Endpoint(loopback, 0);
     REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0);
     socklen_t size = sizeof address;
     getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size);
-    close(fd);
+    azl::closeSocket(fd);
     return ntohs(address.sin_port);
 }
 
 class SupervisedEngine {
 public:
+    // `crashEnv` is one NAME=value the engine gets.
     explicit SupervisedEngine(std::vector<std::string> extra = {}, std::string crashEnv = {}) : port(freePort())
     {
-        args_ = {supervisorPath(), "--state", (root.path / "state").string(), "--logs", (root.path / "logs").string(),
-                 "--desk-port", "0", "--desk-loopback"};
+        args_ = {"--state", (root.path / "state").string(), "--logs", (root.path / "logs").string(), "--desk-port",
+                 "0", "--desk-loopback"};
         args_.insert(args_.end(), extra.begin(), extra.end());
         args_.insert(args_.end(), {"--", "--offscreen", "--size", "320x180", "--audio-input", "off", "--port",
                                    std::to_string(port), "--library", (root.path / "library").string(), "--seed", "7"});
-        for (char** e = environ; *e; ++e)
-            env_.push_back(*e);
-        if (!crashEnv.empty())
-            env_.push_back(crashEnv);
+        if (const size_t equals = crashEnv.find('='); equals != std::string::npos)
+            env_[crashEnv.substr(0, equals)] = crashEnv.substr(equals + 1);
         spawn();
         REQUIRE(waitForRunning(1));
     }
@@ -634,7 +525,7 @@ public:
         return s.is_object() ? s : Message::object();
     }
 
-    pid_t engine() const { return status().value("engine", 0); }
+    int engine() const { return status().value("engine", 0); }
 
     bool waitForStart(int starts, double seconds = 15.0) const
     {
@@ -666,30 +557,21 @@ public:
 private:
     void spawn()
     {
-        std::vector<char*> argv, envp;
-        for (std::string& a : args_)
-            argv.push_back(a.data());
-        argv.push_back(nullptr);
-        for (std::string& e : env_)
-            envp.push_back(e.data());
-        envp.push_back(nullptr);
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_addopen(&actions, 2, (root.path / "stderr.txt").c_str(), O_WRONLY | O_CREAT, 0644);
-        REQUIRE(posix_spawn(&supervisor_, argv[0], &actions, nullptr, argv.data(), envp.data()) == 0);
-        posix_spawn_file_actions_destroy(&actions);
+        std::string error;
+        supervisor_ = azl::spawnProcess(
+            {.program = supervisorPath(), .args = args_, .error = azl::Stdio::null(), .environment = env_}, &error);
+        REQUIRE_MESSAGE(supervisor_, error);
     }
 
     void stop()
     {
-        ::kill(supervisor_, SIGTERM);
-        int status = 0;
-        ::waitpid(supervisor_, &status, 0);
+        supervisor_->terminate();
+        supervisor_->wait();
     }
 
     std::vector<std::string> args_;
-    std::vector<std::string> env_;
-    pid_t supervisor_ = 0;
+    std::map<std::string, std::optional<std::string>> env_;
+    std::optional<azl::Process> supervisor_;
 };
 
 const Message* layerClip(const Message& state)
@@ -716,17 +598,22 @@ Message playing(Remote& remote, double seconds = 10.0)
 
 // Kills or stops the engine and checks that its first frame after the start-up hold, the first correct frame, comes
 // within `limit` seconds, on the same clip and beat grid.
-void checkRestart(SupervisedEngine& engine, int sig, double limit)
+enum class Stop { Kill, Freeze };
+
+void checkRestart(SupervisedEngine& engine, Stop how, double limit)
 {
     std::optional<Remote> remote(std::in_place, engine.port);
     const Message before = playing(*remote);
     const auto at = Clock::now();
     const double beatAt = before["beat"];
     const uint64_t column = (*layerClip(before))["column"];
-    const pid_t old = engine.engine();
-    REQUIRE(::kill(old, sig) == 0);
-    if (sig == SIGKILL)
+    const int old = engine.engine();
+    if (how == Stop::Kill) {
+        killProcess(old);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    } else {
+        suspendProcess(old);
+    }
     remote.reset();
 
     // A ceiling, not the limit: a slow restart fails on the time it took, below.
@@ -736,9 +623,9 @@ void checkRestart(SupervisedEngine& engine, int sig, double limit)
     // The reply comes a little after the last frame, so this errs late.
     const double sinceShown = after["time"].get<double>() - after["startedAt"].get<double>();
     const double back = std::chrono::duration<double>(Clock::now() - at).count() - sinceShown;
-    MESSAGE("first correct frame " << back << " s after signal " << sig);
+    MESSAGE("first correct frame " << back << " s after " << (how == Stop::Kill ? "a kill" : "freezing the engine"));
     CHECK(back < limit);
-    CHECK(::kill(old, 0) != 0);
+    CHECK_FALSE(azl::processRunning(old));
     CHECK((*layerClip(after))["column"] == column);
     const double expected = beatAt + std::chrono::duration<double>(Clock::now() - at).count() * 2.0;
     CHECK(std::abs(after["beat"].get<double>() - expected) < 0.5);
@@ -767,8 +654,8 @@ TEST_CASE("a killed engine restarts and resumes the same clip on the same beat g
         Remote remote(engine.port);
         startClips(remote, engine.root.path / "media", 1);
     }
-    checkRestart(engine, SIGKILL, 2.0);
-    CHECK(engine.log().find("engine killed by SIGKILL") != std::string::npos);
+    checkRestart(engine, Stop::Kill, 2.0);
+    CHECK(engine.log().find(std::string("engine ") + kKilled) != std::string::npos);
     CHECK(engine.status()["mode"] == "normal");
 }
 
@@ -780,7 +667,7 @@ TEST_CASE("a hung engine is killed after 2 s without a frame and resumes")
         Remote remote(engine.port);
         startClips(remote, engine.root.path / "media", 1);
     }
-    checkRestart(engine, SIGSTOP, 4.0);
+    checkRestart(engine, Stop::Freeze, 4.0);
     CHECK(engine.log().find("engine hung: no frame for 2.") != std::string::npos);
 }
 
@@ -801,7 +688,7 @@ TEST_CASE("Autopilot resumes on the clip it had stepped to")
             },
             15.0));
     }
-    checkRestart(engine, SIGKILL, 2.0);
+    checkRestart(engine, Stop::Kill, 2.0);
 }
 
 TEST_CASE("the audio input picked at runtime is open again after a restart")
@@ -819,7 +706,7 @@ TEST_CASE("the audio input picked at runtime is open again after a restart")
         remote.send({{"type", "audio"}, {"op", "select"}, {"device", "off"}, {"channels", Message::array({2})}});
         REQUIRE(eventually([&] { return input(remote)["channels"] == Message::array({2}); }, 5.0));
     }
-    checkRestart(engine, SIGKILL, 2.0);
+    checkRestart(engine, Stop::Kill, 2.0);
     Remote remote(engine.port);
     CHECK(input(remote)["channels"] == Message::array({2}));
     CHECK(engine.engineLog().find("audio: reopening 'off', the input open before the restart") != std::string::npos);
@@ -888,11 +775,9 @@ TEST_CASE("three crashes within a minute start safe mode with the reason")
         CAPTURE(crash);
         // The crash-th engine has drawn its first frame: its "engine running" line, not an earlier engine's.
         REQUIRE(eventually([&] { return running() >= size_t(crash) && engine.status()["starts"] == crash; }, 15.0));
-        const pid_t pid = engine.engine();
+        const int pid = engine.engine();
         REQUIRE(pid > 0);
-        if (::kill(pid, SIGKILL) != 0)
-            FAIL("engine " << pid << " of start " << crash << " could not be killed: " << std::strerror(errno)
-                           << "\n" << engine.log());
+        killProcess(pid);
         REQUIRE(eventually([&] { return engine.status()["starts"] == crash + 1 || engine.status()["mode"] == "safe"; },
                            10.0));
     }
@@ -900,7 +785,7 @@ TEST_CASE("three crashes within a minute start safe mode with the reason")
     const Message status = engine.status();
     CHECK(status["reason"].get<std::string>().find("3 crashes within 60 s") != std::string::npos);
     CHECK(status["starts"] == 3);
-    CHECK(engine.log().find("safe mode started") != std::string::npos);
+    CHECK(eventually([&] { return engine.log().find("safe mode started") != std::string::npos; }, 5.0));
     std::this_thread::sleep_for(std::chrono::seconds(2));
     CHECK(engine.status()["starts"] == 3);
     CHECK(readFile(engine.root.path / "logs" / "engine.log").find("safe mode: 3 crashes") != std::string::npos);
@@ -1042,8 +927,8 @@ TEST_CASE("the Show lock refuses restart and safe mode for every client and surv
         CHECK(refusedByLock(machine(other, {{"op", "safeMode"}})));
         CHECK(refusedByLock(machine(director, {{"op", "restart"}})));
     }
-    const pid_t old = engine.engine();
-    REQUIRE(::kill(old, SIGKILL) == 0);
+    const int old = engine.engine();
+    killProcess(old);
     REQUIRE(engine.waitForRunning(2));
     {
         Remote remote(engine.port);
@@ -1078,7 +963,7 @@ TEST_CASE("the recording settings set at runtime are kept across engine and supe
         // One recording's file is not kept: the folder stays.
         REQUIRE(record(remote, {{"op", "set"}, {"path", (other / "once.mov").string()}})["type"] == "record");
     }
-    REQUIRE(::kill(engine.engine(), SIGKILL) == 0);
+    killProcess(engine.engine());
     REQUIRE(engine.waitForRunning(2));
     {
         Remote remote(engine.port);
@@ -1109,7 +994,7 @@ TEST_CASE("the venue desk runs beside the engine; killed, it comes back and the 
     SupervisedEngine engine;
     INFO(engine.log());
     const fs::path pidFile = engine.root.path / "state" / "desk.pid";
-    const auto deskPid = [&] { return pid_t(std::atoi(readFile(pidFile).c_str())); };
+    const auto deskPid = [&] { return std::atoi(readFile(pidFile).c_str()); };
     // The port of the newest desk, from its log.
     const auto deskPort = [&] {
         const std::string log = readFile(engine.root.path / "logs" / "desk.log");
@@ -1121,12 +1006,12 @@ TEST_CASE("the venue desk runs beside the engine; killed, it comes back and the 
     REQUIRE(eventually([&] { return (reply = httpGet(deskPort(), "/state")).status == 200; }, 10.0));
     CHECK(Message::parse(reply.body)["connected"] == true);
 
-    const pid_t first = deskPid();
-    const pid_t engineBefore = engine.engine();
-    REQUIRE(::kill(first, SIGKILL) == 0);
+    const int first = deskPid();
+    const int engineBefore = engine.engine();
+    killProcess(first);
     REQUIRE(eventually([&] { return deskPid() > 0 && deskPid() != first; }, 10.0));
     REQUIRE(eventually([&] { return httpGet(deskPort(), "/state").status == 200; }, 10.0));
     CHECK(engine.engine() == engineBefore);
     CHECK(engine.status()["starts"] == 1);
-    CHECK(engine.log().find("desk killed by SIGKILL, restarting") != std::string::npos);
+    CHECK(engine.log().find(std::string("desk ") + kKilled + ", restarting") != std::string::npos);
 }

@@ -1,14 +1,9 @@
 #pragma once
 
+#include "net/socket_compat.hpp"
 #include "upload/s3.hpp"
 
 #include <doctest.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -56,10 +51,11 @@ public:
 
     FakeS3()
     {
+        azl::startSockets();
         listener_ = socket(AF_INET, SOCK_STREAM, 0);
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        in_addr loopback{};
+        loopback.s_addr = htonl(INADDR_LOOPBACK);
+        sockaddr_in address = azl::ipv4Endpoint(loopback, 0);
         REQUIRE(bind(listener_, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0);
         socklen_t length = sizeof address;
         getsockname(listener_, reinterpret_cast<sockaddr*>(&address), &length);
@@ -72,7 +68,7 @@ public:
     {
         stop_ = true;
         thread_.join();
-        close(listener_);
+        azl::closeSocket(listener_);
     }
 
     std::string endpoint() const { return "http://127.0.0.1:" + std::to_string(port_); }
@@ -151,26 +147,26 @@ private:
     {
         while (!stop_) {
             pollfd p{listener_, POLLIN, 0};
-            if (poll(&p, 1, 20) <= 0)
+            if (azl::pollSockets(&p, 1, 20) <= 0)
                 continue;
-            const int fd = accept(listener_, nullptr, nullptr);
-            if (fd < 0)
+            const azl::Socket fd = accept(listener_, nullptr, nullptr);
+            if (fd == azl::kNoSocket)
                 continue;
             if (const auto request = read(fd)) {
                 if (const auto reply = handle(*request))
                     write(fd, *request, *reply);
             }
-            close(fd);
+            azl::closeSocket(fd);
         }
     }
 
-    static std::optional<Request> read(int fd)
+    static std::optional<Request> read(azl::Socket fd)
     {
         std::string data;
         char buffer[65536];
         size_t headerEnd;
         while ((headerEnd = data.find("\r\n\r\n")) == std::string::npos) {
-            const ssize_t n = recv(fd, buffer, sizeof buffer, 0);
+            const long n = azl::receiveSome(fd, buffer, sizeof buffer);
             if (n <= 0)
                 return std::nullopt;
             data.append(buffer, size_t(n));
@@ -195,7 +191,7 @@ private:
         const size_t length = r.headers.count("content-length") ? std::stoul(r.headers["content-length"]) : 0;
         r.body = data.substr(headerEnd + 4);
         while (r.body.size() < length) {
-            const ssize_t n = recv(fd, buffer, sizeof buffer, 0);
+            const long n = azl::receiveSome(fd, buffer, sizeof buffer);
             if (n <= 0)
                 return std::nullopt;
             r.body.append(buffer, size_t(n));
@@ -203,7 +199,7 @@ private:
         return r;
     }
 
-    static void write(int fd, const Request& request, const Reply& reply)
+    static void write(azl::Socket fd, const Request& request, const Reply& reply)
     {
         std::string out = "HTTP/1.1 " + std::to_string(reply.status) + " X\r\nConnection: close\r\n";
         for (const auto& [name, value] : reply.headers)
@@ -213,12 +209,7 @@ private:
         out += "\r\n";
         if (request.method != "HEAD")
             out += reply.body;
-        for (size_t sent = 0; sent < out.size();) {
-            const ssize_t n = send(fd, out.data() + sent, out.size() - sent, 0);
-            if (n <= 0)
-                return;
-            sent += size_t(n);
-        }
+        azl::sendAll(fd, out.data(), out.size());
     }
 
     static Reply error(int status, const std::string& code)
@@ -379,7 +370,7 @@ private:
         return out;
     }
 
-    int listener_ = -1;
+    azl::Socket listener_ = azl::kNoSocket;
     int port_ = 0;
     std::atomic<bool> stop_{false};
     std::thread thread_;

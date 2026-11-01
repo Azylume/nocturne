@@ -14,12 +14,6 @@ namespace azl {
 
 namespace {
 
-struct Request {
-    LibraryService* service;
-    Message message;
-    DocumentServer::Sink reply;
-};
-
 // Stills are kept next to the library index, one file per hash and width.
 std::vector<uint8_t> still(MediaLibrary& library, const std::string& hash, uint32_t width, StillCounts& counts)
 {
@@ -92,21 +86,17 @@ Message answer(MediaLibrary& library, const Message& message, StillCounts& count
 
 LibraryService::LibraryService(DocumentServer& document, MediaLibrary& library,
                                std::function<void(const std::string&)> found)
-    : document_(document), library_(library), found_(std::move(found)), queue_(dispatch_queue_create("nocturne.library", DISPATCH_QUEUE_SERIAL))
+    : document_(document), library_(library), found_(std::move(found)), queue_("nocturne.library")
 {
     document_.handle("library", [this](const Message& message, DocumentServer::Sink reply) {
-        dispatch_async_f(queue_, new Request{this, message, std::move(reply)}, [](void* context) {
-            std::unique_ptr<Request> request(static_cast<Request*>(context));
-            request->service->handle(request->message, request->reply);
-        });
+        queue_.async([this, message, reply = std::move(reply)] { handle(message, reply); });
     });
 }
 
 LibraryService::~LibraryService()
 {
     document_.handle("library", nullptr);
-    dispatch_sync_f(queue_, nullptr, [](void*) {});
-    dispatch_release(queue_);
+    queue_.flush();
 }
 
 void LibraryService::handle(const Message& message, const DocumentServer::Sink& reply)

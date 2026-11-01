@@ -3,12 +3,9 @@
 #include "document/composition_file.hpp"
 #include "media/hap_encoder.hpp"
 #include "media/media_library.hpp"
-
-#include <csignal>
-#include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "platform/app_paths.hpp"
+#include "platform/credentials.hpp"
+#include "platform/process.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -18,13 +15,12 @@
 #include <ctime>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <thread>
-
-extern char** environ;
 
 namespace fs = std::filesystem;
 
@@ -34,50 +30,43 @@ namespace {
 
 constexpr const char* kContentType = "video/mp4";
 
+// The ffmpeg or ffprobe installed beside the running program (the Windows installer ships them), else the one on PATH.
+std::string mediaTool(const std::string& name)
+{
+    return programInFolderOrPath(executablePath().parent_path(), name).string();
+}
+
 // Runs a command and returns its standard output; throws when it cannot start or exits non-zero.
 // Runs the tool and returns its output; with a `sink`, its output goes there as it comes instead.
-std::string runTool(const std::vector<std::string>& args, bool quiet = false,
-                    const std::function<void(const char*, size_t)>& sink = {})
+std::string runTool(const std::vector<std::string>& args, const std::function<void(const char*, size_t)>& sink = {})
 {
-    int out[2];
-    if (pipe(out) != 0)
-        throw std::runtime_error("pipe: " + std::string(std::strerror(errno)));
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, out[0]);
-    posix_spawn_file_actions_addclose(&actions, out[1]);
-    if (quiet)
-        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-    std::vector<char*> argv;
-    for (const std::string& arg : args)
-        argv.push_back(const_cast<char*>(arg.c_str()));
-    argv.push_back(nullptr);
-    pid_t pid = 0;
-    const int spawned = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    close(out[1]);
     const std::string name = args[0] == "nice" ? args[3] : args[0];
-    if (spawned != 0) {
-        close(out[0]);
-        throw std::runtime_error("cannot run " + name + ": " + std::strerror(spawned));
+    const std::optional<PipeEnds> out = makePipe();
+    if (!out)
+        throw std::runtime_error("cannot make a pipe for " + name);
+    std::string error;
+    std::optional<Process> tool = spawnProcess(
+        {.program = args[0], .args = {args.begin() + 1, args.end()}, .searchPath = true, .output = Stdio::to(out->write)},
+        &error);
+    closeHandle(out->write);
+    if (!tool) {
+        closeHandle(out->read);
+        throw std::runtime_error("cannot run " + name + ": " + error);
     }
     std::string output;
     char buffer[4096];
     try {
-        for (ssize_t n; (n = read(out[0], buffer, sizeof buffer)) > 0;)
+        for (long n; (n = readHandle(out->read, buffer, sizeof buffer)) > 0;)
             sink ? sink(buffer, size_t(n)) : void(output.append(buffer, size_t(n)));
     } catch (...) {
-        close(out[0]);
-        kill(pid, SIGTERM);
-        waitpid(pid, nullptr, 0);
+        closeHandle(out->read);
+        tool->terminate();
+        tool->wait();
         throw;
     }
-    close(out[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        throw std::runtime_error(name + " failed (exit " + std::to_string(WEXITSTATUS(status)) + ")");
+    closeHandle(out->read);
+    if (const int code = tool->wait(); code != 0)
+        throw std::runtime_error(name + " failed (exit " + std::to_string(code) + ")");
     return output;
 }
 
@@ -104,7 +93,11 @@ std::string utcText(const char* format)
 {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &now);
+#else
     gmtime_r(&now, &tm);
+#endif
     char text[32];
     std::strftime(text, sizeof text, format, &tm);
     return text;
@@ -122,8 +115,9 @@ Probe probe(const fs::path& file)
 {
     Probe p;
     for (const std::string& line :
-         lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0", file}))) {
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0",
+                        file.string()}))) {
         const auto f = fields(line);
         if (f.size() == 1) {
             p.duration = std::atof(f[0].c_str());
@@ -148,8 +142,9 @@ Probe probe(const fs::path& file)
 bool hasOneSecondGop(const fs::path& file, double duration)
 {
     std::vector<double> keyframes;
-    for (const std::string& line : lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                                                  "packet=pts_time,flags", "-of", "csv=p=0", file}))) {
+    for (const std::string& line :
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
         const auto f = fields(line);
         if (f.size() >= 2 && !f[1].empty() && f[1][0] == 'K' && f[0] != "N/A")
             keyframes.push_back(std::atof(f[0].c_str()));
@@ -164,37 +159,92 @@ bool hasOneSecondGop(const fs::path& file, double duration)
     return true;
 }
 
+// ffmpeg, quiet, through nice on POSIX so a conversion yields to a show on the same machine; Windows has no nice.
+std::vector<std::string> ffmpeg()
+{
+#ifdef _WIN32
+    return {mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
+#else
+    return {"nice", "-n", "15", mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
+#endif
+}
+
 // The ffmpeg arguments match tools/transcode-media.sh.
 std::vector<std::string> ffmpegCommand(const std::vector<std::string>& args, const fs::path& target)
 {
-    std::vector<std::string> command{"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                                     "-y"};
+    std::vector<std::string> command = ffmpeg();
+    command.push_back("-y");
     command.insert(command.end(), args.begin(), args.end());
-    command.insert(command.end(), {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target});
+    command.insert(command.end(),
+                   {"-map_metadata", "-1", "-tag:v", "avc1", "-movflags", "+faststart", target.string()});
     return command;
 }
+
+#ifdef _WIN32
+// Whether ffmpeg encodes a few frames with `encoder` here: the hardware ones need a GPU and driver that have them.
+bool encoderOpens(const std::string& encoder)
+{
+    std::vector<std::string> command = ffmpeg();
+    command.insert(command.end(), {"-f", "lavfi", "-i", "color=s=256x256:d=0.1", "-c:v", encoder, "-f", "null", "-"});
+    try {
+        runTool(command);
+        return true;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+}
+
+// The bundled ffmpeg is LGPL and has no libx264: a hardware encoder at about x264's quality for the CRF, else
+// Microsoft's Media Foundation encoder. Probed once per process.
+std::vector<std::string> h264Args(const ConvertOptions& options)
+{
+    static const std::string encoder = pickH264Encoder(encoderOpens);
+    const std::string quality = std::to_string(options.crf);
+    if (encoder == "h264_nvenc")
+        return {"-c:v", encoder, "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", quality, "-b:v", "0",
+                "-profile:v", "high", "-no-scenecut", "1"};
+    if (encoder == "h264_amf")
+        return {"-c:v", encoder, "-quality", "quality", "-rc", "cqp", "-qp_i", quality, "-qp_p", quality,
+                "-profile:v", "high"};
+    if (encoder == "h264_qsv")
+        return {"-c:v", encoder, "-preset", "slow", "-global_quality", quality, "-profile:v", "high"};
+    if (encoder == "h264_mf")
+        return {"-c:v", encoder, "-rate_control", "quality", "-quality", std::to_string(100 - 2 * options.crf),
+                "-profile:v", "high"};
+    throw std::runtime_error("no H.264 encoder opens on this machine (tried h264_nvenc, h264_amf, h264_qsv, h264_mf)");
+}
+#else
+std::vector<std::string> h264Args(const ConvertOptions& options)
+{
+    return {"-c:v", "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high"};
+}
+#endif
 
 std::vector<std::string> encodeArgs(const fs::path& source, double fps, const ConvertOptions& options)
 {
     const std::string gop = std::to_string(std::max(1L, std::lround(fps)));
-    return {"-i", source, "-an", "-vf",
-            "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p", "-c:v",
-            "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g", gop,
-            "-keyint_min", gop, "-sc_threshold", "0"};
+    std::vector<std::string> args = {
+        "-i", source.string(), "-an", "-vf",
+        "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p"};
+    std::ranges::copy(h264Args(options), std::back_inserter(args));
+    args.insert(args.end(), {"-g", gop, "-keyint_min", gop, "-sc_threshold", "0"});
+    return args;
 }
 
 std::vector<std::string> stillArgs(const fs::path& source, const ConvertOptions& options)
 {
-    return {"-loop", "1", "-t", "4", "-framerate", "30", "-i", source, "-an", "-filter_complex",
-            "color=black:s=1920x1080:r=30:d=4[bg];[0:v]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bg]["
-            "fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p",
-            "-c:v", "libx264", "-preset", options.preset, "-crf", std::to_string(options.crf), "-profile:v", "high", "-g",
-            "30", "-keyint_min", "30", "-sc_threshold", "0"};
+    std::vector<std::string> args = {
+        "-loop", "1", "-t", "4", "-framerate", "30", "-i", source.string(), "-an", "-filter_complex",
+        "color=black:s=1920x1080:r=30:d=4[bg];[0:v]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bg]["
+        "fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"};
+    std::ranges::copy(h264Args(options), std::back_inserter(args));
+    args.insert(args.end(), {"-g", "30", "-keyint_min", "30", "-sc_threshold", "0"});
+    return args;
 }
 
 std::vector<std::string> remuxArgs(const fs::path& source)
 {
-    return {"-i", source, "-map", "0:v:0", "-an", "-c:v", "copy"};
+    return {"-i", source.string(), "-map", "0:v:0", "-an", "-c:v", "copy"};
 }
 
 bool isStill(const std::string& codec)
@@ -214,14 +264,14 @@ void convertToHap(const fs::path& source, const Probe& p, const fs::path& target
     const bool still = isStill(p.codec);
     const int fpsNum = still || p.fpsNum <= 0 ? 30 : p.fpsNum;
     const int fpsDen = still || p.fpsNum <= 0 ? 1 : std::max(1, p.fpsDen);
-    std::vector<std::string> command{"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    std::vector<std::string> command = ffmpeg();
     if (still)
         command.insert(command.end(), {"-loop", "1", "-t", "4", "-framerate", "30"});
     command.insert(command.end(), {"-i", source.string(), "-an", "-vf",
                                    "scale=" + std::to_string(width) + ":" + std::to_string(height), "-f", "rawvideo",
                                    "-pix_fmt", "rgba", "-"});
     HapEncoder encoder(target, codec, width, height, fpsNum, fpsDen, options.hapChunks);
-    runTool(command, false, [&](const char* data, size_t size) {
+    runTool(command, [&](const char* data, size_t size) {
         encoder.feed(reinterpret_cast<const uint8_t*>(data), size);
     });
     encoder.finish();
@@ -325,14 +375,38 @@ std::string setting(const nlohmann::json& file, const char* key, const std::stri
     return value && *value ? value : file.value(key, "");
 }
 
-std::string keychainSecret(const std::string& service, const std::string& account)
+#ifdef _WIN32
+// Where to keep the secret instead.
+std::string secretHelp(const std::string& service, const std::string& account, const std::string& env)
 {
-    std::string secret =
-        runTool({"/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w"}, true);
-    while (!secret.empty() && (secret.back() == '\n' || secret.back() == '\r'))
-        secret.pop_back();
-    return secret;
+    return "add it to the Windows Credential Manager with `cmdkey /generic:" + service + " /user:" + account +
+           " /pass`, or set " + env + "_SECRET_ACCESS_KEY";
 }
+
+// Windows gives a file no owner-only permission bits to check, so a secret in one is never used.
+std::optional<std::string> fileSecretRefusal(const fs::path& path, const std::string& service,
+                                             const std::string& account, const std::string& env)
+{
+    return path.string() + " holds the R2 secret but Windows cannot keep it private there: " +
+           secretHelp(service, account, env);
+}
+#else
+std::string secretHelp(const std::string& service, const std::string& account, const std::string& env)
+{
+    return "add it to the login keychain with `security add-generic-password -s " + service + " -a " + account +
+           " -w`, or set " + env + "_SECRET_ACCESS_KEY";
+}
+
+std::optional<std::string> fileSecretRefusal(const fs::path& path, const std::string&, const std::string&,
+                                             const std::string&)
+{
+    const auto shared = fs::perms::group_all | fs::perms::others_all;
+    if ((fs::status(path).permissions() & shared) == fs::perms::none)
+        return std::nullopt;
+    return path.string() + " holds the R2 secret but others can read it: chmod 600 it, or keep the secret in the " +
+           "keychain";
+}
+#endif
 
 std::string credentialsRefused(const S3Config& config, const S3Error& error)
 {
@@ -381,22 +455,24 @@ S3Config loadR2Config(const fs::path& path, const std::string& keychainService, 
         return config;
     }
     if (file.contains("secret_access_key")) {
-        const auto shared = fs::perms::group_all | fs::perms::others_all;
-        if ((fs::status(path).permissions() & shared) != fs::perms::none)
-            throw std::runtime_error(path.string() + " holds the R2 secret but others can read it: chmod 600 it, or " +
-                                     "keep the secret in the keychain");
+        if (const std::optional<std::string> refusal =
+                fileSecretRefusal(path, keychainService, config.accessKeyId, env))
+            throw std::runtime_error(*refusal);
         config.secretAccessKey = file.value("secret_access_key", "");
         return config;
     }
-    try {
-        config.secretAccessKey = keychainSecret(keychainService, config.accessKeyId);
-    } catch (const std::runtime_error&) {
-    }
+    config.secretAccessKey = readCredential(keychainService, config.accessKeyId).value_or("");
     if (config.secretAccessKey.empty())
-        throw std::runtime_error("no R2 secret access key: add it to the login keychain with `security "
-                                 "add-generic-password -s " + keychainService + " -a " + config.accessKeyId +
-                                 " -w`, or set " + env + "_SECRET_ACCESS_KEY");
+        throw std::runtime_error("no R2 secret access key: " + secretHelp(keychainService, config.accessKeyId, env));
     return config;
+}
+
+std::string pickH264Encoder(const std::function<bool(const std::string& encoder)>& opens)
+{
+    for (const char* encoder : {"h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"})
+        if (opens(encoder))
+            return encoder;
+    return {};
 }
 
 Conversion convertForPlayback(const fs::path& source, const fs::path& outDir, const ConvertOptions& options)
@@ -468,7 +544,7 @@ nlohmann::json runUpload(S3Client* client, const std::vector<fs::path>& sources,
     UploadStates states(options.states);
     for (const fs::path& source : sources) {
         nlohmann::json entry = {{"source", fs::absolute(source).string()}};
-        UploadState state{.source = entry["source"], .pid = getpid()};
+        UploadState state{.source = entry["source"], .pid = currentProcessId()};
         try {
             const Conversion conversion = convertForPlayback(source, options.convertDir, options.convert);
             entry["converted"] = conversion.file.string();

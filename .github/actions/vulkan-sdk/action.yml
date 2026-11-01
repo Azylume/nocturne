@@ -1,0 +1,16 @@
+name: Vulkan SDK
+description: >
+  Installs the pinned Vulkan SDK (headers, loader library, validation layer) and sets VULKAN_SDK. The installer
+  registers the validation layer under HKLM, the only place an elevated process looks for it.
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      run: |
+        $installer = "$env:RUNNER_TEMP\vulkansdk.exe"
+        Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
+        if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { throw "Vulkan SDK checksum mismatch" }
+        $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+        & $installer --root $sdk --accept-licenses --default-answer --confirm-command install | Out-Null
+        if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { throw "Vulkan SDK did not install" }
+        "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV

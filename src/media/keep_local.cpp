@@ -160,7 +160,7 @@ void KeepLocal::load()
         for (const auto& [show, hashes] : shows.items())
             shows_[show] = hashes.get<std::set<std::string>>();
     } catch (const nlohmann::json::exception& e) {
-        std::fprintf(stderr, "keep local: unreadable %s (%s)\n", file_.c_str(), e.what());
+        std::fprintf(stderr, "keep local: unreadable %s (%s)\n", file_.string().c_str(), e.what());
     }
 }
 
@@ -176,7 +176,7 @@ void KeepLocal::save()
         std::ofstream out(temp);
         out << j.dump(2);
         if (!out) {
-            std::fprintf(stderr, "keep local: cannot write %s\n", temp.c_str());
+            std::fprintf(stderr, "keep local: cannot write %s\n", temp.string().c_str());
             return;
         }
     }

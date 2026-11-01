@@ -12,12 +12,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-struct Render {
-    DirectorMedia* media;
-    std::string hash;
-    fs::path file;
-};
-
 bool inside(const fs::path& file, const fs::path& folder)
 {
     if (folder.empty())
@@ -42,9 +36,8 @@ DirectorMedia::DirectorMedia(Options options, std::function<void(const std::stri
     : options_(std::move(options)), changed_(std::move(changed)),
       library_(options_.library.empty() ? nullptr : std::make_unique<MediaLibrary>(options_.library)),
       keep_(options_.keepLocal), uploads_(options_.uploads), stills_(options_.stills),
-      renders_(dispatch_queue_create("nocturne.ui.stills", DISPATCH_QUEUE_SERIAL))
+      renders_("nocturne.ui.stills", ThreadRole::Background)
 {
-    dispatch_set_target_queue(renders_, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
     if (library_ && options_.bucket && !options_.fetched.empty())
         fetcher_ = std::make_unique<MediaFetcher>(
             options_.bucket, options_.fetched,
@@ -55,8 +48,7 @@ DirectorMedia::DirectorMedia(Options options, std::function<void(const std::stri
 DirectorMedia::~DirectorMedia()
 {
     fetcher_.reset();
-    dispatch_sync_f(renders_, nullptr, [](void*) {});
-    dispatch_release(renders_);
+    renders_.flush();
 }
 
 bool DirectorMedia::has(const std::string& hash)
@@ -105,22 +97,20 @@ void DirectorMedia::renderStill(const std::string& hash)
         if (!rendering_.insert(hash).second)
             return;
     }
-    dispatch_async_f(renders_, new Render{this, hash, entry->path}, [](void* context) {
-        std::unique_ptr<Render> render(static_cast<Render*>(context));
+    renders_.async([this, hash, file = entry->path] {
         std::vector<uint8_t> jpeg;
         try {
-            jpeg = videoStill(render->file, kStillWidth);
+            jpeg = videoStill(file, kStillWidth);
         } catch (const std::exception& e) {
-            std::fprintf(stderr, "still of %s: %s\n", render->file.c_str(), e.what());
+            std::fprintf(stderr, "still of %s: %s\n", file.string().c_str(), e.what());
         }
-        DirectorMedia& media = *render->media;
-        media.stills_.store(render->hash, jpeg);
+        stills_.store(hash, jpeg);
         {
-            std::lock_guard lock(media.mutex_);
-            media.rendering_.erase(render->hash);
-            media.rendered_[render->hash] = std::move(jpeg);
+            std::lock_guard lock(mutex_);
+            rendering_.erase(hash);
+            rendered_[hash] = std::move(jpeg);
         }
-        media.changed_(render->hash);
+        changed_(hash);
     });
 }
 

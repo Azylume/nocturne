@@ -1,4 +1,6 @@
 #include "app/engine_config.hpp"
+#include "media/media_library.hpp"
+#include "platform/app_paths.hpp"
 #include "test_client.hpp"
 
 #include <doctest.h>
@@ -51,9 +53,9 @@ TEST_CASE("engine config: no flags give the defaults")
     CHECK(c.frameGuard);
     CHECK_FALSE(c.fsrUpscale);
     CHECK(c.audioGain == "auto");
-    CHECK(c.library.ends_with("Nocturne/MediaLibrary"));
-    CHECK(c.presets.ends_with("Nocturne/Presets.json"));
-    CHECK(c.macroSets.ends_with("Nocturne/MacroSets.json"));
+    CHECK(fs::path(c.library).generic_string().ends_with("Nocturne/MediaLibrary"));
+    CHECK(fs::path(c.presets).generic_string().ends_with("Nocturne/Presets.json"));
+    CHECK(fs::path(c.macroSets).generic_string().ends_with("Nocturne/MacroSets.json"));
     CHECK_FALSE(c.offscreen);
     CHECK_FALSE(c.realtimeFrames);
     CHECK_FALSE(c.opaqueOutputs);
@@ -98,6 +100,8 @@ TEST_CASE("engine config: display and output flags")
     CHECK(c.debugFrameBits);
     CHECK(c.opaqueOutputs);
     CHECK(parsed({"--slow", "10ac:43b0:12"}).slowDisplay == "10ac:43b0");
+    CHECK(parsed({"--ui-display", "10ac-43b0-u2"}).uiDisplay == "10ac-43b0-u2");
+    CHECK(parsed({}).uiDisplay.empty());
 }
 
 TEST_CASE("engine config: render flags")
@@ -214,6 +218,18 @@ TEST_CASE("engine config: the usage text is unchanged")
     const char* dir = std::getenv("NOCTURNE_GOLDEN_DIR");
     const fs::path golden = fs::path(dir ? dir : NOCTURNE_GOLDEN_DIR) / "engine_usage.txt";
     CHECK(std::string(azl::app::kEngineUsage) == readFile(golden));
+}
+
+TEST_CASE("engine config: the usage names this platform's folders")
+{
+    const std::string usage = azl::app::engineUsage();
+#ifdef __APPLE__
+    CHECK(usage == azl::app::kEngineUsage);
+#else
+    CHECK(usage.find("~/") == std::string::npos);
+    CHECK(usage.find(azl::MediaLibrary::defaultRoot().string()) != std::string::npos);
+    CHECK(usage.find((azl::videosFolder() / "Nocturne").string()) != std::string::npos);
+#endif
 }
 
 TEST_CASE("engine config: saved beside the state and loaded back the same")

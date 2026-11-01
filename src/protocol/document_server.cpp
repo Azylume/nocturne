@@ -22,6 +22,14 @@ std::string stringField(const Message& message, const char* key)
     return it->get<std::string>();
 }
 
+bool isOpen(const std::set<std::string>& open, const std::string& type, const Message& message)
+{
+    if (open.contains(type))
+        return true;
+    auto op = message.find("op");
+    return op != message.end() && op->is_string() && open.contains(type + " " + op->get<std::string>());
+}
+
 Message error(const std::string& what)
 {
     return {{"type", "error"}, {"message", what}};
@@ -198,7 +206,7 @@ DocumentServer::Handler DocumentServer::route(ClientId id, const Message& messag
             throw ProtocolError("send hello first");
         } else if (type == "snapshot") {
             sendSnapshot(client, id);
-        } else if (readOnly_ && !open_.contains(type)) {
+        } else if (readOnly_ && !isOpen(open_, type, message)) {
             throw ProtocolError(*readOnly_);
         } else if (type == "command") {
             command(id, message);

@@ -1,21 +1,17 @@
 #include "engine/frame_trace.hpp"
 
+#include "platform/clock.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <fstream>
 
-#include <mach/mach_time.h>
-
 namespace azl {
 
-double traceFromHost(double hostSeconds)
+double traceFromHost(double host)
 {
-    static const double offset = [] {
-        mach_timebase_info_data_t base;
-        mach_timebase_info(&base);
-        return traceNow() - double(mach_absolute_time()) * base.numer / base.denom * 1e-9;
-    }();
-    return hostSeconds + offset;
+    static const double offset = traceNow() - hostSeconds();
+    return host + offset;
 }
 
 void FrameTrace::add(const Render& render)

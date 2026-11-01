@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Metal/Metal.hpp>
+#include "gpu/gpu.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -13,20 +13,20 @@
 
 namespace azl {
 
-inline constexpr MTL::PixelFormat kFrameFormat = MTL::PixelFormatBGRA8Unorm;
+inline constexpr gpu::Format kFrameFormat = gpu::Format::BGRA8;
 
 // A finished picture. Whoever holds a FrameRef keeps the frame and everything it depends on alive.
 struct Frame {
     // The composition.
-    NS::SharedPtr<MTL::Texture> texture;
+    gpu::Texture texture;
     uint64_t index = 0;
     // When its render began.
     std::chrono::steady_clock::time_point started;
     // The layer and group pictures some slice reads, by layer id: premultiplied, before opacity and blending.
-    std::vector<std::pair<uint64_t, NS::SharedPtr<MTL::Texture>>> pictures;
+    std::vector<std::pair<uint64_t, gpu::Texture>> pictures;
 
     // The composition for 0, otherwise that layer's picture; null when the frame has none.
-    MTL::Texture* picture(uint64_t input) const;
+    const gpu::Texture* picture(uint64_t input) const;
 };
 using FrameRef = std::shared_ptr<const Frame>;
 
@@ -35,11 +35,11 @@ using FrameRef = std::shared_ptr<const Frame>;
 // textures are a fixed set; picture textures are made on first need and reused after.
 class FrameRing : public std::enable_shared_from_this<FrameRing> {
 public:
-    FrameRing(MTL::Device* device, uint32_t width, uint32_t height, int count);
+    FrameRing(const gpu::Device& device, uint32_t width, uint32_t height, int count);
 
     // Null when every frame is still held.
     std::shared_ptr<Frame> claim();
-    NS::SharedPtr<MTL::Texture> claimPicture();
+    gpu::Texture claimPicture();
     void publish(FrameRef frame);
     FrameRef latest() const;
     // Free frames, free pictures, published frames.
@@ -52,14 +52,14 @@ public:
 
 private:
     void giveBack(Frame& frame);
-    NS::SharedPtr<MTL::Texture> newTexture() const;
+    gpu::Texture newTexture() const;
 
-    NS::SharedPtr<MTL::Device> device_;
+    gpu::Device device_;
     uint32_t width_;
     uint32_t height_;
     mutable std::mutex mutex_;
-    std::vector<NS::SharedPtr<MTL::Texture>> free_;
-    std::vector<NS::SharedPtr<MTL::Texture>> freePictures_;
+    std::vector<gpu::Texture> free_;
+    std::vector<gpu::Texture> freePictures_;
     // The newest published frames, oldest first: enough for an output one frame behind while the newest is too young.
     std::deque<FrameRef> published_;
 };

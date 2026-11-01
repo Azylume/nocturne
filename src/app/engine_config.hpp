@@ -15,6 +15,7 @@ struct EngineConfig {
 
     std::string display;
     std::string main;
+    std::string uiDisplay;
     bool windowed = false;
     int virtualDisplays = 0;
     bool offscreen = false;
@@ -68,7 +69,10 @@ struct EngineConfig {
     std::optional<double> recordReservePercent;
 };
 
+// The usage as written, with the Apple folders.
 extern const char* const kEngineUsage;
+// The usage --help prints: kEngineUsage with this platform's folders.
+std::string engineUsage();
 
 // The command line's configuration, or a request for the usage: --help, or a flag it does not know or cannot read.
 struct ParsedArgs {
@@ -79,6 +83,8 @@ struct ParsedArgs {
 
 // The arguments after the program name.
 ParsedArgs parseEngineArgs(const std::vector<std::string>& args);
+// The same for a program: prints the usage and exits on --help (0) or a bad flag (2).
+EngineConfig parseCommandLine(const std::vector<std::string>& args);
 
 // The saved configuration beside the state in `stateDir`.
 std::filesystem::path engineConfigFile(const std::filesystem::path& stateDir);

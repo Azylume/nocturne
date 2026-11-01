@@ -1,5 +1,7 @@
 #include "sync/udp_clock.hpp"
 
+#include "sync/udp_clock_packet.hpp"
+
 #import <Network/Network.h>
 
 #include <cstring>
@@ -11,19 +13,10 @@ namespace azl {
 
 namespace {
 
-constexpr uint32_t kMagic = 0x434c5a41; // "AZLC"
+using namespace udp_clock;
+
 constexpr int64_t kInterval = NSEC_PER_SEC / 10;
 constexpr int64_t kSetupTimeout = 5 * int64_t(NSEC_PER_SEC);
-constexpr size_t kMaxPeers = 64;
-
-struct Packet {
-    uint32_t magic = kMagic;
-    uint32_t seq = 0;
-    double sent = 0.0;
-    double remoteReceived = 0.0;
-    double remoteSent = 0.0;
-};
-static_assert(sizeof(Packet) == 32);
 
 nw_parameters_t udpParameters()
 {
@@ -38,16 +31,12 @@ void sendPacket(nw_connection_t connection, const Packet& packet)
 
 std::optional<Packet> readPacket(dispatch_data_t content)
 {
-    if (!content || dispatch_data_get_size(content) != sizeof(Packet))
+    if (!content)
         return std::nullopt;
-    Packet packet;
     const void* bytes = nullptr;
     size_t size = 0;
     __attribute__((objc_precise_lifetime)) dispatch_data_t contiguous = dispatch_data_create_map(content, &bytes, &size);
-    std::memcpy(&packet, bytes, sizeof packet);
-    if (packet.magic != kMagic)
-        return std::nullopt;
-    return packet;
+    return udp_clock::readPacket(bytes, size);
 }
 
 using OnPacket = std::function<void(const Packet&)>;
@@ -188,7 +177,7 @@ ClockPinger::ClockPinger(const std::string& host, uint16_t port, Clock now)
     nw_connection_start(impl->connection);
     receiveLoop(impl->connection, [weak](const Packet& pong) {
         auto self = weak.lock();
-        if (!self || self->stopped || self->seq - pong.seq > 20)
+        if (!self || self->stopped || self->seq - pong.seq > kMaxSeqLag)
             return;
         const double received = self->now();
         std::lock_guard lock(self->mutex);

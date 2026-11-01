@@ -247,8 +247,8 @@ void registerTestEffects()
         return;
     azl::registerEffect({.type = "importGradient",
                          .kind = azl::StageKind::Pointwise,
-                         .metal = "\n    float2 uv = px / h.size;\n    return float4(uv, 0.5, 1.0);\n"});
-    azl::registerEffect({.type = "importWhite", .kind = azl::StageKind::Pointwise, .metal = "\n    return float4(1.0);\n"});
+                         .glsl = "\n    vec2 uv = px / h.size;\n    return vec4(uv, 0.5, 1.0);\n"});
+    azl::registerEffect({.type = "importWhite", .kind = azl::StageKind::Pointwise, .glsl = "\n    return vec4(1.0);\n"});
 }
 
 azl::Composition onLayer(const char* effect, std::vector<azl::Screen> screens)

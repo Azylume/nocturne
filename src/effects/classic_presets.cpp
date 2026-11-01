@@ -1,6 +1,7 @@
 #include "effects/classic_presets.hpp"
 
 #include "effects/effect_registry.hpp"
+#include "platform/app_paths.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -271,9 +272,8 @@ std::vector<ClassicPreset> builtinPresets()
 
 std::vector<fs::path> classicPresetRoots()
 {
-    const char* home = std::getenv("HOME");
     std::vector<fs::path> roots;
-    for (const auto& [dir, presets] : {std::pair<fs::path, fs::path>{fs::path(home ? home : "/") / "Documents", "Presets"},
+    for (const auto& [dir, presets] : {std::pair<fs::path, fs::path>{documentsFolder(), "Presets"},
                                        {"/Applications", "default/Presets"}}) {
         std::vector<fs::path> found;
         std::error_code ec, isDir;

@@ -1,0 +1,52 @@
+#pragma once
+
+// What the Vulkan backend offers beyond gpu.hpp: the handles a swapchain needs, and its validation count. Only code
+// that is Vulkan-specific anyway (outputs' present threads, tests) includes this.
+
+#include "gpu/gpu.hpp"
+
+#include <cstdint>
+#include <shared_mutex>
+
+// Every queue submit of the backend, vkQueueSubmit2 itself unless a test binary links its own to make one fail.
+extern "C" VkResult nocturneVulkanQueueSubmit2(VkQueue queue, uint32_t count, const VkSubmitInfo2* submits,
+                                               VkFence fence);
+
+namespace azl::gpu::vulkan {
+
+VkInstance instance(const Device& device);
+VkPhysicalDevice physicalDevice(const Device& device);
+VkDevice logicalDevice(const Device& device);
+// The family every Queue of the device belongs to.
+uint32_t queueFamily(const Device& device);
+
+// Messages of severity error from the validation layer since the process started. The layer is on when
+// NOCTURNE_VULKAN_VALIDATION=1 was set before the first device was made (the test mains set it).
+uint64_t validationErrors();
+bool validationEnabled();
+// A device of its own beside the system default, kept for the life of the process, for a test that fails one. Null
+// when there is no GPU.
+Device makeSeparateDevice();
+
+// A swapchain's image as a render target. The texture never destroys the image; it rests in the present layout, so
+// a pass drawn into it leaves it ready to present.
+Texture wrapSwapchainImage(const Device& device, VkImage image, VkFormat format, uint32_t width, uint32_t height);
+// The command buffer waits for a binary semaphore (a swapchain acquire) before `stage`, or signals one when it is done.
+void waitSemaphore(CommandBuffer& cmd, VkSemaphore semaphore, VkPipelineStageFlags2 stage);
+void signalSemaphore(CommandBuffer& cmd, VkSemaphore semaphore);
+// VK_KHR_present_id and VK_KHR_present_wait are enabled: a swapchain can tag presents and wait for them on screen.
+bool presentWait(const Device& device);
+// vkQueuePresentKHR on the queue, serialised with its submissions, holding presentationMutex shared. The output's
+// present thread.
+VkResult present(const Queue& queue, const VkPresentInfoKHR& info);
+// Held shared by each acquire and present on the device, and exclusively while a surface or swapchain is made or
+// destroyed: the NVIDIA driver faults in one output's present while another output's swapchain is made. Outputs still
+// present side by side. Never held across a wait for the screen.
+std::shared_mutex& presentationMutex(const Device& device);
+
+#if defined(_WIN32)
+// A surface for a Win32 window; VK_NULL_HANDLE when it cannot be made.
+VkSurfaceKHR makeSurface(const Device& device, void* hinstance, void* hwnd);
+#endif
+
+} // namespace azl::gpu::vulkan

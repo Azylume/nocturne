@@ -1,12 +1,19 @@
 #include "golden.hpp"
 
+#ifdef __APPLE__
 #include <CoreGraphics/CoreGraphics.h>
 #include <ImageIO/ImageIO.h>
+#endif
 #include <doctest.h>
+
+#ifndef __APPLE__
+#include "gpu/gpu.hpp"
+#endif
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 
 namespace {
@@ -14,6 +21,7 @@ namespace {
 constexpr int kChannelTolerance = 8;
 constexpr double kMaxBadPixelFraction = 0.0002;
 
+#ifdef __APPLE__
 CFURLRef fileUrl(const std::string& path)
 {
     return CFURLCreateFromFileSystemRepresentation(nullptr, reinterpret_cast<const UInt8*>(path.c_str()),
@@ -28,6 +36,7 @@ CGContextRef rgbaContext(azl::Image& image)
     CGColorSpaceRelease(space);
     return context;
 }
+#endif
 
 bool pixelDiffers(const uint8_t* a, const uint8_t* b)
 {
@@ -45,8 +54,35 @@ size_t badPixels(const azl::Image& a, const azl::Image& b)
     return bad;
 }
 
+#ifndef __APPLE__
+bool onLavapipe()
+{
+    static const bool lavapipe = azl::gpu::Device::systemDefault().name().find("llvmpipe") != std::string::npos;
+    return lavapipe;
+}
+#endif
+
+// tests/golden/<name>.png, or off Apple tests/golden/vulkan/<name>.png where Vulkan has its own, and on Mesa's
+// lavapipe (the Windows CI job's software Vulkan) tests/golden/lavapipe/<name>.png before that: a case whose
+// difference was looked at and explained (see tests/AGENTS.md).
+std::string goldenPath(const std::string& name, [[maybe_unused]] bool update)
+{
+    const char* dir = std::getenv("NOCTURNE_GOLDEN_DIR");
+    const std::string root = dir ? dir : NOCTURNE_GOLDEN_DIR;
+#ifndef __APPLE__
+    std::error_code ec;
+    for (const char* device : {onLavapipe() ? "/lavapipe/" : "/vulkan/", "/vulkan/"}) {
+        const std::string path = root + device + name + ".png";
+        if (update || std::filesystem::exists(path, ec))
+            return path;
+    }
+#endif
+    return root + "/" + name + ".png";
+}
+
 } // namespace
 
+#ifdef __APPLE__
 void savePng(azl::Image image, const std::string& path)
 {
     CGContextRef context = rgbaContext(image);
@@ -81,14 +117,17 @@ std::optional<azl::Image> loadPng(const std::string& path)
     CGImageRelease(cg);
     return image;
 }
+#endif
 
 
 void checkGolden(const azl::Image& actual, const std::string& name)
 {
-    const char* dir = std::getenv("NOCTURNE_GOLDEN_DIR");
-    const std::string goldenPath = std::string(dir ? dir : NOCTURNE_GOLDEN_DIR) + "/" + name + ".png";
-    const char* update = std::getenv("NOCTURNE_UPDATE_GOLDEN");
-    if (update && std::strcmp(update, "1") == 0) {
+    const char* updateVar = std::getenv("NOCTURNE_UPDATE_GOLDEN");
+    const bool update = updateVar && std::strcmp(updateVar, "1") == 0;
+    const std::string goldenPath = ::goldenPath(name, update);
+    if (update) {
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(goldenPath).parent_path(), ec);
         savePng(actual, goldenPath);
         MESSAGE("golden rewritten: " << goldenPath);
         return;

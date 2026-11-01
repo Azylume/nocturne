@@ -1,12 +1,9 @@
 #include "net/pairing.hpp"
 #include "net/websocket.hpp"
 #include "test_client.hpp"
+#include "file_access.hpp"
+#include "net/socket_compat.hpp"
 #include "test_paths.hpp"
-
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -74,28 +71,25 @@ class RawSocket {
 public:
     explicit RawSocket(uint16_t port, const std::string& headers = "")
     {
-        fd_ = socket(AF_INET, SOCK_STREAM, 0);
-        REQUIRE(fd_ >= 0);
-        const int on = 1;
-        setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-        const timeval timeout{5, 0};
-        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-        setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_port = htons(port);
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        REQUIRE(connect(fd_, reinterpret_cast<const sockaddr*>(&address), sizeof address) == 0);
+        azl::startSockets();
+        fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        REQUIRE(fd_ != azl::kNoSocket);
+        azl::noSigPipe(fd_);
+        azl::setTimeouts(fd_, 5.0);
+        in_addr loopback{};
+        loopback.s_addr = htonl(INADDR_LOOPBACK);
+        const sockaddr_in address = azl::ipv4Endpoint(loopback, port);
+        REQUIRE(::connect(fd_, reinterpret_cast<const sockaddr*>(&address), sizeof address) == 0);
         write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
               "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" +
               headers + "\r\n");
         std::string head;
         char c = 0;
-        while (head.find("\r\n\r\n") == std::string::npos && recv(fd_, &c, 1, 0) == 1)
+        while (head.find("\r\n\r\n") == std::string::npos && azl::receiveSome(fd_, &c, 1) == 1)
             head += c;
         status_ = head.substr(0, head.find("\r\n"));
     }
-    ~RawSocket() { close(fd_); }
+    ~RawSocket() { azl::closeSocket(fd_); }
 
     bool upgraded() const { return status_.starts_with("HTTP/1.1 101"); }
 
@@ -148,33 +142,34 @@ public:
     // Whether the engine closed the connection, whatever it sent before.
     bool closedWithin(double seconds)
     {
-        const timeval timeout{time_t(seconds), int((seconds - int(seconds)) * 1e6)};
-        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        azl::setTimeouts(fd_, seconds);
         char buffer[4096];
         for (;;) {
-            const ssize_t n = recv(fd_, buffer, sizeof buffer, 0);
-            if (n == 0 || (n < 0 && errno != EAGAIN))
+            const long n = azl::receiveSome(fd_, buffer, sizeof buffer);
+            if (n == 0)
                 return true;
+            const int error = azl::socketError();
             if (n < 0)
-                return false;
+                return !azl::wouldBlock(error) && error != timedOut();
         }
     }
 
 private:
-    void write(const std::string& bytes)
+    static int timedOut()
     {
-        for (size_t sent = 0; sent < bytes.size();) {
-            const ssize_t n = ::send(fd_, bytes.data() + sent, bytes.size() - sent, 0);
-            if (n <= 0)
-                return;
-            sent += size_t(n);
-        }
+#ifdef _WIN32
+        return WSAETIMEDOUT;
+#else
+        return EAGAIN;
+#endif
     }
+
+    void write(const std::string& bytes) { azl::sendAll(fd_, bytes.data(), bytes.size()); }
 
     bool read(uint8_t* into, uint64_t size)
     {
         for (uint64_t got = 0; got < size;) {
-            const ssize_t n = recv(fd_, into + got, size - got, 0);
+            const long n = azl::receiveSome(fd_, into + got, size_t(size - got));
             if (n <= 0)
                 return false;
             got += uint64_t(n);
@@ -182,7 +177,7 @@ private:
         return true;
     }
 
-    int fd_ = -1;
+    azl::Socket fd_ = azl::kNoSocket;
     std::string status_;
 };
 
@@ -217,15 +212,8 @@ void answerWhoami(azl::DocumentServer& document)
 
 std::pair<int, std::string> ctl(const std::string& args)
 {
-    const std::string command = "env -u NOCTURNE_TOKEN '" + ctlPath().string() + "' " + args + " 2>&1";
-    std::string out;
-    FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe);
-    char buffer[512];
-    while (fgets(buffer, sizeof buffer, pipe))
-        out += buffer;
-    const int status = pclose(pipe);
-    return {WEXITSTATUS(status), out};
+    const CtlOutput run = runCtl(args, {{"NOCTURNE_TOKEN", std::nullopt}});
+    return {run.code, run.output};
 }
 
 } // namespace
@@ -240,9 +228,7 @@ TEST_CASE("the pairing token is made once per state folder, 64 hex digits readab
     CHECK(token.find_first_not_of("0123456789abcdef") == std::string::npos);
     CHECK(azl::machineToken(file) == token);
     CHECK(azl::readToken(file) == token);
-    struct stat info {};
-    REQUIRE(stat(file.c_str(), &info) == 0);
-    CHECK((info.st_mode & 0777) == 0600);
+    CHECK(ownerOnlyFile(file));
 
     TempDir other;
     CHECK(azl::machineToken(azl::tokenFile(other.path)) != token);
@@ -330,9 +316,7 @@ TEST_CASE("nocturne-ctl presents --token or NOCTURNE_TOKEN, and says why the eng
     CHECK(code == 1);
     CHECK(out.find("pairing token") != std::string::npos);
 
-    const std::string withEnv = "NOCTURNE_TOKEN=" + std::string(kToken) + " '" + ctlPath().string() + "'" + port +
-                                " snapshot > /dev/null 2>&1";
-    CHECK(std::system(withEnv.c_str()) == 0);
+    CHECK(runCtl(port + " snapshot", {{"NOCTURNE_TOKEN", kToken}}).code == 0);
 }
 
 TEST_CASE("a hello whose type is not a string is refused for the token, and the engine keeps serving")

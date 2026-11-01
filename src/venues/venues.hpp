@@ -74,6 +74,14 @@ std::vector<Venue> bonjourVenues(const std::vector<Service>& services);
 std::vector<Venue> mergeVenues(const std::vector<Venue>& tailscale, const std::vector<Venue>& bonjour,
                                const std::vector<Venue>& manual);
 
+// Whether `host` is this machine: localhost, a loopback address or this machine's own host name.
+bool thisMachine(const std::string& host);
+// Whether a UI connected to host:port shows `venue`: the same port on the same machine, by its short host name.
+bool showsVenue(const Venue& venue, const std::string& host, uint16_t port);
+// Where a probe reaches `venue`: loopback for an engine on this machine, which lets loopback in without its pairing
+// token; else the venue's host.
+std::string probeHost(const Venue& venue);
+
 // One output of a venue machine as its machine status names it.
 struct OutputHealth {
     std::string name;

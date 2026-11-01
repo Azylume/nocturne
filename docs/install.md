@@ -88,3 +88,62 @@ app is open.
 Signing and notarisation need an Apple Developer ID and Apple's notary service. That work is tracked in
 [#32](https://github.com/Azylume/nocturne/issues/32). Until then this preview is the way to try Nocturne without
 building it from source.
+
+## Windows (preview, port in progress)
+
+The Windows port is still in progress ([#35](https://github.com/Azylume/nocturne/issues/35)). Its installer,
+`Nocturne-<version>-windows-x64-unsigned.exe`, comes from the `nocturne-windows-installer` artifact of a CI run or
+from `tools\make-installer.ps1` (see `docs/reference.md`); it is not on the releases page yet. It needs Windows 10 version
+2004 or later, 64-bit, and admin rights.
+
+### Verify and run the installer
+
+Check the file against the checksum you were given, in PowerShell:
+
+```powershell
+Get-FileHash .\Nocturne-<version>-windows-x64-unsigned.exe -Algorithm SHA256
+```
+
+The installer and the programs are **not code signed** yet, so Microsoft Defender SmartScreen shows *"Windows
+protected your PC"* the first time. Click **More info**, check the file name, then **Run anyway**. Windows then asks
+for admin rights (User Account Control): the installer writes to Program Files and adds firewall rules.
+
+### What it installs
+
+- Everything in one folder, `C:\Program Files\Nocturne`: the UI (`Nocturne UI.exe`), the engine (`nocturne.exe`),
+  the engine supervisor, the venue desk, `nocturne-ctl.exe`, the FFmpeg DLLs, FFmpeg's `ffmpeg.exe` and
+  `ffprobe.exe` and the Visual C++ runtime, with
+  `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and the third-party licence texts in `licenses\`. Start menu: **Nocturne**
+  opens the UI.
+- **Create a desktop shortcut**, ticked by default: a **Nocturne** shortcut to the UI on the desktop of every user.
+  A silent install adds it too; `/TASKS=` selects only the tasks it lists, so name it there
+  (`/TASKS=desktopicon,autostart`).
+- Two inbound Windows Firewall rules, "Nocturne engine" and "Nocturne desk", so other machines (the Director, a phone
+  on the desk page at port 7480) reach the engine without a firewall prompt. They apply on **Private** networks only:
+  Windows marks a new network Public, so set the show network to Private, in **Settings > Network & internet > Wi-Fi**
+  (or **Ethernet**) **> the network > Network profile type > Private network**, or as admin in PowerShell:
+  `Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private` (`Get-NetConnectionProfile` lists the
+  names).
+- Optional, unticked by default: **Start the engine under its supervisor at every logon**, for a show machine. It
+  adds the scheduled task `Nocturne`; the supervisor then runs after each logon, with no window. To change it later,
+  as admin:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File "C:\Program Files\Nocturne\autostart.ps1" install
+  powershell -ExecutionPolicy Bypass -File "C:\Program Files\Nocturne\autostart.ps1" uninstall
+  ```
+
+Nocturne keeps its own files (state, logs, the pairing token) in `%LOCALAPPDATA%\Nocturne`.
+
+`ffmpeg.exe` and `ffprobe.exe` are built from the same FFmpeg as the DLLs, LGPL-2.1 only (no GPL, version 3 or
+non-free parts; `"C:\Program Files\Nocturne\ffmpeg.exe" -version` prints its configuration). The media conversions
+of `nocturne-ctl media upload` run the `ffmpeg` and `ffprobe` beside `nocturne-ctl.exe` first and the ones on `PATH`
+only when there are none. This ffmpeg has no libx264 (GPL), so on Windows a clip that needs re-encoding to H.264 goes
+through the machine's own encoder (the order is in `docs/reference.md`). The exact FFmpeg source of an installer is
+offered beside it as `nocturne-windows-ffmpeg-source` (see `THIRD-PARTY-NOTICES.txt`).
+
+### Uninstall
+
+**Settings > Apps > Installed apps > Nocturne > Uninstall** (or **Uninstall Nocturne** in the Start menu). It stops
+the autostart task and the UI, removes the program folder, the desktop shortcut, the firewall rules and the task, and keeps
+`%LOCALAPPDATA%\Nocturne`; delete that folder by hand to remove everything.
