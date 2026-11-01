@@ -207,6 +207,7 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravir
     CHECK(azl::archivesWork("Apple M2 Pro"));
     CHECK(azl::archivesWork("Intel(R) UHD Graphics 630"));
     CHECK_FALSE(azl::archivesWork("Apple Paravirtual device"));
+    CHECK_FALSE(azl::archivesWork("llvmpipe (LLVM 23.1.2, 256 bits)"));
     const bool archives = azl::archivesWork(gpu::Device::systemDefault().name());
     const std::filesystem::path cache = std::filesystem::temp_directory_path() /
                                         ("nocturne-pipelines-" + std::to_string(azl::currentProcessId()) +

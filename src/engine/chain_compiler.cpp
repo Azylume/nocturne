@@ -140,7 +140,8 @@ void derive(const PlannedPass& pass, std::vector<float>& values, const std::vect
 
 bool archivesWork(std::string_view deviceName)
 {
-    return deviceName.find("Paravirtual") == std::string_view::npos;
+    return deviceName.find("Paravirtual") == std::string_view::npos &&
+           deviceName.find("llvmpipe") == std::string_view::npos;
 }
 
 std::string passMsl(const PlannedPass& pass)
@@ -198,7 +199,7 @@ void ChainCompiler::openArchive()
     if (cachePath_.empty())
         return;
     if (!archivesWork(device_.name())) {
-        std::fprintf(stderr, "nocturne: no pipeline cache on %s, which traps adding to one\n", device_.name().c_str());
+        std::fprintf(stderr, "nocturne: no pipeline cache on %s, which cannot keep one\n", device_.name().c_str());
         return;
     }
     std::error_code ec;

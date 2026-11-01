@@ -1,3 +1,4 @@
+#include "engine/chain_compiler.hpp"
 #include "gpu/glsl.hpp"
 #include "gpu/gpu.hpp"
 
@@ -252,7 +253,7 @@ TEST_CASE("CPU time to encode and commit a frame of eight passes")
 TEST_CASE("a pipeline cache file built once gives the same pipeline without compiling")
 {
     const gpu::Device device = gpu::Device::systemDefault();
-    if (device.name().find("Paravirtual") != std::string::npos)
+    if (!azl::archivesWork(device.name()))
         return;
     TempDir root;
     const std::string path = (root.path / "pipelines.bin").string();
