@@ -56,13 +56,15 @@ jobs:
       - name: Install ninja, ccache and ffmpeg
         run: brew install ninja ccache ffmpeg
       - name: ccache
-        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
-        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639 # v1.2
+        # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs. It restores
+        # the universal cache CI saves on main and never saves one of its own.
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
-          key: ${{ runner.os }}-universal-release
-          max-size: 2G
-      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
-        uses: actions/cache@v4
+          key: ${{ runner.os }}-universal
+          save: false
+          max-size: 1G
+      - name: Restore the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache/restore@v4
         with:
           path: build/_deps/*-src
           key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
