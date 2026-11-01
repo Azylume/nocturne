@@ -1,7 +1,8 @@
 # Builds once (arm64, Ninja, ccache) and runs the tests in parallel shards (tools/ci-tests.sh) from that build;
-# on main and nightly also proves the universal (arm64 + x86_64) build compiles. The windows job builds, tests and packs
-# the installer on Windows. Docs-only changes run nothing here (dco.yml still checks every pull request). A newer push
-# to a pull request cancels the run in progress; every push to main runs to the end.
+# on main and nightly also proves the universal (arm64 + x86_64) build compiles. The windows job builds and packs the
+# installer on Windows; windows-test runs its engine suite in shards. Docs-only changes run nothing here (dco.yml still
+# checks every pull request). A newer push to a pull request cancels the run in progress; every push to main runs to
+# the end.
 name: CI
 
 on:
@@ -35,6 +36,14 @@ concurrency:
 
 permissions:
   contents: read
+
+# The Vulkan SDK, its runtime and Mesa, pinned by checksum for both Windows jobs.
+env:
+  VULKAN_SDK_VERSION: 1.4.363.0
+  VULKAN_SDK_SHA256: 94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141
+  VULKAN_RUNTIME_SHA256: a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
+  MESA_VERSION: 26.2.4
+  MESA_SHA256: 351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
 
 jobs:
   build:
@@ -151,20 +160,14 @@ jobs:
       - name: Every binary in both bundles holds both slices
         run: tools/check-universal.sh build/Nocturne.app "build/Nocturne UI.app"
 
-  # Builds with clang-cl against the vcpkg manifest, runs the engine suite without the cases that need a GPU, a desktop
-  # session or the Credential Manager (.github/windows-ci-tests.txt; the GPU suite runs on a real machine), and packs
-  # the installer.
+  # Builds with clang-cl against the vcpkg manifest and packs the installer; windows-test runs the engine suite from
+  # this build.
   windows:
     runs-on: windows-2025
-    timeout-minutes: 120
+    timeout-minutes: 45
     env:
       VCPKG_ROOT: C:\vcpkg-nocturne
       VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-archives
-      VULKAN_SDK_VERSION: 1.4.363.0
-      VULKAN_SDK_SHA256: 94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141
-      VULKAN_RUNTIME_SHA256: a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
-      MESA_VERSION: 26.2.4
-      MESA_SHA256: 351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
     steps:
       - uses: actions/checkout@v5
       - name: vcpkg at the manifest's baseline
@@ -195,23 +198,16 @@ jobs:
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: x64
-      - name: Visual Studio's clang-cl first on PATH
+      - name: Visual Studio's clang-cl first on PATH, our vcpkg as VCPKG_ROOT
+        # The developer environment points VCPKG_ROOT at Visual Studio's own vcpkg; the build uses the one at the
+        # manifest's baseline.
         shell: pwsh
         run: |
+          "VCPKG_ROOT=C:\vcpkg-nocturne" >> $env:GITHUB_ENV
           "$env:VCINSTALLDIR\Tools\Llvm\x64\bin" >> $env:GITHUB_PATH
           "CC=clang-cl" >> $env:GITHUB_ENV
           "CXX=clang-cl" >> $env:GITHUB_ENV
-      - name: Vulkan SDK (headers, loader library, validation layer)
-        # The installer registers the validation layer under HKLM, the only place an elevated process looks for it.
-        shell: pwsh
-        run: |
-          $installer = "$env:RUNNER_TEMP\vulkansdk.exe"
-          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
-          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { throw "Vulkan SDK checksum mismatch" }
-          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
-          & $installer --root $sdk --accept-licenses --default-answer --confirm-command install | Out-Null
-          if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { throw "Vulkan SDK did not install" }
-          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+      - uses: ./.github/actions/vulkan-sdk
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Save the vcpkg packages
@@ -223,6 +219,44 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Build
         run: cmake --build build
+      - name: Pack what the tests run
+        shell: bash
+        run: cd build && tar -czf ../tests-windows.tgz ./*.exe ./*.dll src/platform/nocturne_platform_child.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-windows-${{ github.run_id }}
+          path: tests-windows.tgz
+          retention-days: 1
+      - name: Installer
+        shell: pwsh
+        run: tools\make-installer.ps1 -BuildDir build -RequireEngine
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-windows-installer
+          path: build/installer/Nocturne-*-windows-x64-unsigned.exe
+          if-no-files-found: error
+
+  # Runs the engine suite in shards on Mesa's lavapipe, without the cases that need a GPU, a desktop session or the
+  # Credential Manager (.github/windows-ci-tests.txt; the GPU suite runs on a real machine). Like the macOS shards,
+  # each one checks out and unpacks the build where the windows job had it.
+  windows-test:
+    needs: windows
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    name: windows-test (engine-${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/vulkan-sdk
+      - uses: actions/download-artifact@v4
+        with:
+          name: tests-windows-${{ github.run_id }}
+      - name: Unpack the build
+        shell: bash
+        run: mkdir -p build && tar -C build -xzf tests-windows.tgz
       - name: Lavapipe as the Vulkan driver
         # The runner has no GPU, so the GPU and golden cases render on Mesa's lavapipe (MIT), a CPU Vulkan driver.
         # It is a test tool of this job only, never linked into or shipped with Nocturne. The runner's processes are
@@ -247,13 +281,14 @@ jobs:
           if ($summary -notmatch 'PHYSICAL_DEVICE_TYPE_CPU') { $summary; throw "lavapipe is not the Vulkan device" }
           if ($summary -notmatch 'VK_LAYER_KHRONOS_validation') { $summary; throw "the validation layer is missing" }
           "VULKAN_LOADER_DIR=$loader" >> $env:GITHUB_ENV
-      - name: Run the engine tests
+      - name: Run the shard
+        timeout-minutes: 27
         shell: bash
         env:
           PYTHON: python
         run: |
           PATH="$(cygpath "$VULKAN_LOADER_DIR"):$PATH"
-          tools/ci-tests.sh engine 0 1
+          tools/ci-tests.sh engine ${{ matrix.shard }} 3
       - name: Test report
         if: always()
         uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
@@ -263,15 +298,8 @@ jobs:
           detailed_summary: true
           include_passed: false
       - name: Logs
-        if: failure()
+        if: ${{ !success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs-windows
+          name: test-logs-windows-${{ matrix.shard }}
           path: build/test-reports/
-      - name: Installer
-        shell: pwsh
-        run: tools\make-installer.ps1 -BuildDir build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nocturne-windows-installer
-          path: build/installer/Nocturne-*-windows-x64-unsigned.exe

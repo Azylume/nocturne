@@ -14,8 +14,14 @@ export NOCTURNE_NO_AUDIO_INPUT=1
 PYTHON=${PYTHON:-/usr/bin/python3}
 
 skip_lists=("$ROOT/.github/realtime-tests.txt")
+# On Windows a hung test binary is killed after 25 minutes, so the shard fails with its report instead of the job's
+# time limit cancelling it without one.
+limit=()
 case $(uname -s) in
-MINGW* | MSYS*) skip_lists+=("$ROOT/.github/windows-ci-tests.txt") ;;
+MINGW* | MSYS*)
+    skip_lists+=("$ROOT/.github/windows-ci-tests.txt")
+    limit=(timeout --signal=KILL 25m)
+    ;;
 esac
 skip=$(cat "${skip_lists[@]}" | grep -v '^#' | grep -v '^$' | sed 's/,/\\,/g' | paste -sd, -)
 
@@ -45,8 +51,12 @@ esac
 # back out of it; what the engines print on the way goes to the log.
 run() {
     local status=0
-    "$binary" ${filters[@]+"${filters[@]}"} --test-case-exclude="$skip" --reporters=junit --out="$REPORTS/$1.xml" "${@:2}" \
+    ${limit[@]+"${limit[@]}"} "$binary" ${filters[@]+"${filters[@]}"} --test-case-exclude="$skip" --reporters=junit --out="$REPORTS/$1.xml" "${@:2}" \
         > "$REPORTS/$1.log" 2>&1 || status=$?
+    if [ "$status" = 137 ]; then
+        echo "::error::$1 was killed after 25 minutes without a report"
+        exit 1
+    fi
     "$PYTHON" - "$REPORTS/$1.xml" "$1" <<'PY' || status=1
 import sys, xml.etree.ElementTree as ET
 tree = ET.parse(sys.argv[1])
