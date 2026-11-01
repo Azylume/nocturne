@@ -19,6 +19,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <werapi.h>
 #else
 #include <fcntl.h>
 #include <pthread.h>
@@ -275,8 +276,10 @@ void recordCrash(int signal)
 void installCrashHandlers()
 {
 #ifdef _WIN32
-    // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it.
-    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    // No error dialog holds a crashed engine open: it dies at once, and the supervisor restarts it. Windows Error
+    // Reporting still runs without its UI, so the installer's LocalDumps setting leaves a dump.
+    SetErrorMode(SEM_FAILCRITICALERRORS);
+    WerSetFlags(WER_FAULT_REPORTING_NO_UI);
     const LPTOP_LEVEL_EXCEPTION_FILTER filter = SetUnhandledExceptionFilter(onCrash);
     if (filter != onCrash)
         previousFilter = filter;
