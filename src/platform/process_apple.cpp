@@ -93,7 +93,13 @@ long writeHandle(NativeHandle handle, const void* data, size_t size)
     ssize_t n;
     while ((n = ::write(handle, data, size)) < 0 && errno == EINTR) {
     }
-    return long(n);
+    return n < 0 && errno == EAGAIN ? 0 : long(n);
+}
+
+bool neverBlockWrites(NativeHandle handle)
+{
+    const int flags = ::fcntl(handle, F_GETFL);
+    return flags >= 0 && ::fcntl(handle, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
 long readAvailable(NativeHandle handle, void* buffer, size_t size)

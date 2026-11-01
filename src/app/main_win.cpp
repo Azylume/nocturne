@@ -108,6 +108,7 @@ Running beatToSupervisor(LatestFrame latest)
     const std::optional<NativeHandle> pipe = inheritedHeartbeat();
     if (!pipe)
         return nullptr;
+    neverBlockWrites(*pipe); // A supervisor that stops reading cannot hold up a beat, or the quit behind it.
     auto running = std::make_shared<std::atomic<bool>>(true);
     auto beats = std::make_shared<std::thread>([running, latest = std::move(latest), pipe = *pipe] {
         uint64_t last = UINT64_MAX;
