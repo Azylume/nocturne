@@ -35,6 +35,7 @@ SolidCompression=yes
 OutputBaseFilename=Nocturne-{#AppVersion}-windows-x64-unsigned
 
 [Tasks]
+Name: desktopicon; Description: "Create a desktop shortcut"
 Name: autostart; Description: "Start the engine under its supervisor at every logon (for a show machine)"; Flags: unchecked
 
 [Files]
@@ -59,6 +60,7 @@ Root: HKLM; Subkey: "{#WerKey}\ExcludedApplications"; ValueType: dword; ValueNam
 [Icons]
 Name: "{group}\Nocturne"; Filename: "{app}\Nocturne UI.exe"
 Name: "{group}\Uninstall Nocturne"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Nocturne"; Filename: "{app}\Nocturne UI.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Nocturne engine"""; Flags: runhidden

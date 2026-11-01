@@ -114,6 +114,9 @@ for admin rights (User Account Control): the installer writes to Program Files a
   the engine supervisor, the venue desk, `nocturne-ctl.exe`, the FFmpeg DLLs and the Visual C++ runtime, with
   `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and the third-party licence texts in `licenses\`. Start menu: **Nocturne**
   opens the UI.
+- **Create a desktop shortcut**, ticked by default: a **Nocturne** shortcut to the UI on the desktop of every user.
+  A silent install adds it too; `/TASKS=` selects only the tasks it lists, so name it there
+  (`/TASKS=desktopicon,autostart`).
 - Two inbound Windows Firewall rules, "Nocturne engine" and "Nocturne desk", so other machines (the Director, a phone
   on the desk page at port 7480) reach the engine without a firewall prompt. They apply on **Private** networks only:
   Windows marks a new network Public, so set the show network to Private, in **Settings > Network & internet > Wi-Fi**
@@ -134,5 +137,5 @@ Nocturne keeps its own files (state, logs, the pairing token) in `%LOCALAPPDATA%
 ### Uninstall
 
 **Settings > Apps > Installed apps > Nocturne > Uninstall** (or **Uninstall Nocturne** in the Start menu). It stops
-the autostart task and the UI, removes the program folder, the firewall rules and the task, and keeps
+the autostart task and the UI, removes the program folder, the desktop shortcut, the firewall rules and the task, and keeps
 `%LOCALAPPDATA%\Nocturne`; delete that folder by hand to remove everything.
