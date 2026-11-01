@@ -288,6 +288,18 @@ jobs:
           if ($summary -notmatch 'PHYSICAL_DEVICE_TYPE_CPU') { $summary; throw "lavapipe is not the Vulkan device" }
           if ($summary -notmatch 'VK_LAYER_KHRONOS_validation') { $summary; throw "the validation layer is missing" }
           "VULKAN_LOADER_DIR=$loader" >> $env:GITHUB_ENV
+      - name: Crash dumps of the test processes
+        # Windows Error Reporting writes a full dump of a crashing nocturne.exe here; of nocturne_tests.exe only for a
+        # crash that doctest's own handler (SetUnhandledExceptionFilter, then exit) does not catch.
+        shell: pwsh
+        run: |
+          foreach ($exe in "nocturne_tests.exe", "nocturne.exe") {
+            $key = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$exe"
+            New-Item -Force $key | Out-Null
+            New-ItemProperty -Force $key -Name DumpFolder -PropertyType ExpandString -Value "${{ runner.temp }}\dumps" | Out-Null
+            New-ItemProperty -Force $key -Name DumpType -PropertyType DWord -Value 2 | Out-Null
+            New-ItemProperty -Force $key -Name DumpCount -PropertyType DWord -Value 5 | Out-Null
+          }
       - name: Run the shard
         timeout-minutes: 27
         shell: bash
@@ -310,3 +322,11 @@ jobs:
         with:
           name: test-logs-windows-${{ matrix.shard }}
           path: build/test-reports/
+      - name: Crash dumps
+        if: ${{ !success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-dumps-windows-${{ matrix.shard }}
+          path: ${{ runner.temp }}/dumps/
+          if-no-files-found: ignore
+          retention-days: 7
