@@ -3,6 +3,7 @@
 #include "document/composition_file.hpp"
 #include "media/hap_encoder.hpp"
 #include "media/media_library.hpp"
+#include "platform/app_paths.hpp"
 #include "platform/credentials.hpp"
 #include "platform/process.hpp"
 
@@ -27,6 +28,12 @@ namespace azl {
 namespace {
 
 constexpr const char* kContentType = "video/mp4";
+
+// The ffmpeg or ffprobe installed beside the running program (the Windows installer ships them), else the one on PATH.
+std::string mediaTool(const std::string& name)
+{
+    return programInFolderOrPath(executablePath().parent_path(), name).string();
+}
 
 // Runs a command and returns its standard output; throws when it cannot start or exits non-zero.
 // Runs the tool and returns its output; with a `sink`, its output goes there as it comes instead.
@@ -107,7 +114,7 @@ Probe probe(const fs::path& file)
 {
     Probe p;
     for (const std::string& line :
-         lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
                         "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "csv=p=0",
                         file.string()}))) {
         const auto f = fields(line);
@@ -134,8 +141,9 @@ Probe probe(const fs::path& file)
 bool hasOneSecondGop(const fs::path& file, double duration)
 {
     std::vector<double> keyframes;
-    for (const std::string& line : lines(runTool({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                                                  "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
+    for (const std::string& line :
+         lines(runTool({mediaTool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "packet=pts_time,flags", "-of", "csv=p=0", file.string()}))) {
         const auto f = fields(line);
         if (f.size() >= 2 && !f[1].empty() && f[1][0] == 'K' && f[0] != "N/A")
             keyframes.push_back(std::atof(f[0].c_str()));
@@ -154,9 +162,9 @@ bool hasOneSecondGop(const fs::path& file, double duration)
 std::vector<std::string> ffmpeg()
 {
 #ifdef _WIN32
-    return {"ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    return {mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
 #else
-    return {"nice", "-n", "15", "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"};
+    return {"nice", "-n", "15", mediaTool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error"};
 #endif
 }
 

@@ -27,4 +27,8 @@ std::filesystem::path executablePath();
 // The program `name` installed beside the running one, with the platform's suffix (".exe" on Windows).
 std::filesystem::path siblingExecutable(const std::string& name);
 
+// The program `name` in `folder`, with the platform's suffix, when it is there; else `name` alone, which a spawn with
+// searchPath looks up on PATH.
+std::filesystem::path programInFolderOrPath(const std::filesystem::path& folder, const std::string& name);
+
 } // namespace azl

@@ -5,15 +5,17 @@ https://github.com/Azylume/nocturne. It contains or ships with the components be
 in the licenses folder next to this file, under the folder named in brackets.
 
 FFmpeg 9.0.2 [licenses\FFmpeg]
-  The DLLs avcodec-63, avformat-63, avutil-61, swresample-7 and swscale-10.
-  Licence: GNU Lesser General Public License, version 2.1 or later. Built without --enable-gpl and without
-  --enable-nonfree, so no GPL or non-free part of FFmpeg is included.
+  The DLLs avcodec-63, avdevice-63, avfilter-12, avformat-63, avutil-61, swresample-7 and swscale-10, and the
+  programs ffmpeg.exe and ffprobe.exe.
+  Licence: GNU Lesser General Public License, version 2.1 or later. Built without --enable-gpl, --enable-version3
+  and --enable-nonfree, so no GPL, LGPL-3 or non-free part of FFmpeg is included; ffmpeg.exe -version prints the
+  configuration.
   Source: FFmpeg 9.0.2, https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz (git tag n9.0.2 of
   https://git.ffmpeg.org/ffmpeg.git), built by the vcpkg port at vcpkg commit
   9a5dfef5d1a0438a7d24856a85bd60f309d355e9 (https://github.com/microsoft/vcpkg/tree/9a5dfef5d1a0438a7d24856a85bd60f309d355e9/ports/ffmpeg,
   whose patches and portfile are the exact build), triplet x64-windows, features avcodec, avformat, avdevice,
-  swresample, swscale, nvcodec and opus. Nocturne loads these DLLs dynamically: you may replace them with your own
-  build of the same FFmpeg version.
+  avfilter, swresample, swscale, nvcodec, opus, ffmpeg and ffprobe. Nocturne loads these DLLs dynamically: you may
+  replace them with your own build of the same FFmpeg version.
 
 libopus 1.6.1 [licenses\opus]
   opus.dll, also used by FFmpeg. Licence: BSD-3-Clause.
