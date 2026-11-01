@@ -74,6 +74,11 @@ if(NOT APPLE)
   # Return audio plays through JUCE where there is no AudioQueue; JUCE's modules compile into this library.
   target_sources(nocturne_ui_components PRIVATE client/return_audio_output_juce.cpp)
 endif()
+if(APPLE)
+  target_sources(nocturne_ui_components PRIVATE app/window_display_apple.mm)
+elseif(WIN32)
+  target_sources(nocturne_ui_components PRIVATE app/window_display_win.cpp)
+endif()
 
 # The Windows executable carries the app icon; the macOS bundle keeps the look it has.
 set(ui_icon)

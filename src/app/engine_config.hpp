@@ -15,6 +15,7 @@ struct EngineConfig {
 
     std::string display;
     std::string main;
+    std::string uiDisplay;
     bool windowed = false;
     int virtualDisplays = 0;
     bool offscreen = false;

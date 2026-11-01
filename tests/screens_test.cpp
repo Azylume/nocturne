@@ -1053,6 +1053,32 @@ TEST_CASE("displays per machine: a mapped role takes its display; the others kee
     CHECK(azl::screenRole(azl::Screen{.id = 7}) == "Screen 7");
 }
 
+TEST_CASE("displays per machine: a UI's display carries no screen at launch")
+{
+    const std::vector<std::string> attached{"a", "b"};
+    azl::Composition c{.screens = {named(1, "Screen 1", "a")}};
+    azl::keepOffUiDisplay(c, attached, "a");
+    CHECK(displaysOf(c) == Displays{"b"});
+
+    // Alone with the UI, the screen starts with no output until the UI gives it a display.
+    c = {.screens = {named(1, "Screen 1", "a")}};
+    azl::keepOffUiDisplay(c, {"a"}, "a");
+    CHECK(displaysOf(c) == Displays{""});
+
+    // An engine no UI started (a supervised show machine) keeps the first display.
+    c = {.screens = {named(1, "Screen 1", "a")}};
+    azl::keepOffUiDisplay(c, attached, "");
+    CHECK(displaysOf(c) == Displays{"a"});
+
+    // Saved assignments elsewhere win; one on the UI's display moves only to a display no screen has.
+    c = {.screens = {named(1, "Main", "b"), named(2, "Side", "a"), named(3, "Off", "")}};
+    azl::keepOffUiDisplay(c, attached, "a");
+    CHECK(displaysOf(c) == Displays{"b", "", ""});
+    c = {.screens = {named(1, "Main", "a"), named(2, "Side", "c")}};
+    azl::keepOffUiDisplay(c, {"a", "b", "c"}, "a");
+    CHECK(displaysOf(c) == Displays{"b", "c"});
+}
+
 TEST_CASE("displays per machine: the map records where the screens are and keeps every other role")
 {
     azl::RoleDisplays roles{{"Other", {"x"}}, {"Main", {"m1", "m2"}}};

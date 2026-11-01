@@ -250,3 +250,11 @@ TEST_CASE("the default hooks report the line of an engine that exited for want o
     hooks.stop(pid);
     CHECK(hooks.refusal(pid).empty());
 }
+
+TEST_CASE("the UI starts its engine on loopback and names the display the UI is on")
+{
+    using Args = std::vector<std::string>;
+    CHECK(azl::ui::engineArgs(7400, "10ac-a0c4-u1") ==
+          Args{"--loopback", "--port", "7400", "--ui-display", "10ac-a0c4-u1"});
+    CHECK(azl::ui::engineArgs(7400, "") == Args{"--loopback", "--port", "7400"});
+}

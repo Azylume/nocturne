@@ -100,6 +100,8 @@ TEST_CASE("engine config: display and output flags")
     CHECK(c.debugFrameBits);
     CHECK(c.opaqueOutputs);
     CHECK(parsed({"--slow", "10ac:43b0:12"}).slowDisplay == "10ac:43b0");
+    CHECK(parsed({"--ui-display", "10ac-43b0-u2"}).uiDisplay == "10ac-43b0-u2");
+    CHECK(parsed({}).uiDisplay.empty());
 }
 
 TEST_CASE("engine config: render flags")

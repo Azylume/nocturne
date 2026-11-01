@@ -25,7 +25,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(EngineConfig, display, main, win
                                                 opaqueOutputs, gpuProfile, frameGuard, fsrUpscale, audioInput,
                                                 audioChannels, audioLog, audioGain, audioLatencyMs, micCheck, state, composition,
                                                 mediaRoot, safeMode, fallbackImage, node, follow, name,
-                                                recordPath)
+                                                recordPath, uiDisplay)
 
 EngineConfig::EngineConfig()
     : port(kDefaultPort), library(MediaLibrary::defaultRoot().string()), seed(std::random_device{}()), presets(PresetService::defaultFile().string()),
@@ -37,6 +37,8 @@ const char* const kEngineUsage = R"(usage: nocturne [options]
   --display ID    display of the starting screen, a full slice of the composition (default: the first display)
   --main ID       display whose output sets the render clock's phase while attached (default: the first screen's)
   --displays      list the attached displays with their ids and quit
+  --ui-display ID display the UI that started this engine is on: no screen starts on it; one there moves to a free
+                  display, else to no output (the UI passes it; a supervised show machine does not)
   --windowed      regular windows instead of borderless fullscreen
   --virtual N     N simulated displays window-1..window-N, windows side by side on the main display
   --offscreen     no windows and no app activation: the --virtual displays (default 1) render into textures and
@@ -195,6 +197,7 @@ bool readDisplayFlag(const std::string& arg, Args& in, EngineConfig& c)
 {
     if (arg == "--display") c.display = in.value();
     else if (arg == "--main") c.main = in.value();
+    else if (arg == "--ui-display") c.uiDisplay = in.value();
     else if (arg == "--displays") c.listDisplays = true;
     else if (arg == "--windowed") c.windowed = true;
     else if (arg == "--virtual") c.virtualDisplays = std::atoi(in.value());
