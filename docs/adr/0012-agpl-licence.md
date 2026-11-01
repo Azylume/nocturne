@@ -27,6 +27,7 @@ ever make it closed; running it as a network service counts as distribution, so 
 | glslang vulkan-sdk-1.4.363.0 | engine, FetchContent (ticket 95): ISF GLSL to SPIR-V | BSD-3 / BSD-2 / MIT / Apache-2.0 (GPL-3 with the Bison exception covers only Bison output) | yes |
 | SPIRV-Cross vulkan-sdk-1.4.363.0 | engine, FetchContent (ticket 95): SPIR-V to MSL | Apache-2.0 | yes |
 | Curated ISF shaders (ISF-Files, gl-transitions) | third_party/isf, built into the program (ticket 95) | MIT, per shader in `docs/licence-notes.md` | yes |
+| Oxanium (SIL OFL 1.1) | outlined lettering in `assets/icon/svg/nocturne-lockup.svg`; no font file in the repo or the bundle | OFL-1.1 | yes (artwork only, see `docs/licence-notes.md`) |
 | AMD FidelityFX Super Resolution 1 (v1.20210629, EASU and RCAS) | shaders ported to Metal in src/engine/fsr_upscaler.cpp (ticket 93), AMD's notice kept in that file | MIT | yes |
 | Apple frameworks (Metal, AVFoundation, VideoToolbox, CoreAudio, ...) | system | system libraries | yes (system library exception) |
 | stb_dxt.h v1.12 | third_party/stb, the HAP encoder's BC block compressor (ticket 94) | MIT / public domain (dual) | yes |

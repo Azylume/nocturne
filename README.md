@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon/svg/nocturne-lockup.svg" alt="Nocturne" width="360"></p>
+
 # Nocturne
 
 **Visuals for the long night: beat-locked, mapped onto the room, and still playing when nobody is watching.**

@@ -93,3 +93,12 @@ projects is vendored, so ADR 0012's dependency tables do not change.
 | ffmpeg (Homebrew build, GPL-2.0-or-later with libx264) | GPL-2.0-or-later | yes, as a separate program | `tools/transcode-media.sh` and `nocturne-upload` run it to decode sources to raw RGBA for our own HAP encoder, and `tests/media/make_hap_goldens.sh` runs its HAP decoder for the reference pictures; nothing links it. Homebrew's ffmpeg has no HAP encoder (it needs libsnappy), so the encoder is ours |
 
 No GPL code is linked or vendored for HAP.
+
+## App icon and wordmark (checked 2026-11-01)
+
+| Component | Licence | Compatible | Used how |
+|---|---|---|---|
+| Oxanium (Copyright 2019 The Oxanium Project Authors, github.com/sevmeyer/oxanium) | SIL Open Font License 1.1 | yes, as artwork | the "NOCTURNE" lettering in `assets/icon/svg/nocturne-lockup.svg` and its PNG; the glyphs are converted to paths, so no font file is vendored or shipped |
+
+The icon art in `assets/icon/` is original to this project and under the repository's licence. The OFL covers the
+typeface only: the lettering is not a font and is not sold on its own.
