@@ -1,6 +1,6 @@
 #!/bin/bash
 # Assembles the standalone preview bundle: one Nocturne.app that holds the UI and the engine binaries, with the
-# placeholder icon, then ad-hoc signs it inside-out with the hardened runtime so Apple Silicon will run it.
+# app icon, then ad-hoc signs it inside-out with the hardened runtime so Apple Silicon will run it.
 #
 #   tools/make-bundle.sh [--ui UI_APP] [--engine ENGINE_APP] [--out OUT_APP] [--version X.Y.Z] [--build N]
 #
