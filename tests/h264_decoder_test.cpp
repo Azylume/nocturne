@@ -1,6 +1,6 @@
 #include <doctest.h>
 
-#include "output/h264_stream.hpp"
+#include "return_video_packets.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -39,38 +39,6 @@ std::vector<uint8_t> bars()
     return bgra;
 }
 
-void writeBytes(std::ofstream& out, const std::vector<uint8_t>& bytes)
-{
-    const auto size = uint32_t(bytes.size());
-    out.write(reinterpret_cast<const char*>(&size), 4);
-    out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
-}
-
-std::vector<uint8_t> readBytes(std::ifstream& in)
-{
-    uint32_t size = 0;
-    in.read(reinterpret_cast<char*>(&size), 4);
-    std::vector<uint8_t> bytes(size);
-    in.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(size));
-    return bytes;
-}
-
-// Each packet: key (1 byte), config and data (each a little-endian 32-bit size, then the bytes).
-std::vector<rv::Packet> readPackets(const fs::path& file)
-{
-    std::ifstream in(file, std::ios::binary);
-    std::vector<rv::Packet> packets;
-    for (char key; in.get(key);) {
-        rv::Packet packet;
-        packet.key = key != 0;
-        packet.config = readBytes(in);
-        packet.data = readBytes(in);
-        if (in)
-            packets.push_back(std::move(packet));
-    }
-    return packets;
-}
-
 #ifdef __APPLE__
 void writePackets(const fs::path& file)
 {
@@ -89,9 +57,7 @@ void writePackets(const fs::path& file)
         const std::optional<rv::Packet> packet = encoder.encode(buffer, i / 30.0, i == 0);
         CVPixelBufferRelease(buffer);
         REQUIRE(packet);
-        out.put(packet->key ? 1 : 0);
-        writeBytes(out, packet->config);
-        writeBytes(out, packet->data);
+        writePacket(out, *packet);
     }
 }
 #endif
