@@ -154,7 +154,7 @@ jobs:
         with:
           key: ${{ runner.os }}-universal
           save: ${{ github.ref == 'refs/heads/main' }}
-          max-size: 1G
+          max-size: 1500M
           evict-old-files: job
       - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
         uses: actions/cache@v4
