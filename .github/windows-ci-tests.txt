@@ -19,6 +19,7 @@ off Apple, a recording cut off by a killed engine still plays up to its last fra
 # shows it on any Windows machine.
 off Apple, return video is H.264 with its parameter sets on key frames and decodes back to the pictures
 off Apple, the return video of moving noise stays inside its share of the budget
+the return video of two outputs of moving noise stays inside its budget over 10 s
 # GPU timing reports, not checks: on the runner's software Vulkan (Mesa lavapipe) each takes minutes and the job runs
 # out of time. They run on a Windows machine with a GPU.
 *GPU time per effect at 1080p*
@@ -27,3 +28,7 @@ off Apple, the return video of moving noise stays inside its share of the budget
 *GPU time of the half-resolution upscale*
 # Present timing: lavapipe rasterises on the CPU and presents below the panel's rate. Runs on a Windows machine's panel.
 *displays: the panel and a window present at the panel's rate*
+*displays: all monitors at once show each picture one refresh long*
+# Render rate: lavapipe renders the default show at 19-44 frames a second on the runner, below the case's 50. Runs on a
+# Windows machine with a GPU.
+windows engine: nocturne.exe renders offscreen on Vulkan, reports its rate, and stops when asked
