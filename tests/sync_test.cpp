@@ -511,6 +511,27 @@ TEST_CASE("a node without fetching, as a UI's preview follower, mirrors the comp
     CHECK((!entry || entry->status == azl::MediaStatus::Missing));
 }
 
+TEST_CASE("a node answers the clock state query and refuses clock actions of its own")
+{
+    Main main;
+    Node node(main.port);
+    REQUIRE(waitUntil([&] { return node.status()["synced"] == true; }));
+    Client local(node.harness.document());
+
+    local.send({{"type", "clock"}, {"op", "state"}});
+    const Message state = local.next();
+    CHECK(state["type"] == "clock");
+    CHECK(state["op"] == "state");
+
+    for (const char* op : {"tap", "nudge", "resync"}) {
+        CAPTURE(op);
+        local.send({{"type", "clock"}, {"op", op}, {"percent", 5.0}});
+        const Message refused = local.next();
+        CHECK(refused["type"] == "error");
+        CHECK(refused["message"].get<std::string>().find("node") != std::string::npos);
+    }
+}
+
 TEST_CASE("a node shrugs off a message whose type is not a string")
 {
     azl::EngineHarness main(kSize, kFps);
