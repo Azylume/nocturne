@@ -54,15 +54,17 @@ jobs:
       - name: Install ninja, ccache and ffmpeg
         run: brew install ninja ccache ffmpeg
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        # Pull requests restore main's cache and never save one; main saves a fresh key and cache-cleanup.yml drops
+        # the older ones.
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
-          key: ${{ runner.os }}-arm64-${{ github.ref_name }}
-          restore-keys: |
-            ${{ runner.os }}-arm64-main
-            ${{ runner.os }}-arm64-
-          max-size: 2G
-      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
-        uses: actions/cache@v4
+          key: ${{ runner.os }}-arm64
+          save: ${{ github.ref == 'refs/heads/main' }}
+          max-size: 800M
+          evict-old-files: job
+      - name: Restore the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        id: deps
+        uses: actions/cache/restore@v4
         with:
           path: build/_deps/*-src
           key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
@@ -73,6 +75,12 @@ jobs:
           -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
       - name: Build
         run: cmake --build build
+      - name: Save the fetched dependencies
+        if: github.ref == 'refs/heads/main' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/_deps/*-src
+          key: ${{ steps.deps.outputs.cache-primary-key }}
       - name: ccache statistics
         run: ccache -s
       - name: Pack what the tests run
@@ -141,10 +149,12 @@ jobs:
       - name: Install ninja and ccache
         run: brew install ninja ccache
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
           key: ${{ runner.os }}-universal
-          max-size: 2G
+          save: ${{ github.ref == 'refs/heads/main' }}
+          max-size: 1G
+          evict-old-files: job
       - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
         uses: actions/cache@v4
         with:
@@ -189,11 +199,20 @@ jobs:
           path: C:\vcpkg-archives
           key: vcpkg-${{ steps.vcpkg.outputs.image }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-${{ steps.vcpkg.outputs.image }}-
-      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
-        uses: actions/cache@v4
+      - name: Restore the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        id: deps
+        uses: actions/cache/restore@v4
         with:
           path: build/_deps/*-src
           key: deps-windows-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: sccache
+        # Pull requests restore main's cache and never save one, like the ccache steps above.
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          variant: sccache
+          key: ${{ runner.os }}-clang-cl
+          save: ${{ github.ref == 'refs/heads/main' }}
+          max-size: 600M
       - name: MSVC x64 developer environment
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
@@ -209,16 +228,30 @@ jobs:
           "CXX=clang-cl" >> $env:GITHUB_ENV
       - uses: ./.github/actions/vulkan-sdk
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        # Embedded debug info (/Z7) keeps it in the object files, which sccache can cache; /Zi writes a shared PDB it
+        # cannot.
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - name: Save the fetched dependencies
+        if: github.ref == 'refs/heads/main' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/_deps/*-src
+          key: ${{ steps.deps.outputs.cache-primary-key }}
       - name: Save the vcpkg packages
         # Saved once configuring has built them all, so a later failure does not throw the FFmpeg build away.
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: C:\vcpkg-archives
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Build
         run: cmake --build build
+      - name: sccache statistics
+        if: always()
+        run: sccache --show-stats
       - name: Pack what the tests run
         # With the PDBs, so a crash's stack names its functions.
         shell: bash
