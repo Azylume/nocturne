@@ -40,6 +40,7 @@ DisplayOutput::DisplayOutput(Engine& engine, std::string display, VsyncPhase& vs
       screen_(std::make_shared<const ScreenView>()), thread_([this] {
           setThreadRole(ThreadRole::Frames);
           AZL_THREAD_NAME("present " + display_);
+          setThreadName("present " + display_);
           run();
       })
 {

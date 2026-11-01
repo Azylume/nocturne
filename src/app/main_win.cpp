@@ -7,6 +7,7 @@
 #include "platform/main_loop.hpp"
 #include "platform/process.hpp"
 #include "platform/profile.hpp"
+#include "platform/thread_priority.hpp"
 
 #include <windows.h>
 
@@ -169,6 +170,7 @@ namespace {
 int engineProcess()
 {
     AZL_THREAD_NAME("main");
+    azl::setThreadName("main");
     // Before any thread starts, so a stop asked for at any time is seen.
     azl::watchStopRequests();
     SetConsoleOutputCP(CP_UTF8);

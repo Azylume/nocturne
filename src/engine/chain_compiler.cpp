@@ -185,6 +185,7 @@ ChainCompiler::ChainCompiler(const gpu::Device& device, std::filesystem::path ca
     : device_(device), cachePath_(std::move(cache)), thread_([this] {
           setThreadRole(ThreadRole::Background);
           AZL_THREAD_NAME("compile");
+          setThreadName("compile");
           openArchive();
           run();
       })

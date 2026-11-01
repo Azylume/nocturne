@@ -4,6 +4,7 @@
 #include "media/media_library.hpp"
 #include "media/video_source.hpp"
 #include "platform/profile.hpp"
+#include "platform/thread_priority.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -889,6 +890,7 @@ void VideoDecoder::open(const MediaDevice* device, const std::string& path, Opti
     d.thread = std::thread([impl = impl_] {
         becomeDecodeThread();
         AZL_THREAD_NAME("decode " + impl->options.name);
+        setThreadName("decode " + impl->options.name);
         impl->run();
     });
 }

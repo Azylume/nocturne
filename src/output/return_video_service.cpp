@@ -1,5 +1,7 @@
 #include "output/return_video_service.hpp"
 
+#include "platform/thread_priority.hpp"
+
 #ifdef __APPLE__
 #include <CoreVideo/CoreVideo.h>
 #endif
@@ -46,6 +48,7 @@ ReturnVideoService::ReturnVideoService(DocumentServer& document, Engine& engine)
 #endif
       thread_([this] {
           AZL_THREAD_NAME("return video");
+          setThreadName("return video");
           run();
       })
 {

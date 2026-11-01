@@ -25,9 +25,11 @@ void setThreadRole(ThreadRole role);
 // timer, which wakes within a fraction of a millisecond where a plain timed wait wakes up to a scheduler tick late.
 void sleepUntil(std::chrono::steady_clock::time_point deadline);
 
+// Names the calling thread for debuggers and the exit trace on Windows; does nothing elsewhere. Never blocks.
 #ifdef _WIN32
-// Names the calling thread for debuggers and the exit trace. Never blocks.
 void setThreadName(std::string_view name);
+#else
+inline void setThreadName(std::string_view) {}
 #endif
 
 } // namespace azl

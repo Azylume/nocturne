@@ -104,6 +104,7 @@ RenderThread::RenderThread(Engine& engine, double fps, const VsyncPhase* vsync)
     : engine_(engine), thread_([this, fps, vsync] {
           setThreadRole(ThreadRole::Frames);
           AZL_THREAD_NAME("render");
+          setThreadName("render");
           run(fps, vsync);
       })
 {

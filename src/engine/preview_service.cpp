@@ -150,6 +150,7 @@ PreviewService::PreviewService(DocumentServer& document, Engine& engine)
       painter_(engine.gpuDevice(), kFrameFormat, {engine.config().width, engine.config().height}),
       thread_([this] {
           AZL_THREAD_NAME("previews");
+          setThreadName("previews");
           run();
       }),
       sampler_([this] { sample(); })

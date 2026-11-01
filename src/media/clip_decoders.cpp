@@ -49,6 +49,7 @@ ClipDecoders::ClipDecoders(const gpu::Device& device, MediaLibrary* library, siz
       thread_([this] {
           setThreadRole(ThreadRole::Background);
           AZL_THREAD_NAME("clip decoders");
+          setThreadName("clip decoders");
           run();
       })
 {
