@@ -1,6 +1,7 @@
 ; Nocturne for Windows: one folder under Program Files that holds the UI, the engine, its supervisor and tools, and
 ; the DLLs they load. Built by tools/make-installer.ps1, which stages the files and passes AppVersion and StageDir.
-; Uninstalling removes the program, its firewall rules and the autostart task; %LOCALAPPDATA%\Nocturne stays.
+; Uninstalling removes the program, its firewall rules, the autostart task and the crash dump settings;
+; %LOCALAPPDATA%\Nocturne stays.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=X.Y.Z (tools/make-installer.ps1 reads it from CMakeLists.txt)
@@ -8,6 +9,7 @@
 #ifndef StageDir
   #error Pass /DStageDir=DIR (tools/make-installer.ps1 stages the files there)
 #endif
+#define WerKey "SOFTWARE\Microsoft\Windows\Windows Error Reporting"
 
 [Setup]
 AppId={{45BD7F96-9263-4FCD-AE72-9E6DDF388D0F}
@@ -37,6 +39,22 @@ Name: autostart; Description: "Start the engine under its supervisor at every lo
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+
+[Registry]
+; A crash of the engine, its supervisor or the UI leaves a minidump in the crashing user's
+; %LOCALAPPDATA%\Nocturne\crashes (the newest 10), and Windows Error Reporting sends no report of it anywhere.
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne.exe"; ValueType: expandsz; ValueName: "DumpFolder"; ValueData: "%LOCALAPPDATA%\Nocturne\crashes"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne.exe"; ValueType: dword; ValueName: "DumpType"; ValueData: 1
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne.exe"; ValueType: dword; ValueName: "DumpCount"; ValueData: 10
+Root: HKLM; Subkey: "{#WerKey}\ExcludedApplications"; ValueType: dword; ValueName: "nocturne.exe"; ValueData: 1; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne-supervisor.exe"; ValueType: expandsz; ValueName: "DumpFolder"; ValueData: "%LOCALAPPDATA%\Nocturne\crashes"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne-supervisor.exe"; ValueType: dword; ValueName: "DumpType"; ValueData: 1
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\nocturne-supervisor.exe"; ValueType: dword; ValueName: "DumpCount"; ValueData: 10
+Root: HKLM; Subkey: "{#WerKey}\ExcludedApplications"; ValueType: dword; ValueName: "nocturne-supervisor.exe"; ValueData: 1; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\Nocturne UI.exe"; ValueType: expandsz; ValueName: "DumpFolder"; ValueData: "%LOCALAPPDATA%\Nocturne\crashes"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\Nocturne UI.exe"; ValueType: dword; ValueName: "DumpType"; ValueData: 1
+Root: HKLM; Subkey: "{#WerKey}\LocalDumps\Nocturne UI.exe"; ValueType: dword; ValueName: "DumpCount"; ValueData: 10
+Root: HKLM; Subkey: "{#WerKey}\ExcludedApplications"; ValueType: dword; ValueName: "Nocturne UI.exe"; ValueData: 1; Flags: uninsdeletevalue
 
 [Icons]
 Name: "{group}\Nocturne"; Filename: "{app}\Nocturne UI.exe"
