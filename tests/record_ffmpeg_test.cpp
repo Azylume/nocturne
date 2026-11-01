@@ -452,8 +452,18 @@ TEST_CASE("off Apple, the recording's audio track is AAC at 48 kHz in sync with 
     }
 }
 
+TEST_CASE("off Apple, NOCTURNE_NO_DISK_IMAGES=1 keeps the disk image cases away from diskpart")
+{
+    const char* was = std::getenv("NOCTURNE_NO_DISK_IMAGES");
+    const std::string before = was ? was : "";
+    _putenv_s("NOCTURNE_NO_DISK_IMAGES", "1");
+    CHECK(diskImagesRefused() == "NOCTURNE_NO_DISK_IMAGES=1 is set");
+    _putenv_s("NOCTURNE_NO_DISK_IMAGES", before.c_str());
+}
+
 TEST_CASE("off Apple, a full disk stops the recording cleanly")
 {
+    RETURN_WITHOUT_DISK_IMAGES();
     // A small volume, so the disk really fills up.
     VhdxDisk disk(24);
 

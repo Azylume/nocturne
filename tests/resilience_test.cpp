@@ -17,6 +17,8 @@
 #include <psapi.h>
 #else
 #include <malloc/malloc.h>
+
+#define RETURN_WITHOUT_DISK_IMAGES()
 #endif
 
 #include <algorithm>
@@ -254,6 +256,7 @@ struct MediaDrive {
 // Windows refuses to rename a folder whose files are open, so the drive is a VHDX that is detached and attached again.
 TEST_CASE("a removed media drive: its clips hold their last frame as missing files and play again when it returns")
 {
+    RETURN_WITHOUT_DISK_IMAGES();
     TempDir root;
     MediaDrive show(32);
     azl::EngineHarness harness(kSize, 60.0, {}, twoLayers());
@@ -289,6 +292,7 @@ TEST_CASE("a removed media drive: its clips hold their last frame as missing fil
 
 TEST_CASE("a media drive force-detached while it plays, then attached again at the same place, plays again")
 {
+    RETURN_WITHOUT_DISK_IMAGES();
     TempDir root;
     MediaDrive show(32);
     const fs::path drive = show.mount;

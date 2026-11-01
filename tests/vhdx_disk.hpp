@@ -2,9 +2,42 @@
 
 #include "test_files.hpp"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include <cstdlib>
 #include <fstream>
 #include <string>
+
+inline bool elevated()
+{
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+        return false;
+    TOKEN_ELEVATION elevation{};
+    DWORD size = 0;
+    const bool known = GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size);
+    CloseHandle(token);
+    return known && elevation.TokenIsElevated;
+}
+
+// Why this process makes no disk image, empty when it may: NOCTURNE_NO_DISK_IMAGES=1, or a process that is not
+// elevated, where diskpart would ask for elevation on the desktop.
+inline std::string diskImagesRefused()
+{
+    if (const char* no = std::getenv("NOCTURNE_NO_DISK_IMAGES"); no && std::string(no) == "1")
+        return "NOCTURNE_NO_DISK_IMAGES=1 is set";
+    return elevated() ? "" : "the process is not elevated";
+}
+
+// Ends the case with a message, before any diskpart, when no disk image may be made. CI's runner is elevated.
+#define RETURN_WITHOUT_DISK_IMAGES()                                                                                 \
+    if (const std::string refused = diskImagesRefused(); !refused.empty()) {                                         \
+        MESSAGE("needs an elevated process that may make disk images (diskpart): " << refused);                     \
+        return;                                                                                                      \
+    }
 
 // Windows: an NTFS volume in a VHDX mounted on a folder with diskpart, which can be detached and attached again.
 // Needs an elevated process.
