@@ -418,6 +418,8 @@ public:
     Device() = default;
     // The system's default GPU; null when there is none.
     static Device systemDefault();
+    // Why systemDefault() is null, one line for people: what is missing and what to do. Empty when it is not null.
+    static std::string systemDefaultProblem();
     static Device retain(NativeDevice device);
     explicit operator bool() const;
 

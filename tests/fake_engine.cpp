@@ -6,9 +6,12 @@
 //   fault             faults while it holds a "clip" mark for poison.mp4
 //   fault-elsewhere   faults on another thread while this one holds that mark
 //   fault-compiling   faults while it holds an "effect" mark for the chain "chain"
-// It quits on a stop request, and when nobody reads its heartbeat any more.
+//   no-gpu            says on stderr that it found no usable GPU and exits as the engine does then
+// NOCTURNE_FAKE_ENGINE_DO names the command when there is no --do. It quits on a stop request, and when nobody reads
+// its heartbeat any more.
 #include "platform/process.hpp"
 #include "supervisor/crash_guard.hpp"
+#include "supervisor/restart_request.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -65,6 +68,10 @@ std::optional<int> run(const std::string& command)
         return std::atoi(command.c_str() + 5);
     if (command == "hang")
         hang();
+    if (command == "no-gpu") {
+        std::fprintf(stderr, "%sfake has no Vulkan 1.3 device.\n", azl::restart::kNoGpuLine);
+        return azl::restart::kNoGpu;
+    }
     if (command == "fault") {
         azl::crash::Scope opening("clip", "poison", "poison.mp4");
         fault();
@@ -95,6 +102,8 @@ int main(int argc, char** argv)
         else if (arg == "--state")
             state = argv[++i];
     }
+    if (const char* fromEnvironment = std::getenv("NOCTURNE_FAKE_ENGINE_DO"); command.empty() && fromEnvironment)
+        command = fromEnvironment;
     if (!azl::watchStopRequests())
         return 1;
     if (!state.empty()) {

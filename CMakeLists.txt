@@ -226,7 +226,7 @@ if(WIN32)
 endif()
 
 # The GPU interface everything draws through (ADR 0016): the Metal backend on Apple, Vulkan elsewhere.
-add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/glsl.cpp)
+add_library(nocturne_gpu STATIC src/gpu/gpu.cpp src/gpu/glsl.cpp src/gpu/vulkan_requirements.cpp)
 target_include_directories(nocturne_gpu PUBLIC src)
 target_link_libraries(nocturne_gpu PUBLIC nocturne_shader_cross)
 if(APPLE)
@@ -237,6 +237,11 @@ else()
   find_package(Vulkan 1.3 REQUIRED)
   target_sources(nocturne_gpu PRIVATE src/gpu/gpu_vulkan.cpp src/gpu/vulkan_memory.cpp src/gpu/vulkan_spirv.cpp)
   target_link_libraries(nocturne_gpu PUBLIC Vulkan::Vulkan)
+  if(WIN32)
+    # Without a Vulkan driver the binaries still start: the backend loads vulkan-1.dll itself and says it is missing.
+    target_link_libraries(nocturne_gpu PUBLIC delayimp)
+    target_link_options(nocturne_gpu INTERFACE /DELAYLOAD:vulkan-1.dll)
+  endif()
   # Vulkan structures are initialised from their sType alone, the rest zero.
   target_compile_options(nocturne_gpu PRIVATE -Wno-missing-field-initializers)
 endif()
@@ -412,7 +417,7 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/picture_upload_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
   tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
-  tests/bundle_update_test.cpp tests/h264_decoder_test.cpp
+  tests/bundle_update_test.cpp tests/h264_decoder_test.cpp tests/vulkan_requirements_test.cpp
   ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden"

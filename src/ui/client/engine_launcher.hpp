@@ -29,6 +29,9 @@ public:
         std::function<void(int)> stop;
         // Seconds from a steady clock, for the restart window.
         std::function<double()> now;
+        // The line in which the engine with this pid, once alive() has seen it exit, said it cannot run on this machine
+        // (no usable GPU); empty when it did not. Such an engine is not restarted.
+        std::function<std::string(int)> refusal;
     };
 
     explicit EngineLauncher(Hooks hooks);
@@ -38,7 +41,8 @@ public:
     void ensureRunning();
 
     // Call periodically. Restarts an owned engine that has died, up to twice in 60 s; after that it gives up, stops
-    // trying, and failure() explains why. Does nothing for an engine it did not start.
+    // trying, and failure() explains why. An engine that refused to run is not restarted, and its line is the failure.
+    // Does nothing for an engine it did not start.
     void poll();
 
     // Stops the engine only when this launcher started it. Safe to call when it did not.
@@ -62,8 +66,9 @@ private:
 
 // The hooks the real app uses: probe 127.0.0.1:port; spawn `engine` (by default the `nocturne` beside the running
 // executable) with --loopback --port and a heartbeat pipe (so a force-quit of the UI closes the pipe and the engine
-// quits); reap or stop it, closing that pipe. `port` is the port the UI connects to, so the engine listens where the UI
-// looks.
+// quits); reap or stop it, closing that pipe. The engine's stderr passes through the UI's own, and a refusal is the
+// line it printed before it exited with the no-GPU exit code. `port` is the port the UI connects to, so the engine
+// listens where the UI looks.
 EngineLauncher::Hooks defaultEngineHooks(uint16_t port, std::filesystem::path engine = {});
 
 }
