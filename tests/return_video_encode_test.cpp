@@ -2,8 +2,12 @@
 #include "ffmpeg_movies.hpp"
 
 #include "output/h264_stream.hpp"
+#include "return_video_packets.hpp"
+#include "test_files.hpp"
 
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <optional>
 #include <random>
 
@@ -47,6 +51,24 @@ std::vector<int> unitTypes(const std::vector<uint8_t>& avcc)
     for (const auto& unit : rv::nalUnits(avcc))
         types.push_back(unit.empty() ? -1 : unit[0] & 0x1f);
     return types;
+}
+
+constexpr int kCardFrames = 10;
+constexpr uint32_t kCardKbps = 40;
+
+// Encodes kCardFrames cards as return video, at a rate that keeps the file small, and saves the packets.
+void writeCards(const fs::path& file, const rv::Plan& plan)
+{
+    azl::H264Encoder encoder(plan.width, plan.height, plan.fps, kCardKbps);
+    std::ofstream out(file, std::ios::binary);
+    for (int i = 0; i < kCardFrames; ++i) {
+        std::shared_ptr<azl::YCbCrPicture> picture = encoder.newBuffer();
+        REQUIRE(picture);
+        fill(*picture, card(plan.width, plan.height, i));
+        const std::optional<rv::Packet> packet = encoder.encode(*picture, i / plan.fps, i == 0);
+        REQUIRE(packet);
+        writePacket(out, *packet);
+    }
 }
 
 } // namespace
@@ -122,24 +144,25 @@ TEST_CASE("off Apple, the return video of moving noise stays inside its share of
     CHECK(pictures >= int(frames * 0.8));
 }
 
+// The packets in tests/media/return_video_426.bin are cards encoded off Apple by H264Encoder; tests/media/README.md
+// says how to make them again. They are a fixture so that this test runs where no encoder gives packets at once.
 // 426 pixels of BGRA is a row swscale does not end on a block of; under a checking heap (page heap, ASan) a write past
 // the picture faults here.
 TEST_CASE("off Apple, the H.264 decoder returns 426-wide pictures without writing past them")
 {
     const rv::Plan plan = rv::plan({640, 360}, 1);
     REQUIRE(plan.width == 426);
-    azl::H264Encoder encoder(plan.width, plan.height, plan.fps, plan.kbps);
+    const fs::path file = mediaDir() / "return_video_426.bin";
+    if (const char* out = std::getenv("NOCTURNE_RETURN_VIDEO_FIXTURE_OUT"))
+        writeCards(fs::path(out) / file.filename(), plan);
+    const std::vector<rv::Packet> packets = readPackets(file);
+    REQUIRE(packets.size() == size_t(kCardFrames));
+    REQUIRE(packets.front().key);
     azl::H264Decoder decoder;
     int decoded = 0;
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < kCardFrames; ++i) {
         CAPTURE(i);
-        std::shared_ptr<azl::YCbCrPicture> picture = encoder.newBuffer();
-        REQUIRE(picture);
-        const Rgb shown = card(plan.width, plan.height, i);
-        fill(*picture, shown);
-        const std::optional<rv::Packet> packet = encoder.encode(*picture, i / plan.fps, i == 0);
-        REQUIRE(packet);
-        const std::optional<azl::H264Decoder::Picture> back = decoder.decode(*packet);
+        const std::optional<azl::H264Decoder::Picture> back = decoder.decode(packets[size_t(i)]);
         if (!back)
             continue;
         ++decoded;
@@ -149,7 +172,7 @@ TEST_CASE("off Apple, the H.264 decoder returns 426-wide pictures without writin
         Rgb rgb{back->width, back->height, {}};
         for (size_t p = 0; p < back->bgra.size(); p += 4)
             rgb.rgb.insert(rgb.rgb.end(), {back->bgra[p + 2], back->bgra[p + 1], back->bgra[p]});
-        CHECK(meanError(rgb, shown) < 8.0);
+        CHECK(meanError(rgb, card(plan.width, plan.height, i)) < 8.0);
     }
-    CHECK(decoded == 10);
+    CHECK(decoded == kCardFrames);
 }
