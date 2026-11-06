@@ -77,8 +77,8 @@ void Recorder::start(Settings settings, double now, std::optional<double> gigEnd
     }
     if (writer.audioRate > 0.0) {
         session->analysis = audio;
-        audio->setTap(session.get(), [session](const float* samples, size_t count, double time, double rate) {
-            session->writer->heard(samples, count, time, rate);
+        audio->setTap(session.get(), [session](const float* samples, size_t count, double time, double rate, const float* stereo) {
+            session->writer->heard(samples, count, time, rate, stereo);
         });
     }
     engine_.setFrameTap(session);
@@ -188,7 +188,7 @@ Recorder::AudioPlan Recorder::audioPlan(bool wanted) const
         return {.state = "unavailable", .reason = source.reason.empty() ? "no audio input running" : source.reason};
     if (audio->sampleRate() <= 0.0)
         return {.state = "unavailable", .reason = "no audio input running"};
-    return {.state = "on", .source = source.name};
+    return {.state = "on", .source = source.name, .channels = audio->stereoInput() ? 2 : 1};
 }
 
 void Recorder::setSpaceCheck(SpaceProvider provider, std::chrono::milliseconds interval)

@@ -150,6 +150,9 @@ struct Movie {
     AVCodecID audioCodec = AV_CODEC_ID_NONE;
     int audioRate = 0;
     std::vector<float> audio;
+    int audioChannels = 0;
+    // The second channel of a stereo track.
+    std::vector<float> audioRight;
     // The tracks' lengths as a player plays them: their packets' durations, less the audio priming it skips.
     double videoSeconds = 0.0;
     double audioSeconds = 0.0;
@@ -201,6 +204,7 @@ struct Movie {
         audioCodec = open(audio);
         movie.audioCodec = format->streams[audio]->codecpar->codec_id;
         movie.audioRate = format->streams[audio]->codecpar->sample_rate;
+        movie.audioChannels = format->streams[audio]->codecpar->ch_layout.nb_channels;
     }
     const double timeBase = av_q2d(format->streams[video]->time_base);
     azl::ff::Packet packet(av_packet_alloc());
@@ -214,6 +218,10 @@ struct Movie {
                 const auto* samples = reinterpret_cast<const float*>(frame->extended_data[0]);
                 REQUIRE(frame->format == AV_SAMPLE_FMT_FLTP);
                 movie.audio.insert(movie.audio.end(), samples, samples + frame->nb_samples);
+                if (frame->ch_layout.nb_channels == 2) {
+                    const auto* right = reinterpret_cast<const float*>(frame->extended_data[1]);
+                    movie.audioRight.insert(movie.audioRight.end(), right, right + frame->nb_samples);
+                }
             }
             av_frame_unref(frame.get());
         }

@@ -218,7 +218,7 @@ struct AvfMovie final : recording::MovieFile {
 
     bool appendAudio(const float* samples, size_t count, int64_t at) override
     {
-        const size_t bytes = count * sizeof(float);
+        const size_t bytes = count * audioChannels * sizeof(float);
         CMBlockBufferRef block = nullptr;
         CMSampleBufferRef sample = nullptr;
         bool ok = CMBlockBufferCreateWithMemoryBlock(nullptr, nullptr, bytes, nullptr, nullptr, 0, bytes,
@@ -260,6 +260,7 @@ struct AvfMovie final : recording::MovieFile {
     AVAssetWriterInput* audioInput = nil;
     std::shared_ptr<Track> track;
     double audioRate = 0.0;
+    size_t audioChannels = 1;
     CMAudioFormatDescriptionRef audioFormat = nullptr;
 };
 
@@ -267,19 +268,22 @@ struct AvfMovie final : recording::MovieFile {
 class AvfEncoder final : public recording::MovieEncoder {
 public:
     AvfEncoder(const std::string& codec, uint32_t width, uint32_t height, double fps, bool precise,
-               std::optional<bool> hardware, double audioRate, Counts& counts)
+               std::optional<bool> hardware, double audioRate, int audioChannels, Counts& counts)
         : counts_(counts), hardware_(hardware)
     {
         if (audioRate > 0.0) {
             AudioStreamBasicDescription pcm{.mSampleRate = audioRate,
                                             .mFormatID = kAudioFormatLinearPCM,
                                             .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-                                            .mBytesPerPacket = 4,
+                                            .mBytesPerPacket = UInt32(4 * audioChannels),
                                             .mFramesPerPacket = 1,
-                                            .mBytesPerFrame = 4,
-                                            .mChannelsPerFrame = 1,
+                                            .mBytesPerFrame = UInt32(4 * audioChannels),
+                                            .mChannelsPerFrame = UInt32(audioChannels),
                                             .mBitsPerChannel = 32};
-            CMAudioFormatDescriptionCreate(nullptr, &pcm, 0, nullptr, 0, nullptr, nullptr, &audioFormat_);
+            const AudioChannelLayout layout{.mChannelLayoutTag = audioChannels == 2 ? kAudioChannelLayoutTag_Stereo
+                                                                                    : kAudioChannelLayoutTag_Mono};
+            CMAudioFormatDescriptionCreate(nullptr, &pcm, sizeof(layout), &layout, 0, nullptr, nullptr,
+                                           &audioFormat_);
         }
         compressor_ = makeCompressor(codec, width, height, fps, precise, encoded, this);
     }
@@ -291,7 +295,8 @@ public:
             CFRelease(audioFormat_);
     }
 
-    std::unique_ptr<recording::MovieFile> open(const std::filesystem::path& partial, double audioRate) override
+    std::unique_ptr<recording::MovieFile> open(const std::filesystem::path& partial, double audioRate,
+                                                  int audioChannels) override
     {
         auto next = std::make_unique<AvfMovie>();
         NSError* failure = nil;
@@ -308,10 +313,13 @@ public:
         next->track = std::make_shared<AvfMovie::Track>();
         next->track->writer = writer;
         next->track->input = next->input;
+        const AudioChannelLayout layout{.mChannelLayoutTag = audioChannels == 2 ? kAudioChannelLayoutTag_Stereo
+                                                                                : kAudioChannelLayoutTag_Mono};
         NSDictionary* aac = @{AVFormatIDKey : @(kAudioFormatMPEG4AAC),
                               AVSampleRateKey : @(audioRate),
-                              AVNumberOfChannelsKey : @1,
-                              AVEncoderBitRateKey : @128000};
+                              AVNumberOfChannelsKey : @(audioChannels),
+                              AVChannelLayoutKey : [NSData dataWithBytes:&layout length:sizeof(layout)],
+                              AVEncoderBitRateKey : @(128000 * audioChannels)};
         if (audioRate > 0.0 && audioFormat_ && [writer canApplyOutputSettings:aac forMediaType:AVMediaTypeAudio]) {
             next->audioInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio
                                                                   outputSettings:aac
@@ -319,6 +327,7 @@ public:
             next->audioInput.expectsMediaDataInRealTime = YES;
             [writer addInput:next->audioInput];
             next->audioRate = audioRate;
+            next->audioChannels = size_t(audioChannels);
             next->audioFormat = static_cast<CMAudioFormatDescriptionRef>(CFRetain(audioFormat_));
         }
         if (![writer startWriting])
@@ -492,10 +501,11 @@ Recorder::PlatformSession::PlatformSession(Recorder& owner, Settings s, double f
     }
 
     const double audioRate = writer->audioRate;
+    const int audioChannels = writer->audioChannels;
     writer->open(
         [&](recording::MovieEncoder::Counts& counts) {
             return std::make_unique<AvfEncoder>(settings.codec, width, height, fps, settings.precise, encoder.hardware,
-                                                audioRate, counts);
+                                                audioRate, audioChannels, counts);
         },
         owner.encoderSetup_);
 
