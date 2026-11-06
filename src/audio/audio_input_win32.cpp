@@ -318,6 +318,7 @@ struct Session {
     size_t tapCount = 0;
     float scale = 1.0f;
     std::array<float, 4096> mono{};
+    std::array<float, 8192> pair{};
     std::array<ChannelMeter, AudioAnalysis::kMaxChannels> meters{};
     std::array<ChannelLevel, AudioAnalysis::kMaxChannels> levels{};
     std::atomic<uint64_t> callbacks{0};
@@ -381,7 +382,12 @@ void deliver(Session& s, const float* data, UINT32 frames, UINT64 position)
                     sum += data[size_t(done + i) * s.channels + s.taps[t]];
             s.mono[i] = sum * s.scale;
         }
-        s.analysis->push(s.mono.data(), n, time + double(done) / s.sampleRate, s.sampleRate);
+        if (s.tapCount == 2)
+            for (UINT32 i = 0; i < n; ++i)
+                for (size_t t = 0; t < 2; ++t)
+                    s.pair[2 * size_t(i) + t] = data ? data[size_t(done + i) * s.channels + s.taps[t]] : 0.0f;
+        s.analysis->push(s.mono.data(), n, time + double(done) / s.sampleRate, s.sampleRate,
+                         s.tapCount == 2 ? s.pair.data() : nullptr);
         done += n;
     }
     measure(s, data, frames);

@@ -776,7 +776,7 @@ namespace {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-std::vector<float> decodeAudio(const fs::path& path, double& rate)
+std::vector<float> decodeAudio(const fs::path& path, double& rate, int channels = 1)
 {
     AVURLAsset* asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:@(path.c_str())] options:nil];
     NSArray<AVAssetTrack*>* tracks = [asset tracksWithMediaType:AVMediaTypeAudio];
@@ -789,7 +789,7 @@ std::vector<float> decodeAudio(const fs::path& path, double& rate)
                                           AVLinearPCMIsFloatKey : @YES,
                                           AVLinearPCMIsNonInterleaved : @NO,
                                           AVLinearPCMIsBigEndianKey : @NO,
-                                          AVNumberOfChannelsKey : @1}];
+                                          AVNumberOfChannelsKey : @(channels)}];
     [reader addOutput:output];
     REQUIRE([reader startReading]);
     std::vector<float> samples;
@@ -853,6 +853,60 @@ TEST_CASE("the audio input records as a track aligned with the frames")
     const double heard = double(loud - samples.begin()) / rate;
     MESSAGE("click heard at ", heard, " s; its frame shows at ", movie.times[kClickFrame], " s");
     CHECK(std::abs(heard - movie.times[kClickFrame]) < 0.005);
+}
+
+TEST_CASE("a stereo input records two independent channels with no bleed whatever the input rate")
+{
+    constexpr int kFrames = 120;
+    for (const double rate : {192000.0, 48000.0}) {
+        for (const bool left : {true, false}) {
+            CAPTURE(rate);
+            CAPTURE(left);
+            TempDir dir;
+            azl::AudioAnalysis analysis([] { return 0.0; }, {.thread = false});
+            azl::EngineHarness harness(kSmall);
+            harness.recorder().setAudio(&analysis);
+            Client client(harness.document());
+            const size_t n = size_t(rate / 60.0);
+            std::vector<float> mono(n), pair(2 * n);
+            analysis.push(mono.data(), n, 0.0, rate, pair.data());
+            analysis.pump();
+            harness.step(10);
+            const fs::path file = dir.path / "stereo.mov";
+            const Message started =
+                recordReply(client, {{"type", "record"}, {"op", "start"}, {"codec", "hevc"}, {"path", file.string()}});
+            REQUIRE_MESSAGE(started["type"] == "record", started.dump());
+            CHECK(started["audio"] == "on");
+            size_t done = 0;
+            for (int i = 0; i < kFrames; ++i) {
+                for (size_t k = 0; k < n; ++k, ++done) {
+                    const auto tone = float(0.8 * std::sin(2.0 * M_PI * 1000.0 * double(done) / rate));
+                    pair[2 * k] = left ? tone : 0.0f;
+                    pair[2 * k + 1] = left ? 0.0f : tone;
+                    mono[k] = 0.5f * (pair[2 * k] + pair[2 * k + 1]);
+                }
+                analysis.push(mono.data(), n, harness.time(), rate, pair.data());
+                analysis.pump();
+                harness.step();
+                harness.recorder().waitUntilWritten();
+            }
+            const Message stopped = recordReply(client, {{"type", "record"}, {"op", "stop"}});
+            CHECK(stopped["frames"] == kFrames);
+            CHECK(stopped["audioDropped"] == 0);
+
+            double decodedRate = 0.0;
+            const std::vector<float> samples = decodeAudio(file, decodedRate, 2);
+            REQUIRE(decodedRate == 48000.0);
+            double lit = 0.0, dark = 0.0;
+            for (size_t i = 0; i + 1 < samples.size(); i += 2) {
+                lit = std::max<double>(lit, std::abs(samples[i + (left ? 0 : 1)]));
+                dark = std::max<double>(dark, std::abs(samples[i + (left ? 1 : 0)]));
+            }
+            MESSAGE("driven channel peak ", lit, ", other channel peak ", dark);
+            CHECK(lit == doctest::Approx(0.8).epsilon(0.15));
+            CHECK(dark < 0.02);
+        }
+    }
 }
 
 namespace {

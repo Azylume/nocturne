@@ -169,10 +169,13 @@ private:
 
 Writer::Writer(Settings s, AudioPlan audio, SpaceProvider space, std::chrono::milliseconds spaceInterval,
                OnEnded onEnded, OnSpace onSpace)
-    : settings(std::move(s)), audioRate(audio.state == "on" ? kTrackRate : 0.0), audioPlan(std::move(audio)),
+    : settings(std::move(s)), audioRate(audio.state == "on" ? kTrackRate : 0.0),
+      audioChannels(audio.channels == 2 ? 2 : 1), audioPlan(std::move(audio)),
       onEnded_(std::move(onEnded)), onSpace_(std::move(onSpace)), space_(std::move(space)),
-      spaceInterval_(spaceInterval), resampler_(std::make_unique<Resampler>())
+      spaceInterval_(spaceInterval)
 {
+    for (int c = 0; c < audioChannels; ++c)
+        resamplers_.push_back(std::make_unique<Resampler>());
     base_ = movieFile(settings.path);
     if (base_.extension() != ".mov")
         throw std::runtime_error("recordings are .mov files");
@@ -253,7 +256,7 @@ Writer::Segment Writer::openSegment(const std::filesystem::path& movie)
     next.partial = partialOf(movie);
     std::error_code error;
     std::filesystem::remove(next.partial, error);
-    next.movie = encoder_->open(next.partial, audioRate);
+    next.movie = encoder_->open(next.partial, audioRate, audioChannels);
     return next;
 }
 
@@ -500,7 +503,7 @@ bool Writer::write(const Item& item, bool keyFrame)
     return true;
 }
 
-void Writer::heard(const float* samples, size_t count, double time, double sampleRate)
+void Writer::heard(const float* samples, size_t count, double time, double sampleRate, const float* stereo)
 {
     std::lock_guard lock(mutex_);
     if (closing_ || sampleRate <= 0.0)
@@ -509,7 +512,17 @@ void Writer::heard(const float* samples, size_t count, double time, double sampl
         audioDropped += count;
         return;
     }
-    audio_.push_back({std::vector<float>(samples, samples + count), time, sampleRate});
+    std::vector<float> frames;
+    if (audioChannels == 2 && stereo) {
+        frames.assign(stereo, stereo + 2 * count);
+    } else if (audioChannels == 2) {
+        frames.resize(2 * count);
+        for (size_t i = 0; i < count; ++i)
+            frames[2 * i] = frames[2 * i + 1] = samples[i];
+    } else {
+        frames.assign(samples, samples + count);
+    }
+    audio_.push_back({std::move(frames), time, sampleRate});
     audioQueued_ += count;
     wake_.notify_all();
 }
@@ -518,30 +531,46 @@ bool Writer::writeAudio(const Heard& heard)
 {
     if (!segment_.movie->hasAudio() || !segment_.origin)
         return true;
+    const size_t channels = size_t(audioChannels);
+    const size_t count = heard.samples.size() / channels;
     double time = 0.0;
-    resampler_->push(heard.samples.data(), heard.samples.size(), heard.time, heard.rate, resampled_, time);
-    return resampled_.empty() || placeAudio(resampled_, time);
+    for (size_t c = 0; c < channels; ++c) {
+        split_[c].resize(count);
+        for (size_t i = 0; i < count; ++i)
+            split_[c][i] = heard.samples[i * channels + c];
+        resamplers_[c]->push(split_[c].data(), count, heard.time, heard.rate, resampled_[c], time);
+    }
+    const size_t frames = resampled_[0].size();
+    if (frames == 0)
+        return true;
+    interleaved_.resize(frames * channels);
+    for (size_t c = 0; c < channels; ++c)
+        for (size_t i = 0; i < frames; ++i)
+            interleaved_[i * channels + c] = resampled_[c][i];
+    return placeAudio(interleaved_, time);
 }
 
-// Places samples at their capture time on the movie's clock, the one the frames are on, and keeps the track continuous
+// Places frames at their capture time on the movie's clock, the one the frames are on, and keeps the track continuous
 // through timestamp jitter.
-bool Writer::placeAudio(const std::vector<float>& samples, double time)
+bool Writer::placeAudio(const std::vector<float>& interleaved, double time)
 {
+    const size_t channels = size_t(audioChannels);
+    const size_t total = interleaved.size() / channels;
     int64_t& audioNext = segment_.audioNext;
     const auto start = int64_t(std::llround((time - *segment_.origin) * audioRate));
     if (audioNext < 0 || start > audioNext + int64_t(kAudioGapSeconds * audioRate))
         audioNext = std::max<int64_t>(start, 0);
     const int64_t skip = audioNext - start;
-    if (skip >= int64_t(samples.size()))
+    if (skip >= int64_t(total))
         return true;
     const size_t first = size_t(std::max<int64_t>(skip, 0));
-    const size_t count = samples.size() - first;
+    const size_t count = total - first;
     if (!segment_.movie->audioReady()) {
         audioDropped += count;
         audioNext += int64_t(count);
         return true;
     }
-    const bool ok = segment_.movie->appendAudio(samples.data() + first, count, audioNext);
+    const bool ok = segment_.movie->appendAudio(interleaved.data() + first * channels, count, audioNext);
     audioNext += int64_t(count);
     return ok;
 }

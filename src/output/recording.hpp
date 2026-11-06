@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -71,6 +72,8 @@ struct AudioPlan {
     std::string state = "off";
     std::string reason;
     std::string source;
+    // 2 when the input has an unmixed left/right pair to record; otherwise 1.
+    int channels = 1;
 };
 
 // Where the frame at an engine time lands: the movie file and its time in that movie (0 for a time before the first
@@ -95,7 +98,8 @@ public:
     virtual bool hasAudio() const = 0;
     // Writer thread: whether the audio track takes more now; when it does not, samples are dropped and counted.
     virtual bool audioReady() const = 0;
-    // Writer thread: `count` samples at kTrackRate, the first at sample `at` of the movie. False when the write failed.
+    // Writer thread: `count` frames of interleaved samples at kTrackRate, the first at frame `at` of the movie. False
+    // when the write failed.
     virtual bool appendAudio(const float* samples, size_t count, int64_t at) = 0;
     // Any thread, once no more frames are handed out for it: waits for the encoder's frames for this file, then writes
     // the movie out. True when it is complete.
@@ -125,8 +129,9 @@ public:
 
     virtual ~MovieEncoder() = default;
     // Any thread, also while another file is written: a movie at `partial` with a video track and, when `audioRate` is
-    // set, an AAC track. Throws std::runtime_error when it cannot.
-    virtual std::unique_ptr<MovieFile> open(const std::filesystem::path& partial, double audioRate) = 0;
+    // set, an AAC track of `audioChannels` (1 or 2) channels. Throws std::runtime_error when it cannot.
+    virtual std::unique_ptr<MovieFile> open(const std::filesystem::path& partial, double audioRate,
+                                            int audioChannels) = 0;
     // Writer thread: hands the picture to the encoder for `file`, at `seconds - origin` in its movie, a key frame when
     // `key`. False when the encoder refused it.
     virtual bool encode(const Picture& picture, double seconds, double origin, bool key, MovieFile& file) = 0;
@@ -173,7 +178,9 @@ public:
     // A frame that never got a picture.
     void drop() { counts.dropped++; }
     // Any thread, never waits for the writer: audio of the analysis's input, at its capture time.
-    void heard(const float* samples, size_t count, double time, double sampleRate);
+    // `stereo`, when set, is the unmixed left/right pair of the same frames, interleaved; a stereo track takes it
+    // (a mono input on a stereo track fills both channels) and a mono track takes `samples`.
+    void heard(const float* samples, size_t count, double time, double sampleRate, const float* stereo = nullptr);
     // Any thread: the writer finishes the movie and ends.
     void close();
     // Until no picture is on its way, and unless `inFlightOnly` the writer has caught up.
@@ -188,6 +195,7 @@ public:
     std::optional<bool> hardware;
     // kTrackRate, or 0 without an audio track.
     double audioRate = 0.0;
+    int audioChannels = 1;
     AudioPlan audioPlan;
     // When and why the recording finishes by itself.
     std::optional<double> stopsAt;
@@ -209,6 +217,7 @@ private:
         double seconds;
     };
     struct Heard {
+        // Interleaved: audioChannels per frame.
         std::vector<float> samples;
         double time;
         double rate;
@@ -241,7 +250,7 @@ private:
     void discardPrepared();
     bool write(const Item& item, bool keyFrame);
     bool writeAudio(const Heard& heard);
-    bool placeAudio(const std::vector<float>& samples, double time);
+    bool placeAudio(const std::vector<float>& interleaved, double time);
     void finish(std::string reason);
 
     OnEnded onEnded_;
@@ -265,8 +274,10 @@ private:
     SpaceProvider space_;
     std::chrono::milliseconds spaceInterval_;
     // Writer thread only.
-    std::unique_ptr<Resampler> resampler_;
-    std::vector<float> resampled_;
+    std::vector<std::unique_ptr<Resampler>> resamplers_;
+    std::array<std::vector<float>, 2> resampled_;
+    std::array<std::vector<float>, 2> split_;
+    std::vector<float> interleaved_;
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;

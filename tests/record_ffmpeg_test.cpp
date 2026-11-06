@@ -54,6 +54,7 @@ struct Options {
     uint32_t height = kHeight;
     bool precise = false;
     bool audio = false;
+    bool stereo = false;
     uint64_t maxBytes = 0;
     double maxSeconds = 0.0;
     uint64_t reserveBytes = 0;
@@ -80,7 +81,7 @@ public:
         settings.reservePercent = 0.0;
         rec::AudioPlan audio;
         if (options.audio)
-            audio = {"on", "", "test tone"};
+            audio = {"on", "", "test tone", options.stereo ? 2 : 1};
         writer_ = std::make_unique<rec::Writer>(settings, audio, options.space, options.spaceInterval,
                                                 [this](const rec::Ended& e) { ended(e); }, nullptr);
         writer_->open(
@@ -128,10 +129,11 @@ public:
     }
 
     // A frame with its audio, then waits for the writer, as the harness's waitUntilWritten does.
-    void frameWritten(int index, const std::vector<float>& sound = {}, double rate = 48000.0)
+    void frameWritten(int index, const std::vector<float>& sound = {}, double rate = 48000.0,
+                      const std::vector<float>& pair = {})
     {
         if (!sound.empty())
-            writer_->heard(sound.data(), sound.size(), timeOf(index), rate);
+            writer_->heard(sound.data(), sound.size(), timeOf(index), rate, pair.empty() ? nullptr : pair.data());
         for (int i = 0; i < 1000 && !writer_->done; ++i) {
             if (frame(index))
                 break;
@@ -449,6 +451,77 @@ TEST_CASE("off Apple, the recording's audio track is AAC at 48 kHz in sync with 
         for (float s : movie.audio)
             peak = std::max(peak, std::abs(s));
         CHECK(peak == doctest::Approx(0.8).epsilon(0.15));
+    }
+}
+
+TEST_CASE("off Apple, a stereo input records two independent channels with no bleed whatever the input rate")
+{
+    constexpr int kFrames = 120;
+    for (const double rate : {192000.0, 48000.0}) {
+        for (const bool left : {true, false}) {
+            CAPTURE(rate);
+            CAPTURE(left);
+            TempDir dir;
+            const fs::path file = dir.path / "stereo.mov";
+            Options options("prores", file);
+            options.audio = true;
+            options.stereo = true;
+            Recording recording(options);
+            const size_t n = size_t(rate / kFps);
+            size_t done = 0;
+            for (int i = 0; i < kFrames; ++i) {
+                std::vector<float> mono(n), pair(2 * n);
+                for (size_t k = 0; k < n; ++k, ++done) {
+                    const auto tone = float(0.8 * std::sin(2.0 * M_PI * 1000.0 * double(done) / rate));
+                    pair[2 * k] = left ? tone : 0.0f;
+                    pair[2 * k + 1] = left ? 0.0f : tone;
+                    mono[k] = 0.5f * tone;
+                }
+                recording.frameWritten(i, mono, rate, pair);
+            }
+            CHECK(recording.stop().frames == kFrames);
+            CHECK(recording.writer().audioDropped == 0);
+
+            const Movie movie = decodeMovie(file);
+            REQUIRE(movie.audioTracks == 1);
+            REQUIRE(movie.audioChannels == 2);
+            REQUIRE(movie.audio.size() == movie.audioRight.size());
+            const std::vector<float>& lit = left ? movie.audio : movie.audioRight;
+            const std::vector<float>& dark = left ? movie.audioRight : movie.audio;
+            float litPeak = 0.0f, darkPeak = 0.0f;
+            for (size_t i = 0; i < lit.size(); ++i) {
+                litPeak = std::max(litPeak, std::abs(lit[i]));
+                darkPeak = std::max(darkPeak, std::abs(dark[i]));
+            }
+            MESSAGE("driven channel peak ", litPeak, ", other channel peak ", darkPeak);
+            CHECK(litPeak > 0.6f);
+            CHECK(litPeak < 1.2f);
+            CHECK(darkPeak < 0.02f);
+        }
+    }
+}
+
+TEST_CASE("off Apple, a mono input records one channel even when a pair is offered, and no audio stays off")
+{
+    for (const bool audio : {true, false}) {
+        CAPTURE(audio);
+        TempDir dir;
+        const fs::path file = dir.path / "mono.mov";
+        Options options("prores", file);
+        options.audio = audio;
+        Recording recording(options);
+        std::vector<float> mono(800), pair(1600);
+        for (size_t k = 0; k < 800; ++k)
+            mono[k] = pair[2 * k] = pair[2 * k + 1] = float(0.5 * std::sin(2.0 * M_PI * 1000.0 * double(k) / 48000.0));
+        for (int i = 0; i < 30; ++i)
+            recording.frameWritten(i, mono, 48000.0, pair);
+        CHECK(recording.stop().frames == 30);
+        const Movie movie = decodeMovie(file);
+        CHECK(movie.audioTracks == (audio ? 1 : 0));
+        if (audio) {
+            CHECK(movie.audioChannels == 1);
+            CHECK(movie.audioRight.empty());
+        }
     }
 }
 

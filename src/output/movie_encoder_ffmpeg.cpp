@@ -112,7 +112,7 @@ struct OutputFree {
 class FfmpegMovie final : public MovieFile {
 public:
     FfmpegMovie(const std::filesystem::path& partial, const AVCodecParameters* video, AVRational timeBase,
-                double audioRate)
+                double audioRate, int audioChannels)
     {
         const std::u8string path = partial.u8string();
         const char* name = reinterpret_cast<const char*>(path.c_str());
@@ -128,7 +128,7 @@ public:
         if (video->codec_id == AV_CODEC_ID_HEVC && video->extradata_size > 0)
             video_->codecpar->codec_tag = MKTAG('h', 'v', 'c', '1');
         if (audioRate > 0.0)
-            openAudio(int(audioRate));
+            openAudio(int(audioRate), audioChannels);
         // Each fragment reaches the disk whole as soon as it is written, so a killed engine leaves it playable.
         raw->flush_packets = 1;
         int error = avio_open(&raw->pb, name, AVIO_FLAG_WRITE);
@@ -155,14 +155,15 @@ public:
         std::lock_guard lock(mutex_);
         if (!writingLocked())
             return false;
+        const auto channels = size_t(aac_->ch_layout.nb_channels);
         if (at > audioNext_)
-            queued_.insert(queued_.end(), size_t(at - audioNext_), 0.0f);
-        queued_.insert(queued_.end(), samples, samples + count);
+            queued_.insert(queued_.end(), size_t(at - audioNext_) * channels, 0.0f);
+        queued_.insert(queued_.end(), samples, samples + count * channels);
         audioNext_ = at + int64_t(count);
-        const auto frameSize = size_t(aac_->frame_size);
+        const size_t frameSize = size_t(aac_->frame_size) * channels;
         size_t used = 0;
         for (; queued_.size() - used >= frameSize; used += frameSize)
-            if (!encodeAudio(queued_.data() + used, frameSize))
+            if (!encodeAudio(queued_.data() + used, size_t(aac_->frame_size)))
                 return false;
         queued_.erase(queued_.begin(), queued_.begin() + ptrdiff_t(used));
         return true;
@@ -174,7 +175,7 @@ public:
         drained_.wait(lock, [&] { return pending_ == 0; });
         if (!writingLocked())
             return false;
-        if (audio_ && ((!queued_.empty() && !encodeAudio(queued_.data(), queued_.size())) || !encodeAudio(nullptr, 0)))
+        if (audio_ && ((!queued_.empty() && !encodeAudio(queued_.data(), queued_.size() / size_t(aac_->ch_layout.nb_channels))) || !encodeAudio(nullptr, 0)))
             return false;
         int error = av_write_trailer(format_.get());
         if (error >= 0)
@@ -229,7 +230,7 @@ public:
     }
 
 private:
-    void openAudio(int rate)
+    void openAudio(int rate, int channels)
     {
         const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
         ff::Codec aac(codec ? avcodec_alloc_context3(codec) : nullptr);
@@ -237,7 +238,7 @@ private:
             return;
         aac->sample_fmt = AV_SAMPLE_FMT_FLTP;
         aac->sample_rate = rate;
-        av_channel_layout_default(&aac->ch_layout, 1);
+        av_channel_layout_default(&aac->ch_layout, channels);
         aac->bit_rate = 128000;
         aac->time_base = {1, rate};
         aac->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -268,7 +269,12 @@ private:
             if (const int error = av_frame_make_writable(frame); error < 0)
                 return fail(error);
             frame->nb_samples = int(count);
-            std::memcpy(frame->data[0], samples, count * sizeof(float));
+            const auto channels = size_t(aac_->ch_layout.nb_channels);
+            for (size_t c = 0; c < channels; ++c) {
+                auto* plane = reinterpret_cast<float*>(frame->data[c]);
+                for (size_t i = 0; i < count; ++i)
+                    plane[i] = samples[i * channels + c];
+            }
             frame->pts = audioPts_;
             audioPts_ += int64_t(count);
         }
@@ -368,9 +374,10 @@ std::string FfmpegEncoder::name() const
     return codec_->codec->name;
 }
 
-std::unique_ptr<MovieFile> FfmpegEncoder::open(const std::filesystem::path& partial, double audioRate)
+std::unique_ptr<MovieFile> FfmpegEncoder::open(const std::filesystem::path& partial, double audioRate,
+                                               int audioChannels)
 {
-    return std::make_unique<FfmpegMovie>(partial, parameters_.get(), kTimeBase, audioRate);
+    return std::make_unique<FfmpegMovie>(partial, parameters_.get(), kTimeBase, audioRate, audioChannels);
 }
 
 bool FfmpegEncoder::encode(const Picture& picture, double seconds, double origin, bool key, MovieFile& file)

@@ -28,7 +28,7 @@ public:
     // Never allocates or waits: a picture to fill, or null when every one is in use. One thread at a time.
     std::shared_ptr<YCbCrPicture> newPicture() { return pool_->take(); }
 
-    std::unique_ptr<MovieFile> open(const std::filesystem::path& partial, double audioRate) override;
+    std::unique_ptr<MovieFile> open(const std::filesystem::path& partial, double audioRate, int audioChannels) override;
     bool encode(const Picture& picture, double seconds, double origin, bool key, MovieFile& file) override;
     void complete() override;
     std::optional<bool> hardware() const override { return hardware_; }

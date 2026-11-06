@@ -184,6 +184,7 @@ struct Session {
     size_t tapCount = 0;
     float scale = 1.0f;
     std::array<float, 4096> mono{};
+    std::array<float, 8192> pair{};
     double ticksToSeconds = 0.0;
     std::atomic<uint64_t> callbacks{0};
     std::array<ChannelMeter, AudioAnalysis::kMaxChannels> meters{};
@@ -256,7 +257,15 @@ OSStatus capture(AudioObjectID, const AudioTimeStamp*, const AudioBufferList* in
             }
             s->mono[i] = sum * s->scale;
         }
-        s->analysis->push(s->mono.data(), n, time + double(done) / s->sampleRate, s->sampleRate);
+        if (s->tapCount == 2)
+            for (UInt32 i = 0; i < n; ++i)
+                for (size_t t = 0; t < 2; ++t) {
+                    const AudioBuffer& b = input->mBuffers[s->taps[t].first];
+                    s->pair[2 * size_t(i) + t] =
+                        static_cast<const float*>(b.mData)[size_t(done + i) * b.mNumberChannels + s->taps[t].second];
+                }
+        s->analysis->push(s->mono.data(), n, time + double(done) / s->sampleRate, s->sampleRate,
+                          s->tapCount == 2 ? s->pair.data() : nullptr);
         done += n;
     }
     measure(*s, *input, frames);

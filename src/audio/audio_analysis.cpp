@@ -56,9 +56,10 @@ AudioAnalysis::~AudioAnalysis()
         thread_.join();
 }
 
-void AudioAnalysis::push(const float* samples, size_t count, double time, double sampleRate)
+void AudioAnalysis::push(const float* samples, size_t count, double time, double sampleRate, const float* stereo)
 {
     sampleRate_.store(sampleRate, std::memory_order_relaxed);
+    stereoInput_.store(stereo != nullptr, std::memory_order_relaxed);
     bool zero = true;
     for (size_t i = 0; i < count && zero; ++i)
         zero = samples[i] == 0.0f;
@@ -67,12 +68,14 @@ void AudioAnalysis::push(const float* samples, size_t count, double time, double
 
     for (size_t done = 0; done < count;) {
         const size_t n = std::min(count - done, kMaxChunk);
-        if (chunks_.writable() == 0 || samples_.writable() < n) {
+        if (chunks_.writable() == 0 || samples_.writable() < n || (stereo && pairs_.writable() < 2 * n)) {
             overruns_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         samples_.write(samples + done, n);
-        const Chunk chunk{uint32_t(n), time + double(done) / sampleRate, sampleRate};
+        if (stereo)
+            pairs_.write(stereo + 2 * done, 2 * n);
+        const Chunk chunk{uint32_t(n), time + double(done) / sampleRate, sampleRate, stereo != nullptr};
         chunks_.write(&chunk, 1);
         done += n;
     }
@@ -132,11 +135,13 @@ bool AudioAnalysis::drain()
     Chunk chunk;
     while (chunks_.read(&chunk, 1)) {
         samples_.read(scratch_.data(), chunk.count);
+        if (chunk.stereo)
+            pairs_.read(pairScratch_.data(), 2 * size_t(chunk.count));
         analyse(scratch_.data(), chunk.count, chunk.time, chunk.sampleRate, true);
         {
             std::lock_guard lock(tapMutex_);
             for (const auto& [owner, tap] : taps_)
-                tap(scratch_.data(), chunk.count, chunk.time, chunk.sampleRate);
+                tap(scratch_.data(), chunk.count, chunk.time, chunk.sampleRate, chunk.stereo ? pairScratch_.data() : nullptr);
         }
         any = true;
     }

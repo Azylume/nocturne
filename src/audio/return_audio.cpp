@@ -77,7 +77,7 @@ void ReturnAudio::retap()
         if (listeners_.empty())
             analysis_.setTap(this, nullptr);
         else
-            analysis_.setTap(this, [this](const float* samples, size_t count, double, double sampleRate) {
+            analysis_.setTap(this, [this](const float* samples, size_t count, double, double sampleRate, const float*) {
                 heard(samples, count, sampleRate);
             });
     }

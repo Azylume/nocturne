@@ -46,8 +46,10 @@ struct ChannelMeter {
 class AudioAnalysis {
 public:
     using Now = std::function<double()>;
-    // Sees the captured samples as the analysis drains them: mono, the first at engine time `time`.
-    using Tap = std::function<void(const float* samples, size_t count, double time, double sampleRate)>;
+    // Sees the captured samples as the analysis drains them: mono, the first at engine time `time`. `stereo` is null
+    // unless the input has a left/right pair; then it holds `count` interleaved frames of the unmixed pair.
+    using Tap =
+        std::function<void(const float* samples, size_t count, double time, double sampleRate, const float* stereo)>;
 
     struct Options {
         // Off for tests, which call pump() instead.
@@ -61,8 +63,11 @@ public:
     ~AudioAnalysis();
 
     // Audio thread only, wait-free: mono samples at `sampleRate`, the first captured at engine time `time`. A chunk
-    // that does not fit is dropped and counted.
-    void push(const float* samples, size_t count, double time, double sampleRate);
+    // that does not fit is dropped and counted. `stereo`, when set, is the same `count` frames as an unmixed left/right
+    // pair, interleaved; the analysis reads only the mono samples, and taps get the pair.
+    void push(const float* samples, size_t count, double time, double sampleRate, const float* stereo = nullptr);
+    // The last push carried a left/right pair.
+    bool stereoInput() const { return stereoInput_.load(std::memory_order_relaxed); }
 
     // Any thread, never blocks: the analysis as of engine time `seconds`, less the latency offset.
     AudioFrame at(double seconds) const;
@@ -98,6 +103,7 @@ private:
         uint32_t count;
         double time;
         double sampleRate;
+        bool stereo;
     };
     struct Slot {
         std::atomic<uint64_t> sequence{0};
@@ -116,7 +122,9 @@ private:
     Now now_;
     Options options_;
     SpscRing<float, 1 << 16> samples_;
+    SpscRing<float, 1 << 17> pairs_;
     SpscRing<Chunk, 1024> chunks_;
+    std::atomic<bool> stereoInput_{false};
     std::atomic<uint64_t> overruns_{0};
     std::atomic<bool> digitalSilence_{false};
     std::atomic<double> sampleRate_{0.0};
@@ -140,6 +148,7 @@ private:
     double analysedUntil_ = 0.0;
     double lastAudio_ = 0.0;
     std::array<float, kMaxChunk> scratch_{};
+    std::array<float, 2 * kMaxChunk> pairScratch_{};
 
     std::array<Slot, kHistory> history_;
     std::atomic<uint64_t> published_{0};
