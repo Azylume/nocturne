@@ -1785,10 +1785,20 @@ void Engine::guardBudget(std::vector<Draw>& draws, std::vector<std::shared_ptr<c
         for (Draw& from : draw.from)
             from.divisor = 2;
     };
+    // The sub-stack of a layer that mixes its clips first draws at the group's reduced size as its own full size.
+    auto fit = [](Draw& draw, Size size) {
+        draw.width = size.width;
+        draw.height = size.height;
+        for (Draw& from : draw.from) {
+            from.width = size.width;
+            from.height = size.height;
+        }
+    };
     for (size_t i = 0; i < reduced; ++i) {
-        halve(*layers[i].second);
-        if (layers[i].second->clipMix)
-            halve(layers[i].second->layers.front());
+        Draw& draw = *layers[i].second;
+        halve(draw);
+        if (draw.clipMix)
+            fit(draw.layers.front(), sizeOf(draw));
     }
     if (reduced)
         chains.push_back(upscale_);
