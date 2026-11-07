@@ -18,7 +18,7 @@ void bind(gpu::RenderPass& pass, uint32_t slot, const gpu::Texture* texture)
 
 } // namespace
 
-ClipEffectsPreview::ClipEffectsPreview(const gpu::Device& device) : device_(device), compiler_(device)
+ClipEffectsPreview::ClipEffectsPreview(const gpu::Device& device) : device_(device), constants_(device), compiler_(device)
 {
 }
 
@@ -179,7 +179,7 @@ void ClipEffectsPreview::encodePass(gpu::RenderPass& into, const CompiledPass& p
         params_.push_back(0.0f);
     into.setPipeline(pass.pipelines[size_t(BlendVariant::Normal)]);
     into.setBytes(0, &header, sizeof(header));
-    into.setBytes(1, params_.data(), params_.size() * sizeof(float));
+    constants_.set(into, 1, params_.data(), params_.size() * sizeof(float));
     into.draw(3);
 }
 

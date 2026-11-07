@@ -10,6 +10,7 @@
 #include "engine/chain_compiler.hpp"
 #include "engine/frame_guard.hpp"
 #include "engine/frame_ring.hpp"
+#include "gpu/constants_ring.hpp"
 #include "engine/frame_trace.hpp"
 #include "engine/fsr_upscaler.hpp"
 #include "engine/modulation_plan.hpp"
@@ -552,6 +553,8 @@ private:
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
 
     gpu::Device device_;
+    // Render thread only.
+    mutable gpu::ConstantsRing constants_;
     EngineConfig config_;
     gpu::Queue queue_;
     profile::GpuTimeline gpu_;
