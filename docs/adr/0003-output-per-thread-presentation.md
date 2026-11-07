@@ -10,7 +10,9 @@ When the GPU is near 100 %, rendered frames queue up on it ahead of the outputs'
 behind them (measured up to ~57 ms from render start to GPU start with two outputs). The `framesInFlight` machine
 setting (`nocturne-ctl settings in-flight ring|1|2`, `EngineConfig::maxInFlight`) bounds how many rendered frames may
 be on the GPU at once: a frame due while that many are waits for one to finish, up to a frame's time, so the GPU goes
-straight on to the next frame while fewer are ever queued ahead of a present. The default stays the frame ring's
-bound until the reference machine says otherwise; the report test "under GPU overload: frames in flight on the GPU"
+straight on to the next frame while fewer are ever queued ahead of a present. The default is 1: on the reference
+machine (Mac mini 2018, `typical`, x86_64, 5 interleaved runs each) it gave the outputs more new frames and fewer
+hitches than the frame ring with one and with three outputs, at the cost of some render rate with three (numbers in
+PR for #33). The report test "under GPU overload: frames in flight on the GPU"
 (`tests/resilience_test.cpp`) prints the render rate, the queueing time and each output's new frames and hitches per
 second for the ring, 2 and 1.
