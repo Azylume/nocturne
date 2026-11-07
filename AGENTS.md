@@ -115,7 +115,8 @@ and range; a gap smaller than the run-to-run spread is no difference.
 
 ## Code style
 
-No formatter config: match the code around you. 4-space indent, `#pragma once`, `namespace azl`, `PascalCase` types,
+`.clang-format` is checked on changed lines only (`git clang-format origin/main` fixes yours; never reformat other
+code). Match the code around you. 4-space indent, `#pragma once`, `namespace azl`, `PascalCase` types,
 `camelCase` functions, `member_` fields, `kConstant` constants, about 120 columns, opening brace of a function on its
 own line. Comments are full sentences that say what the code guarantees: which thread, what it never does.
 
@@ -167,6 +168,7 @@ Prose here is the weakest guard; a check that fails is stronger. Know which rule
 | No ASan/UBSan finding in the engine suite; no fuzz crash in the parsers | `nightly-sanitize.yml`, nightly only, not on PRs |
 | A curated ISF effect or generator has a test entry | "every built-in ISF shader loads" (`tests/isf_engine_test.cpp`) |
 | An ISF effect's golden is not the plain card | the same file's golden test (2% of pixels must differ) |
+| Changed lines follow `.clang-format` (only lines you touched, never a reformat of old code) | Format workflow (`.github/workflows/format.yml`), every PR touching C++ |
 | Test file added to CMake, no secrets, render thread never waits | **nothing in CI**: you and the reviewer |
 | Fusion claims, licences, goldens looked at, doc commands run as written | **nothing in CI**: you and the reviewer |
 
