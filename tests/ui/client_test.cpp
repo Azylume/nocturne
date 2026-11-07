@@ -472,6 +472,26 @@ TEST_CASE("the client keeps the engine's history, presets, Macro Sets and live m
     CHECK(fed.recorder.errors.empty());
 }
 
+TEST_CASE("an onset lights only while its running count grows, and the spectrum releases over a few messages")
+{
+    Fed fed;
+    const auto state = [&](int kicks, double band) {
+        fed.client.receive({{"type", "audio"}, {"op", "state"}, {"live", true},
+                            {"onsets", Message::object({{"kick", kicks}})}, {"spectrum", {band}}});
+    };
+    state(5, 1.0);
+    CHECK_FALSE(fed.client.audio().onsets.at("kick"));
+    state(6, 1.0);
+    CHECK(fed.client.audio().onsets.at("kick"));
+    for (int i = 0; i < 20; ++i)
+        state(6, 0.0);
+    CHECK_FALSE(fed.client.audio().onsets.at("kick"));
+    CHECK(fed.client.audio().spectrum.front() < 0.1);
+    state(6, 0.0);
+    state(7, 0.0);
+    CHECK(fed.client.audio().onsets.at("kick"));
+}
+
 TEST_CASE("the outputs list's mirroring and the unmirror setting reach the client; a displays notice is passed on")
 {
     struct Notices : EngineClient::Listener {
