@@ -66,11 +66,11 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | strobe | beat clock duty | rate, duty, colour | `generator_strobe` | **ported** |
 | lines | box-filtered lines | count, width, angle, speed, softness, colour | `generator_lines` | **ported** |
 | checker | rotated checker | count, angle, speed, colour | `generator_checker` | **ported** |
-| rings | box-filtered rings | count, width, speed, softness, x, y, colour | `generator_rings` | needs F1, F3 |
-| gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | needs F1, F3 |
-| noise | value noise | scale, speed, contrast, colour | `generator_noise` | needs F1, F3 |
+| rings | box-filtered rings | count, width, speed, softness, x, y, colour | `generator_rings` | **ported** |
+| gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | **ported** |
+| noise | value noise | scale, speed, contrast, colour | `generator_noise` | **ported** |
 
-Totals: 38 types, 14 ports, 23 need a loader feature, 1 stays native for now. F1, F2 and F3 are done; rings, gradient and noise need nothing more (F1 and F3) and are next; thermal, letters, dots, duotone and outline need F1 and nothing else (none has a golden).
+Totals: 38 types, 17 ports, 20 need a loader feature, 1 stays native for now. F1, F2 and F3 are done; thermal, letters, dots, duotone and outline need F1 and nothing else (none has a golden).
 
 ## How a ported shader keeps its identity
 
@@ -104,5 +104,5 @@ the periods of that many beats the beat clock has counted, or the level of the a
 reads as a plain float, so nothing is allocated or waited for on the render thread, and a driven parameter keeps the
 stage out of the static bake. `"BEAT_CLOCK": true` makes `BEAT`, the beat clock's beats (the native `h.beat`), a float
 global. An unknown `DRIVE` or a `SCALED_BY` that is not an input is an error; a user shader's header is ignored. Strobe,
-Lines, Checker and Classic Strobe are ported with it; a test compares their parameter specs and drives to the native ones.
+Lines, Checker, Classic Strobe, Rings, Gradient and Noise are ported with it; a test compares their parameter specs and drives to the native ones.
 No port uses `AUDIO` yet (Stripper and Reveal need more); a test covers the header.

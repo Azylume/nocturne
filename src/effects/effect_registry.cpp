@@ -1670,107 +1670,6 @@ EffectDef classicEdgeDetection()
             "Classic"};
 }
 
-// Generators draw their own picture in straight colour and ignore their input. Angles are degrees, 0 = vertical lines;
-// sizes count across the composition's height, so a picture keeps its look at any aspect.
-EffectDef generator(std::string type, std::vector<ParamDef> params, std::string glsl)
-{
-    EffectDef def{std::move(type), StageKind::Pointwise, std::move(params), false, std::move(glsl), {}};
-    def.generator = true;
-    return def;
-}
-
-// red, green, blue, or with a prefix e.g. toRed, toGreen, toBlue.
-std::vector<ParamDef> colour(const std::string& prefix = "", double value = 1.0)
-{
-    auto name = [&](const char* lower, const char* upper) { return prefix.empty() ? lower : prefix + upper; };
-    return {percent({name("red", "Red"), 0.0, 1.0, value}), percent({name("green", "Green"), 0.0, 1.0, value}),
-            percent({name("blue", "Blue"), 0.0, 1.0, value})};
-}
-
-std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef>& b)
-{
-    a.insert(a.end(), b.begin(), b.end());
-    return a;
-}
-
-// `count` concentric rings from the centre to the top edge, each `width` of its period wide, around a centre moved by
-// `x` and `y` (shares of the width and height), spreading outward at `speed` rings per second (inward when negative):
-// a tunnel on the beat with speed as a phase. `softness` blurs the edges by up to half a period. Between them it is
-// transparent. One length per pixel; edges box filtered over a pixel as Lines does, so thin rings never shimmer.
-EffectDef rings()
-{
-    return generator("rings",
-                     joined({in(units::rings, {"count", 1.0, 64.0, 8.0}), percent({"width", 0.0, 1.0, 0.5}),
-                             in(units::ringsPerSecond, {"speed", -8.0, 8.0, 0.0, ParamDrive::Phase}),
-                             percent({"softness", 0.0, 1.0, 0.0}), percent({"x", -0.5, 0.5, 0.0}),
-                             percent({"y", -0.5, 0.5, 0.0})},
-                            colour()),
-                     R"(
-    float perPixel = pb[p + 0] / (0.5 * h.size.y);
-    vec2 centre = h.size * (0.5 + vec2(pb[p + 4], -pb[p + 5]));
-    float s = length(px - centre) * perPixel - pb[p + 2];
-    float v = abs(fract(s + 0.5) - 0.5);
-    float hw = pb[p + 1] * 0.5;
-    float w = max(perPixel, pb[p + 3] * 0.5);
-    float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
-                  max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
-    return vec4(pb[p + 6], pb[p + 7], pb[p + 8], saturate(cover / w));
-)");
-}
-
-// From the first colour to the second across the picture along `angle`, `scale` times over (mirrored), scrolling at
-// `speed` ramps per second.
-EffectDef gradient()
-{
-    return generator("gradient",
-                     joined(joined({wrapping(units::degrees, {"angle", -180.0, 180.0, 0.0}),
-                                    in(units::times, {"scale", 0.25, 8.0, 1.0}),
-                                    in(units::perSecond, {"speed", -4.0, 4.0, 0.0, ParamDrive::Phase})},
-                                   colour("", 0.0)),
-                            colour("to", 1.0)),
-                     R"(
-    float a = pb[p + 0] * (M_PI_F / 180.0);
-    vec2 d = vec2(cos(a), sin(a));
-    float t = dot(px - h.size * 0.5, d) / (abs(d.x) * h.size.x + abs(d.y) * h.size.y);
-    t = t * pb[p + 1] + 0.5 - pb[p + 2];
-    t = 1.0 - abs(1.0 - 2.0 * fract(t * 0.5));
-    return vec4(mix(vec3(pb[p + 3], pb[p + 4], pb[p + 5]), vec3(pb[p + 6], pb[p + 7], pb[p + 8]), t), 1.0);
-)");
-}
-
-// Smooth value noise, `scale` blobs across the height, evolving at `speed` per second; `contrast` pushes it towards
-// black and the colour. One octave with a cheap lattice hash keeps it light on integrated GPUs.
-EffectDef noise()
-{
-    return generator("noise",
-                     joined({in(units::times, {"scale", 0.5, 32.0, 4.0}),
-                             in(units::perSecond, {"speed", 0.0, 4.0, 0.5, ParamDrive::Phase}),
-                             in(units::times, {"contrast", 0.0, 4.0, 1.0})},
-                            colour()),
-                     R"(
-    if (pb[p + 2] == 0.0)
-        return vec4(vec3(pb[p + 3], pb[p + 4], pb[p + 5]) * 0.5, 1.0);
-    vec2 xy = (px - h.size * 0.5) * (pb[p + 0] / h.size.y);
-    vec3 q = vec3(0.8 * xy.x - 0.6 * xy.y, 0.6 * xy.x + 0.8 * xy.y, pb[p + 1]);
-    vec3 i = floor(q), f = fract(q);
-    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    uvec3 cell = uvec3(ivec3(i));
-    float v[8];
-    for (uint k = 0; k < 8; ++k) {
-        uvec3 e = cell + uvec3(k & 1u, (k >> 1u) & 1u, k >> 2u);
-        uint n = e.x * 0x8da6b343u + e.y * 0xd8163841u + e.z * 0xcb1ab31fu;
-        n ^= n >> 15u;
-        n *= 0x2c1b3c6du;
-        n ^= n >> 12u;
-        v[k] = float(n >> 8u) / 16777215.0;
-    }
-    vec4 z = mix(vec4(v[0], v[2], v[4], v[6]), vec4(v[1], v[3], v[5], v[7]), f.x);
-    vec2 y = mix(z.xz, z.yw, f.y);
-    float g = saturate((mix(y.x, y.y, f.z) - 0.5) * pb[p + 2] + 0.5);
-    return vec4(vec3(pb[p + 3], pb[p + 4], pb[p + 5]) * g, 1.0);
-)");
-}
-
 EffectDef withMix(EffectDef effect)
 {
     effect.params.push_back({"mix", 0.0, 1.0, 1.0, ParamDrive::Value, {}, effect.category.empty() && !effect.generator ? "" : "Opacity",
@@ -1821,8 +1720,7 @@ Registry& registry()
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
          withMix(classicMirrorQuad()),
          withMix(classicPolarKaleido()), withMix(classicTrails()),
-         withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
-         withMix(rings()), withMix(gradient()), withMix(noise())}))};
+         withMix(classicShiftGlitch()), withMix(classicEdgeDetection())}))};
     return effects;
 }
 

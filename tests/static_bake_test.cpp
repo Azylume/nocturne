@@ -120,7 +120,7 @@ TEST_CASE("static bake: what counts as static")
     CHECK_FALSE(azl::clockFree(effect("trails")));
     CHECK_FALSE(azl::clockFree(effect("classicTrails")));
     CHECK_FALSE(azl::clockFree(effect("classicStrobe")));
-    for (const char* type : {"strobe", "lines", "checker"})
+    for (const char* type : {"strobe", "lines", "checker", "rings", "gradient", "noise"})
         CHECK_FALSE(azl::clockFree(effect(type)));
     CHECK_FALSE(azl::clockFree(effect("classicShiftGlitch")));
 

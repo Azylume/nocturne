@@ -838,6 +838,28 @@ TEST_CASE("the ported Strobe, Lines, Checker and Classic Strobe keep the native 
     CHECK(azl::planChain(azl::SourceKind::Generator, effects({"lines", "classicStrobe", "colorize"})).size() == 1);
 }
 
+TEST_CASE("the ported Rings, Gradient and Noise keep the native parameters, drives and generator kind")
+{
+    checkParams("rings", {{"count", 1.0, 64.0, 8.0, " rings", 1.0, 1, false}, percentSpec("width", 0.5),
+                          {"speed", -8.0, 8.0, 0.0, " rings/s", 1.0, 2, false}, percentSpec("softness", 0.0),
+                          {"x", -0.5, 0.5, 0.0, "%", 100.0, 0, false}, {"y", -0.5, 0.5, 0.0, "%", 100.0, 0, false},
+                          percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("gradient", {{"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                             {"scale", 0.25, 8.0, 1.0, "x", 1.0, 2, false},
+                             {"speed", -4.0, 4.0, 0.0, "/s", 1.0, 2, false}, percentSpec("red", 0.0),
+                             percentSpec("green", 0.0), percentSpec("blue", 0.0), percentSpec("toRed", 1.0),
+                             percentSpec("toGreen", 1.0), percentSpec("toBlue", 1.0)});
+    checkParams("noise", {{"scale", 0.5, 32.0, 4.0, "x", 1.0, 2, false}, {"speed", 0.0, 4.0, 0.5, "/s", 1.0, 2, false},
+                          {"contrast", 0.0, 4.0, 1.0, "x", 1.0, 2, false}, percentSpec("red", 1.0),
+                          percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    for (const char* type : {"rings", "gradient", "noise"}) {
+        CHECK(azl::isGenerator(type));
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            CHECK((p.drive == azl::ParamDrive::Phase) == (p.name == "speed"));
+    }
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
@@ -1102,7 +1124,7 @@ TEST_CASE("a parameter at its no-op value skips the work it would do for nothing
            "1.5), 1e-5), 1.5));",
            "float keep = pb[p + 6] > 0.5 ? exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], 1.5), 1e-5), 1.5)) : 0.0;"}},
          "greysKeep", 0.0, 1.0, {{"colorGreen", 0.5}}},
-        {"noise", {{"if (pb[p + 2] == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
+        {"noise", {{"if (contrast == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
     };
     TempDir media;
     const fs::path clip = copyMedia("count_240.mp4", media.path / "clip.mp4");
