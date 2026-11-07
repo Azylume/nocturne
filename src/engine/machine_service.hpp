@@ -6,6 +6,7 @@
 #include "engine/bundle_update.hpp"
 #include "engine/engine.hpp"
 #include "engine/machine_actions.hpp"
+#include "engine/machine_control.hpp"
 #include "output/displays.hpp"
 #include "output/known_displays.hpp"
 #include "platform/thermal.hpp"
@@ -46,6 +47,8 @@ struct MachineSources {
     // Unset while the engine runs without a supervisor.
     MachineActions::Stop stop;
     UpdateSource update;
+    // The Supervisor's status, settings and logs; no `state`: the engine runs without a supervisor.
+    ControlSource control;
     // The venue clock (Unix seconds; unset: the system's) and its zone, for the Gig windows that refuse Update.
     std::function<double()> wall;
     UtcOffset zone = systemUtcOffset;
@@ -69,6 +72,7 @@ struct MachineSources {
 //     is ended now, even while the display keeper's setting is off
 //   restart, safeMode and lock: MachineActions, guarded by the Show lock
 //   update: BundleUpdate, refused under the Show lock and inside a Gig window of the composition
+//   autostart, settings and logs, and status's "supervisor": MachineControl; autostart and settings are refused like update
 //
 // One output per Screen bound to a display, in screen order. Its state is "missing" while the display is not attached
 // and "mirrored" while it shows another display's picture (the rule of the UI's status bar), "low rate" while it
@@ -105,11 +109,13 @@ private:
     void run();
     Thermal thermal();
     // On the thread that owns the displays.
-    Message status(const Thermal& thermal) const;
+    Message status(const Thermal& thermal, const Message& supervisor) const;
     Message outputs(const Composition& composition, const Message& stats) const;
     Message nextCue(const Composition& composition, double beat, double tempo) const;
     Message audio() const;
     std::optional<std::string> updateRefusal() const;
+    // The Show lock or a Gig window of the composition, for the writes that change how the machine starts.
+    std::optional<std::string> writeRefusal(const std::string& action) const;
 
     DocumentServer& document_;
     Engine& engine_;
@@ -120,6 +126,7 @@ private:
     MachineSources sources_;
     MachineActions actions_;
     BundleUpdate update_;
+    MachineControl control_;
     std::atomic<const AudioAnalysis*> audio_{nullptr};
 
     std::mutex thermalMutex_;

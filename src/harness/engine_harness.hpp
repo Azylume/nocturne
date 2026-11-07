@@ -148,6 +148,9 @@ public:
     // Called with each bundle Update has received and unpacked (in the library root's "incoming"), in place of the
     // installer; the installer's result is read from the library root's update.json.
     void onInstall(InstallBundle install);
+    // What the machine control reports as the autostart job's state (never the real one), and the reason turning it on
+    // or off fails, when set. The harness has a supervisor's state in the library root and its logs in "logs".
+    void setAutostart(AutostartState state, std::optional<std::string> failure = std::nullopt);
 
 private:
     Image paint(const ScreenView& view);
@@ -206,6 +209,8 @@ private:
     std::function<Message()> media_;
     std::function<Message()> djlink_;
     InstallBundle install_;
+    AutostartState autostart_ = AutostartState::Unsupported;
+    std::optional<std::string> autostartFailure_;
     std::chrono::steady_clock::time_point statsAt_ = std::chrono::steady_clock::now();
     uint64_t rendered_ = 0;
     uint64_t gpuMicros_ = 0;

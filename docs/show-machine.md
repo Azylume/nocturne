@@ -36,6 +36,15 @@ The steps by hand:
 9. Prove it: `sudo shutdown -r now`, keyboard unplugged; the picture must come back by itself. `tools/autostart.sh status` and `~/Library/Logs/Nocturne/` tell what happened.
 10. Check it: `tools/mini-setup-check.sh` on the laptop reads every item above over SSH without changing anything and prints PASS, FAIL with the exact fix, or MANUAL for what needs sudo or System Settings.
 
+## Supervisor from the Machines tab
+
+With the engine under its supervisor (autostart, or `nocturne-supervisor` by hand), the Machines tab of a Director on another machine, paired as usual, has a Supervisor panel: whether the supervisor and engine run, the engine's uptime, starts and crashes, an Autostart toggle, the show file, media root and audio input the supervisor starts the engine with, and the last lines of `engine.log` and `supervisor.log`. The same through `nocturne-ctl machine autostart|settings|logs` (see `docs/reference.md`).
+
+- Settings are saved on the machine in `machine-settings.json` and apply at the next engine start (Restart engine, or a reboot). They win over the same flag in the LaunchAgent. A path must lie in `~/Nocturne/shows` (show file) or `~/Nocturne/media` (media root); for a media folder elsewhere keep `--media-root` in the autostart options.
+- Autostart on or off toggles the installed job only (`launchctl enable` or `disable` on macOS, `Enable-ScheduledTask` or `Disable-ScheduledTask` on Windows); it never installs or removes it, and the running show keeps running. Off is what the next login or reboot sees. It is `unsupported` until `tools/autostart.sh install` (or the Windows installer's task) has run.
+- The Show lock refuses Autostart and Save, and so does a Gig window. Reading status, settings and logs is always allowed.
+- There is no Stop button: after `nocturne-ctl machine stop` the machine cannot be reached from the tab until someone restarts the supervisor (`tools/autostart.sh restart`). Not checked yet: whether macOS relaunches a stopped supervisor because of the LaunchAgent's `KeepAlive`, and whether the Windows task may enable and disable itself at run level Limited.
+
 ## Reaching the Mini by name (Tailscale)
 
 At a venue the Mini's address changes (a SIM router's lease, or a 169.254.x link-local address on a direct cable), so

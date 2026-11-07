@@ -178,6 +178,8 @@ void EngineClient::forget()
     record_ = {};
     settings_ = {};
     machine_.reset();
+    startSettings_.reset();
+    machineLog_.reset();
     switches_ = {};
     clipPreviews_ = false;
 }
@@ -370,7 +372,13 @@ void EngineClient::receiveLocked(const std::string& type, const Message& message
             machine_->showLock = message.value("on", false);
         else if (machine_ && op == "testcard")
             machine_->testCard = message.value("on", false);
-        if (op == "status" || op == "lock" || op == "testcard")
+        else if (machine_ && machine_->supervisor && op == "autostart")
+            machine_->supervisor->autostart = message.value("on", false) ? "on" : "off";
+        else if (op == "settings")
+            receiveStartSettings(message);
+        else if (op == "logs")
+            machineLog_ = MachineLog{message.value("file", ""), message.value("text", ""), message.value("truncated", false)};
+        if (op == "status" || op == "lock" || op == "testcard" || op == "autostart" || op == "settings" || op == "logs")
             notify.push_back([this] { listener_.machineChanged(); });
     } else if (type == "switches") {
         receiveSwitches(message);
@@ -590,7 +598,34 @@ void EngineClient::receiveMachine(const Message& message)
         status.lastUpdate = MachineStatus::Update{stringOr(last, "result"), stringOr(last, "build"),
                                                   stringOr(last, "previous"), stringOr(last, "reason"),
                                                   last.value("at", 0.0)};
+    if (const Message supervisor = message.value("supervisor", Message()); supervisor.is_object()) {
+        MachineStatus::Supervisor s{.running = supervisor.value("running", false),
+                                    .mode = stringOr(supervisor, "mode"),
+                                    .reason = stringOr(supervisor, "reason"),
+                                    .error = stringOr(supervisor, "error"),
+                                    .enginePid = supervisor.value("enginePid", int64_t(0)),
+                                    .startedAt = optionalNumber(supervisor, "startedAt"),
+                                    .now = optionalNumber(supervisor, "now"),
+                                    .starts = supervisor.value("starts", int64_t(0)),
+                                    .autostart = stringOr(supervisor, "autostart")};
+        for (const Message& crash : supervisor.value("crashes", Message::array()))
+            if (crash.is_string())
+                s.crashes.push_back(crash.get<std::string>());
+        status.supervisor = std::move(s);
+    }
     machine_ = std::move(status);
+}
+
+void EngineClient::receiveStartSettings(const Message& message)
+{
+    const Message saved = message.value("saved", Message::object());
+    const Message running = message.value("running", Message::object());
+    const Message sources = message.value("sources", Message::object());
+    const auto field = [&](const char* name) {
+        return StartSettingsView::Field{stringOr(saved, name), stringOr(running, name), stringOr(sources, name)};
+    };
+    startSettings_ =
+        StartSettingsView{field("composition"), field("mediaRoot"), field("audioInput"), stringOr(message, "error")};
 }
 
 void EngineClient::receiveRecord(const Message& message, std::vector<std::function<void()>>& notify)
@@ -1108,6 +1143,18 @@ std::optional<MachineStatus> EngineClient::machine() const
 {
     std::lock_guard lock(mutex_);
     return machine_;
+}
+
+std::optional<StartSettingsView> EngineClient::startSettings() const
+{
+    std::lock_guard lock(mutex_);
+    return startSettings_;
+}
+
+std::optional<MachineLog> EngineClient::machineLog() const
+{
+    std::lock_guard lock(mutex_);
+    return machineLog_;
 }
 
 EngineClient::Switches EngineClient::switches() const

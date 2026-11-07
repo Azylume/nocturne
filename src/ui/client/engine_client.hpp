@@ -328,6 +328,43 @@ struct MachineStatus {
         bool operator==(const Update&) const = default;
     };
     std::optional<Update> lastUpdate;
+    // The Supervisor's status (machine_control.hpp); empty while the engine runs without one.
+    struct Supervisor {
+        bool running = false;
+        std::string mode;
+        std::string reason;
+        std::string error;
+        int64_t enginePid = 0;
+        // Unix seconds of the current engine start.
+        std::optional<double> startedAt;
+        // The engine machine's clock when it sent this, to measure the uptime against.
+        std::optional<double> now;
+        int64_t starts = 0;
+        std::vector<std::string> crashes;
+        // "on", "off" or "unsupported".
+        std::string autostart;
+    };
+    std::optional<Supervisor> supervisor;
+};
+
+// What the Supervisor starts the engine with at its next start, and what this engine was started with, per field.
+struct StartSettingsView {
+    struct Field {
+        std::string saved;
+        std::string running;
+        // Where the running value came from: "saved", "launch" or "default".
+        std::string source;
+    };
+    Field composition, mediaRoot, audioInput;
+    // Why the saved file could not be used; empty when it could.
+    std::string error;
+};
+
+// The tail of one of the supervisor's logs, as the engine sent it.
+struct MachineLog {
+    std::string file;
+    std::string text;
+    bool truncated = false;
 };
 
 // This UI's Update of the engine machine (engine/bundle_update.hpp): "packing", "sending", "installing" (the engine
@@ -479,6 +516,9 @@ public:
     RecordState record() const;
     // Empty until the first machine status since watchMachine(true).
     std::optional<MachineStatus> machine() const;
+    // The last "settings" and "logs" replies of the engine's machine control (ask with machineAction); empty before one.
+    std::optional<StartSettingsView> startSettings() const;
+    std::optional<MachineLog> machineLog() const;
     // The engine's switch log of the night now: its date and lines (engine/switch_log.hpp).
     struct Switches {
         std::string date;
@@ -655,6 +695,7 @@ private:
     void receiveSwitches(const Message& message);
     void receiveRecord(const Message& message, std::vector<std::function<void()>>& notify);
     void receiveMachine(const Message& message);
+    void receiveStartSettings(const Message& message);
     void runUpdate(const std::filesystem::path& app);
     // Sends a part of the Update and waits for the engine's answer; none when it does not come.
     std::optional<Message> exchange(const Message& request);
@@ -717,6 +758,8 @@ private:
     bool listening_ = false;
     std::function<void(const Message&)> listenSink_;
     std::optional<MachineStatus> machine_;
+    std::optional<StartSettingsView> startSettings_;
+    std::optional<MachineLog> machineLog_;
     Switches switches_;
     bool watchingVideo_ = false;
     ReturnVideoClient video_;

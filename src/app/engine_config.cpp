@@ -104,6 +104,7 @@ const char* const kEngineUsage = R"(usage: nocturne [options]
                   append the audio analysis as JSON lines at 10 Hz, with input events
   --state DIR     keep the composition and where the show is in DIR and resume them on start; record what is opened
                   or compiled for the supervisor's skip list, and skip what is on it
+  --logs DIR      the supervisor's logs folder; the engine serves the tails of engine.log and supervisor.log from it
   --composition FILE
                   start on this composition file and play it; with --state, only when the saved state holds another
                   show: the saved state of the same FILE wins even after FILE changes (nocturne-ctl load reloads it),
@@ -270,6 +271,7 @@ bool readFileFlag(const std::string& arg, Args& in, EngineConfig& c)
     else if (arg == "--presets") c.presets = in.value();
     else if (arg == "--macro-sets") c.macroSets = in.value();
     else if (arg == "--state") c.state = in.value();
+    else if (arg == "--logs") c.logs = in.value();
     else if (arg == "--composition") c.composition = in.value();
     else if (arg == "--media-root") c.mediaRoot = in.value();
     else if (arg == "--safe-mode") c.safeMode = in.value();

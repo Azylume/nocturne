@@ -422,3 +422,81 @@ TEST_CASE("supervisor: on Windows the real engine runs under it with no standard
     CHECK(count(engineLog, "\r\n") == count(engineLog, "\n"));
 }
 #endif
+
+namespace {
+
+// The arguments the fake engine got at its latest start.
+std::string lastArgs(const Supervised& supervised)
+{
+    const std::string log = supervised.engineLog();
+    const size_t at = log.rfind("fake engine args:");
+    return at == std::string::npos ? "" : log.substr(at, log.find('\n', at) - at);
+}
+
+bool waitForArgs(const Supervised& supervised, size_t starts)
+{
+    return eventually([&] { return count(supervised.engineLog(), "fake engine args:") >= starts; }, 15.0);
+}
+
+}
+
+TEST_CASE("supervisor: saved machine settings are read at each start and win over the launch flags")
+{
+    TempFolder home;
+    fs::create_directories(home.path / "Nocturne" / "shows");
+    ScopedEnv env("HOME", home.path.c_str());
+    const std::string show = (home.path / "Nocturne" / "shows" / "Friday.json").string();
+    Supervised supervised({"--", "--composition", "/launch/show.json", "--audio-input", "launchmic"});
+    INFO(supervised.log());
+    CHECK(lastArgs(supervised).find("--composition /launch/show.json --audio-input launchmic --state ") !=
+          std::string::npos);
+    CHECK(lastArgs(supervised).find(" --logs " + (supervised.root.path / "logs").string()) != std::string::npos);
+    CHECK(supervised.status()["applied"].empty());
+    CHECK(supervised.status()["startedAt"].get<double>() > 1.0e9);
+
+    azl::writeFileAtomically(supervised.state() / "machine-settings.json",
+                             nlohmann::json{{"composition", show}, {"audioInput", "savedmic"}}.dump());
+    supervised.command("exit 0");
+    REQUIRE(waitForArgs(supervised, 2));
+    CHECK(lastArgs(supervised).find("--composition /launch/show.json --audio-input launchmic --composition " + show +
+                                    " --audio-input savedmic --state ") != std::string::npos);
+    CHECK(supervised.status()["applied"] == nlohmann::json::array({"composition", "audioInput"}));
+    CHECK(contains(supervised.log(), "settings: composition " + show));
+
+    azl::writeFileAtomically(supervised.state() / "machine-settings.json",
+                             nlohmann::json{{"composition", show}, {"mediaRoot", "/etc"}}.dump());
+    supervised.command("exit 0");
+    REQUIRE(waitForArgs(supervised, 3));
+    CHECK(lastArgs(supervised).find("--composition /launch/show.json --audio-input launchmic --state ") !=
+          std::string::npos);
+    CHECK(lastArgs(supervised).find("/etc") == std::string::npos);
+    CHECK(contains(supervised.log(), "settings: ignored"));
+    CHECK(supervised.status()["applied"].empty());
+
+    azl::writeFileAtomically(supervised.state() / "machine-settings.json", "{ not json");
+    supervised.command("exit 0");
+    REQUIRE(waitForArgs(supervised, 4));
+    CHECK(count(supervised.log(), "settings: ignored") == 2);
+    CHECK(lastArgs(supervised).find("--composition /launch/show.json --audio-input launchmic --state ") !=
+          std::string::npos);
+}
+
+TEST_CASE("supervisor: a saved setting that a path outside the shows folder names is never passed to the engine")
+{
+    TempFolder home;
+    fs::create_directories(home.path / "Nocturne" / "shows");
+    fs::create_directories(home.path / "outside");
+    fs::create_symlink(home.path / "outside", home.path / "Nocturne" / "shows" / "escape");
+    ScopedEnv env("HOME", home.path.c_str());
+    Supervised supervised;
+    for (const std::string& path : {(home.path / "Nocturne" / "shows" / "escape" / "a.json").string(),
+                                    (home.path / "Nocturne" / "shows" / ".." / ".." / "outside" / "a.json").string(),
+                                    std::string("relative.json"), std::string(3000, '/')}) {
+        azl::writeFileAtomically(supervised.state() / "machine-settings.json", nlohmann::json{{"composition", path}}.dump());
+        const size_t starts = count(supervised.engineLog(), "fake engine args:");
+        supervised.command("exit 0");
+        REQUIRE(waitForArgs(supervised, starts + 1));
+        CHECK(lastArgs(supervised).find("--composition") == std::string::npos);
+    }
+    CHECK(count(supervised.log(), "settings: ignored") == 4);
+}

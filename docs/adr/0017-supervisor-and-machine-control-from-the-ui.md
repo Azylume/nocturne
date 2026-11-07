@@ -1,7 +1,8 @@
 # The Machines tab controls the Supervisor in two phases: through the Engine first, then through one small Supervisor listener
 
-Status: Proposed. Nothing here is implemented; [#72](https://github.com/Azylume/nocturne/issues/72) asks for it and
-builds on [#66](https://github.com/Azylume/nocturne/issues/66). Open questions are listed at the end.
+Status: Accepted. Phase 1 is implemented, phase 2 is not.
+[#72](https://github.com/Azylume/nocturne/issues/72) asks for it and builds on
+[#66](https://github.com/Azylume/nocturne/issues/66). The open questions at the end are answered under Decisions.
 
 An operator should stop, start, restart and set up a show machine, and read why it failed, from the Machines tab without
 a shell. #72 lists five needs. The protocol cannot serve them all today, and one of them (Start after Stop) needs a
@@ -149,10 +150,10 @@ folder (`appLogsFolder`, `--logs`). The Supervisor passes that folder to the Eng
 
 ## Phases
 
-1. **Phase 1, no new listener:** 1 (status), 2 (autostart), 4 (settings), 5 (logs while the Engine is up). The tab gets a
+1. **Phase 1, no new listener (implemented):** 1 (status), 2 (autostart), 4 (settings), 5 (logs while the Engine is up). The tab gets a
    panel with those and no Stop button. `docs/reference.md`, `nocturne-ctl` equivalents (`machine autostart`, `machine
    settings`, `machine logs`) and SECURITY.md (the new reads and writes) change with it.
-2. **Phase 2, one listener:** 3 (C) with `start`, `status` and `logs` while no Engine runs, and the Stop button. Opening a
+2. **Phase 2, one listener (not implemented):** 3 (C) with `start`, `status` and `logs` while no Engine runs, and the Stop button. Opening a
    port is a protocol and trust change and is decided here, not in the pull request that implements it.
 
 ## What we reject, and why
@@ -184,3 +185,38 @@ legible.
 6. Does the LaunchAgent's `KeepAlive` true restart the Supervisor after `machine stop`? It decides how much of A and the
    idle state (B) is needed on macOS, and has to be tested on a Mac.
 7. Settings precedence: file over flags (proposed) or flags over file.
+
+## Decisions
+
+The owner delegated these to the project coordinator. They answer the open questions above.
+
+1. **Separate Supervisor port for phase 2.** The Supervisor does not take over 7400. Phase 2 will add the listener of 3 (C).
+2. **Port number:** derived from the Engine's port, never advertised (no Bonjour). The number is fixed in the pull request
+   that implements phase 2, together with the firewall rule and `SECURITY.md`.
+3. **No Stop button in the UI**, even after phase 2: Stop stays `nocturne-ctl machine stop`.
+4. **Machine settings are refused under the Show lock and inside a Gig window**, as `machine update` is. Autostart on or
+   off is refused the same way. Reads (status, settings, logs) are never refused.
+5. **The saved settings file wins over command line flags** (the LaunchAgent's or the task's). The Supervisor appends the
+   saved flags after the launch definition's, and records which fields it took from the file as `applied` in `status.json`.
+6. **Windows scheduled task (question 5): not tested.** The Windows implementation of the autostart interface
+   (`src/platform/autostart_win.cpp`) is written and marked untested; whether a Limited process may enable or disable its
+   own task has to be tried on a real Windows machine before phase 1 counts as accepted for Windows.
+7. **macOS `KeepAlive` (question 6): not tested.** The LaunchAgent is unchanged and no `KeepAlive` semantics were altered.
+   Whether launchd relaunches the Supervisor after `machine stop`, and what `launchctl disable` does to a loaded job, stay
+   open items to check on a Mac before phase 2.
+
+What phase 1 does that the text above leaves open:
+
+- **Confinement applies to a loopback client too.** The Supervisor reads the file and cannot tell who wrote it, so a path
+  that only a loopback client could set would be ignored at read time. For a media folder outside `~/Nocturne/media` the
+  `--media-root` launch flag still works. Relative paths, `..` parts, links that lead out, paths over 1024 bytes and control
+  characters are refused (`src/supervisor/start_settings.cpp`, which uses `pathRefusal`).
+- **Where the logs folder comes from:** the Supervisor passes `--logs DIR` to the Engine (a new engine flag).
+- **Uptime across clocks:** `machine status` carries `now` (the Engine machine's clock) next to `startedAt`, so a Director
+  on another machine measures the uptime against the right clock.
+- **Autostart state is cached for 10 s** in the Engine and read on the Machine service thread, never the render thread. The
+  platform commands (`launchctl`, `powershell`) run with fixed arguments, no shell, and a 10 s timeout.
+- **Audio input** is checked against the devices the Engine lists when it is saved; the Supervisor only checks length and
+  control characters, since it has no device list.
+- No new port, no new message family, no new control surface: the messages are `machine` ops served by the Engine like
+  `restart` and `lock`.

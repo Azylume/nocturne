@@ -58,7 +58,8 @@ MachineService::MachineService(DocumentServer& document, Engine& engine, Display
                                Now now, Post post, MachineSources sources)
     : document_(document), engine_(engine), displays_(displays), known_(known), now_(std::move(now)),
       post_(std::move(post)), sources_(std::move(sources)), actions_(sources_.showLock, sources_.restart, sources_.stop),
-      update_(sources_.update)
+      update_(sources_.update),
+      control_(sources_.control, [this](const std::string& action) { return writeRefusal(action); })
 {
     document_.handle("machine", [this](const Message& message, DocumentServer::Sink reply) { handle(message, reply); });
     thread_ = std::thread([this] { run(); });
@@ -87,7 +88,7 @@ void MachineService::handle(const Message& message, const DocumentServer::Sink& 
     const ClientId client = message.value("client", ClientId(0));
     if (op == "status") {
         const Thermal now = thermal();
-        return post_([this, reply, now] { reply(status(now)); });
+        return post_([this, reply, now, supervisor = control_.supervisor()] { reply(status(now, supervisor)); });
     }
     if (op == "subscribe") {
         const Message rate = message.value("rate", Message(2.0));
@@ -112,7 +113,7 @@ void MachineService::handle(const Message& message, const DocumentServer::Sink& 
         return act(op, message, reply);
     if (op == "update")
         return reply(update_.receive(message, [this] { return updateRefusal(); }));
-    if (actions_.handle(message, reply))
+    if (actions_.handle(message, reply) || control_.handle(message, reply))
         return;
     reply({{"type", "error"}, {"message", "unknown machine op " + op}});
 }
@@ -178,8 +179,8 @@ void MachineService::run()
 void MachineService::send(std::vector<ClientId> clients)
 {
     const Thermal now = thermal();
-    post_([this, clients = std::move(clients), now] {
-        const Message current = status(now);
+    post_([this, clients = std::move(clients), now, supervisor = control_.supervisor()] {
+        const Message current = status(now, supervisor);
         std::vector<ClientId> gone;
         for (ClientId client : clients)
             if (!document_.send(client, current))
@@ -201,7 +202,7 @@ Thermal MachineService::thermal()
     return thermal_;
 }
 
-Message MachineService::status(const Thermal& thermal) const
+Message MachineService::status(const Thermal& thermal, const Message& supervisor) const
 {
     const std::shared_ptr<const Composition> composition = engine_.composition();
     const TransportState transport = engine_.transport();
@@ -215,6 +216,7 @@ Message MachineService::status(const Thermal& thermal) const
             {"showLock", actions_.locked()},
             {"testCard", composition->testCard},
             {"version", buildId()},
+            {"supervisor", supervisor},
             {"render", {{"fps", figure(render, "fps")}, {"gpuMs", figure(render, "gpuMs")}, {"guard", transport.budgetLevel}}},
             {"thermal", thermalJson(thermal)},
             {"nextCue", nextCue(*composition, beat, transport.tempo)},
@@ -236,13 +238,18 @@ std::optional<std::string> MachineService::updateRefusal() const
         return "Update needs the supervisor and an installed bundle, and this engine runs without them";
     if (update_.refused())
         return update_.refused();
-    if (std::optional<std::string> locked = actions_.refusal("Update"))
+    return writeRefusal("Update");
+}
+
+std::optional<std::string> MachineService::writeRefusal(const std::string& action) const
+{
+    if (std::optional<std::string> locked = actions_.refusal(action))
         return locked;
     const double now = sources_.wall ? sources_.wall() : unixTime();
     for (const GigWindow& window : engine_.composition()->gigs)
         if (inGigWindow({window}, now, "update", sources_.zone))
             return "the Gig window " + window.date + " " + clockText(window.start) + "-" + clockText(window.end) +
-                   " is on: Update is refused until it ends";
+                   " is on: " + action + " is refused until it ends";
     return std::nullopt;
 }
 

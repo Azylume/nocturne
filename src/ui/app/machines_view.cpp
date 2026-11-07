@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <tuple>
+#include <utility>
 
 namespace azl::ui {
 
@@ -25,6 +26,9 @@ constexpr int kButton = 24;
 constexpr int kGap = 4;
 constexpr int kActionRows = 3;
 constexpr int kTileMaxWidth = 240;
+constexpr int kLogHeight = 150;
+constexpr const char* kFieldNames[3] = {"Show file", "Media root", "Audio input"};
+constexpr const char* kFieldKeys[3] = {"composition", "mediaRoot", "audioInput"};
 
 const juce::String kDot = juce::String::fromUTF8(" \xc2\xb7 ");
 
@@ -98,6 +102,69 @@ int tileWidth(int width, int count)
 int outputHeight(const MachineOutput& o, const std::set<std::string>& expanded)
 {
     return kRow + (expanded.contains(o.display) ? kDetails : 0);
+}
+
+juce::String upTime(double seconds)
+{
+    const int64_t s = std::max<int64_t>(0, std::llround(seconds));
+    return juce::String(s / 3600) + ":" + juce::String(s / 60 % 60).paddedLeft('0', 2) + ":" +
+           juce::String(s % 60).paddedLeft('0', 2);
+}
+
+juce::String supervisorState(const MachineStatus::Supervisor& s)
+{
+    if (!s.running)
+        return "not running";
+    return s.mode == "safe" ? "safe mode: " + utf8(s.reason) : juce::String("running");
+}
+
+juce::String engineText(const MachineStatus::Supervisor& s)
+{
+    juce::StringArray parts;
+    parts.add(s.enginePid > 0 ? "pid " + juce::String(s.enginePid) : juce::String("no engine"));
+    if (s.enginePid > 0 && s.startedAt && s.now)
+        parts.add("up " + upTime(*s.now - *s.startedAt));
+    parts.add(juce::String(s.starts) + (s.starts == 1 ? " start" : " starts"));
+    parts.add(juce::String(int64_t(s.crashes.size())) + (s.crashes.size() == 1 ? " crash" : " crashes"));
+    return parts.joinIntoString(kDot);
+}
+
+juce::String placeholder(const StartSettingsView::Field& f)
+{
+    if (f.running.empty())
+        return "default";
+    return utf8(f.running) + (f.source == "saved" ? " (saved)" : " (launch flag)");
+}
+
+struct SupervisorLayout {
+    juce::Rectangle<int> supervisor, engine, autostart, fields[3], note, save, logButtons, log;
+};
+
+int supervisorHeight()
+{
+    return kHeader + 3 + 2 * kRow + kButton + kGap + 3 * (kRow + kGap) + kRow + kButton + kGap + kButton + kGap +
+           kLogHeight + 3;
+}
+
+SupervisorLayout supervisorLayout(juce::Rectangle<int> panel)
+{
+    auto area = panel.reduced(8, 0).withTrimmedTop(kHeader + 3);
+    SupervisorLayout l;
+    l.supervisor = area.removeFromTop(kRow);
+    l.engine = area.removeFromTop(kRow);
+    l.autostart = area.removeFromTop(kButton);
+    area.removeFromTop(kGap);
+    for (juce::Rectangle<int>& field : l.fields) {
+        field = area.removeFromTop(kRow);
+        area.removeFromTop(kGap);
+    }
+    l.note = area.removeFromTop(kRow);
+    l.save = area.removeFromTop(kButton);
+    area.removeFromTop(kGap);
+    l.logButtons = area.removeFromTop(kButton);
+    area.removeFromTop(kGap);
+    l.log = area.withTrimmedBottom(3);
+    return l;
 }
 
 void paintPanel(juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title)
@@ -197,6 +264,32 @@ MachinesView::MachinesView(Session& session) : session_(session)
         button->setTooltip(tip);
         button->setClickingTogglesState(false);
     }
+    autostart_.setClickingTogglesState(false);
+    autostart_.onClick = [this, send] {
+        const bool on = status_ && status_->supervisor && status_->supervisor->autostart == "on";
+        send({{"op", "autostart"}, {"on", !on}});
+    };
+    for (size_t i = 0; i < fields_.size(); ++i) {
+        fields_[i].setMultiLine(false);
+        fields_[i].setTooltip(juce::String("Saved on the machine; applies at the next engine start. Empty: the launch flag or the default."));
+        fields_[i].onTextChange = [this] { updateSupervisor(); };
+        fields_[i].onReturnKey = [this] { sendSettings(); };
+    }
+    saveSettings_.onClick = [this] { sendSettings(); };
+    engineLog_.onClick = [this] { showLog("engine"); };
+    supervisorLog_.onClick = [this] { showLog("supervisor"); };
+    refreshLog_.onClick = [this] { showLog(logFile_); };
+    for (juce::TextButton* b : {&engineLog_, &supervisorLog_})
+        b->setClickingTogglesState(false);
+    logText_.setMultiLine(true, false);
+    logText_.setReadOnly(true);
+    logText_.setCaretVisible(false);
+    logText_.setScrollbarsShown(true);
+    logText_.setTooltip("The last lines of the log on the machine");
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2],
+                                                                      &saveSettings_, &engineLog_, &supervisorLog_,
+                                                                      &refreshLog_, &logText_})
+        addChildComponent(c);
     listen_.setClickingTogglesState(false);
     listen_.setTooltip("Hear this machine's audio input here, about half a second late");
     listen_.onClick = [this] {
@@ -246,6 +339,7 @@ void MachinesView::sessionChanged(int changes)
     }
     if (changes & (Session::Machine | Session::Connection)) {
         updateActions();
+        updateSupervisor();
         resized();
     }
     if (changes & (Session::Machine | Session::Connection | Session::Venues))
@@ -417,9 +511,126 @@ void MachinesView::resized()
     syncAuto_.setBounds(sync.removeFromLeft(width));
     syncBlock_.setBounds(sync.removeFromRight(width));
     syncAllow_.setBounds(sync.reduced(kGap, 0));
+    const SupervisorLayout panel = supervisorLayout(supervisorPanel());
+    autostart_.setBounds(panel.autostart.withWidth(2 * kChip));
+    for (size_t i = 0; i < fields_.size(); ++i)
+        fields_[i].setBounds(panel.fields[i].withTrimmedLeft(kLabel));
+    saveSettings_.setBounds(panel.save.withTrimmedLeft(panel.save.getWidth() - kChip));
+    const int logWidth = (panel.logButtons.getWidth() - 2 * kGap) / 3;
+    auto logButtons = panel.logButtons;
+    engineLog_.setBounds(logButtons.removeFromLeft(logWidth));
+    refreshLog_.setBounds(logButtons.removeFromRight(logWidth));
+    supervisorLog_.setBounds(logButtons.reduced(kGap, 0));
+    logText_.setBounds(panel.log);
     auto listen = audioPanel().reduced(8, 0).removeFromBottom(kRow + 3).withTrimmedBottom(3).withTrimmedLeft(kLabel);
     listen_.setBounds(listen.removeFromLeft(kChip));
     volume_.setBounds(listen.withTrimmedLeft(kGap));
+}
+
+juce::Rectangle<int> MachinesView::supervisorPanel() const
+{
+    return {audioPanel().getX(), audioPanel().getBottom() + kMargin, kAudioPanel, supervisorHeight()};
+}
+
+juce::StringArray MachinesView::supervisorLines() const
+{
+    juce::StringArray lines;
+    if (const auto& s = status_ ? status_->supervisor : std::nullopt) {
+        lines.add("Supervisor" + kDot + supervisorState(*s));
+        lines.add("Engine" + kDot + engineText(*s));
+    }
+    return lines;
+}
+
+juce::String MachinesView::settingsNote() const
+{
+    const std::optional<StartSettingsView> view = session_.client().startSettings();
+    if (view && !view->error.empty())
+        return "Saved settings are unusable: " + utf8(view->error);
+    return "Saved values apply at the next engine start";
+}
+
+void MachinesView::updateSupervisor()
+{
+    const std::optional<MachineStatus::Supervisor> supervisor = status_ ? status_->supervisor : std::nullopt;
+    const bool shown = supervisor.has_value();
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2],
+                                                                      &saveSettings_, &engineLog_, &supervisorLog_,
+                                                                      &refreshLog_, &logText_})
+        c->setVisible(shown);
+    if (!shown) {
+        supervisorAsked_ = false;
+        return;
+    }
+    if (!std::exchange(supervisorAsked_, true)) {
+        session_.client().machineAction({{"op", "settings"}});
+        showLog(logFile_);
+    }
+    const bool locked = status_->showLock;
+    autostart_.setButtonText("Autostart: " + utf8(supervisor->autostart));
+    autostart_.setToggleState(supervisor->autostart == "on", juce::dontSendNotification);
+    autostart_.setEnabled(supervisor->autostart != "unsupported" && !locked);
+    autostart_.setTooltip(supervisor->autostart == "unsupported" ? "No autostart job is installed on this machine"
+                          : locked                                ? "The Show lock is on"
+                                                                  : "Turn the autostart job on or off; the running show is not touched");
+    const std::optional<StartSettingsView> view = session_.client().startSettings();
+    const StartSettingsView::Field* saved[3] = {nullptr, nullptr, nullptr};
+    if (view)
+        saved[0] = &view->composition, saved[1] = &view->mediaRoot, saved[2] = &view->audioInput;
+    bool dirty = false;
+    for (size_t i = 0; i < fields_.size(); ++i) {
+        if (!saved[i])
+            continue;
+        const juce::String kept = utf8(saved[i]->saved);
+        if (fields_[i].getText() == shown_[i] && fields_[i].getText() != kept)
+            fields_[i].setText(kept, false);
+        if (fields_[i].getText() == kept)
+            shown_[i] = kept;
+        fields_[i].setTextToShowWhenEmpty(placeholder(*saved[i]), Look::palette().muted);
+        dirty = dirty || fields_[i].getText() != kept;
+    }
+    saveSettings_.setEnabled(dirty && !locked);
+    saveSettings_.setTooltip(locked ? "The Show lock is on" : "Save these for the next engine start");
+    engineLog_.setToggleState(logFile_ == "engine", juce::dontSendNotification);
+    supervisorLog_.setToggleState(logFile_ == "supervisor", juce::dontSendNotification);
+    const std::optional<MachineLog> log = session_.client().machineLog();
+    if (log && log->file == logFile_ && logText_.getText() != utf8(log->text)) {
+        logText_.setText(utf8(log->text), false);
+        logText_.moveCaretToEnd();
+    }
+}
+
+void MachinesView::sendSettings()
+{
+    Message request{{"op", "settings"}};
+    for (size_t i = 0; i < fields_.size(); ++i)
+        request[kFieldKeys[i]] = fields_[i].getText().toStdString();
+    session_.client().machineAction(std::move(request));
+}
+
+void MachinesView::showLog(const std::string& file)
+{
+    logFile_ = file;
+    session_.client().machineAction({{"op", "logs"}, {"file", file}, {"lines", 100}});
+    engineLog_.setToggleState(file == "engine", juce::dontSendNotification);
+    supervisorLog_.setToggleState(file == "supervisor", juce::dontSendNotification);
+}
+
+void MachinesView::paintSupervisor(juce::Graphics& g, const MachineStatus::Supervisor& s) const
+{
+    const Palette& p = Look::palette();
+    paintPanel(g, supervisorPanel(), "Supervisor");
+    const SupervisorLayout panel = supervisorLayout(supervisorPanel());
+    paintRow(g, panel.supervisor.withTrimmedLeft(-8), "Supervisor", supervisorState(s), s.running && s.mode != "safe" ? p.live : p.fault);
+    paintRow(g, panel.engine.withTrimmedLeft(-8), "Engine", engineText(s), p.text);
+    for (size_t i = 0; i < 3; ++i) {
+        g.setFont(Look::font());
+        g.setColour(p.muted);
+        drawText(g, kFieldNames[i], panel.fields[i].withWidth(kLabel), juce::Justification::centredLeft);
+    }
+    const bool bad = !settingsNote().startsWith("Saved values");
+    g.setColour(bad ? p.fault : p.muted);
+    drawText(g, settingsNote(), panel.note, juce::Justification::centredLeft, true);
 }
 
 bool MachinesView::listenShown() const
@@ -479,6 +690,8 @@ void MachinesView::paint(juce::Graphics& g)
     paintAudio(g, *status_);
     if (status_->media)
         paintMedia(g, *status_->media);
+    if (status_->supervisor)
+        paintSupervisor(g, *status_->supervisor);
 }
 
 void MachinesView::paintMedia(juce::Graphics& g, const MachineStatus::Media& m) const

@@ -139,6 +139,28 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
                                       return install_ ? install_(app) : "no installer in the harness";
                                   },
                                   .result = libraryRoot_ / "update.json"},
+                       .control = {.state = libraryRoot_,
+                                   .logs = libraryRoot_ / "logs",
+                                   .autostart =
+                                       [this] {
+                                           std::lock_guard lock(machineMutex_);
+                                           return autostart_;
+                                       },
+                                   .setAutostart =
+                                       [this](bool on) -> std::optional<std::string> {
+                                           std::lock_guard lock(machineMutex_);
+                                           if (autostartFailure_)
+                                               return autostartFailure_;
+                                           autostart_ = on ? AutostartState::On : AutostartState::Off;
+                                           return std::nullopt;
+                                       },
+                                   .audioInput =
+                                       [this](const std::string& name) {
+                                           const auto devices = audioInput_.inputDevices();
+                                           return std::any_of(devices.begin(), devices.end(), [&](const AudioDeviceInfo& d) {
+                                               return d.uid == name || d.name == name;
+                                           });
+                                       }},
                        .wall = [this] { return wallTime(); },
                        .zone = [this](int64_t t) { return zone_(t); }})
 {
@@ -274,6 +296,13 @@ Message EngineHarness::machineSource(const std::function<Message()>& source)
         copy = source;
     }
     return copy ? copy() : Message(nullptr);
+}
+
+void EngineHarness::setAutostart(AutostartState state, std::optional<std::string> failure)
+{
+    std::lock_guard lock(machineMutex_);
+    autostart_ = state;
+    autostartFailure_ = std::move(failure);
 }
 
 void EngineHarness::onInstall(InstallBundle install)
