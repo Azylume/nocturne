@@ -572,7 +572,7 @@ std::optional<std::array<float, 8>> sliceHomography(const std::array<double, 8>&
 
 ScreenPainter::ScreenPainter(const gpu::Device& device, gpu::Format targetFormat, std::array<uint32_t, 2> composition,
                              bool frameBits, bool opaqueSlices)
-    : device_(device), composition_(composition)
+    : device_(device), constants_(device), composition_(composition)
 {
     std::vector<ShaderEntry> entries = fullscreenEntries(
         kPaintSource, {"paintPlain", "paint", "maskCoverage", "guide", "cornerTarget", "card", "frameBits"});
@@ -863,7 +863,7 @@ void ScreenPainter::encodeGuides(gpu::RenderPass& pass, const std::vector<Guide>
     for (const Guide& g : guides)
         data.insert(data.end(), {g.vertical ? 1.0f : 0.0f, float(g.position), 0.0f, 0.0f});
     bindSliceBuffers(pass);
-    pass.setBytes(2, data.data(), data.size() * sizeof(float));
+    constants_.set(pass, 2, data.data(), data.size() * sizeof(float));
     for (const Draw& draw : prepared_->draws)
         drawSlice(pass, draw, guides_, warpedGuides_);
 }

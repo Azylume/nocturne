@@ -1,4 +1,5 @@
 #include "engine/chain_compiler.hpp"
+#include "gpu/constants_ring.hpp"
 #include "gpu/glsl.hpp"
 #include "gpu/gpu.hpp"
 
@@ -660,3 +661,47 @@ void main() { color = words.length() == 20000 ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(
     CHECK(pixels[7 * 4 + 2] == 0);
 }
 #endif
+
+TEST_CASE("fragment constants past 4 KiB reach the shader through the constants ring")
+{
+    const char* const source = R"(#version 450
+layout(set = 0, binding = 0, std140) uniform Big { vec4 values[512]; };
+layout(location = 0) out vec4 color;
+#ifdef ENTRY_last
+void main() { color = values[511]; }
+#endif
+)";
+    const gpu::Device device = gpu::Device::systemDefault();
+    const gpu::Queue queue = device.makeQueue();
+    std::string error;
+    const gpu::RenderPipeline pipeline = device.makeRenderPipeline(
+        {device.makeShaderModule(fullscreen(source, {"last"}), &error), gpu::entryPoint("fullscreen"),
+         gpu::entryPoint("last"), gpu::Format::RGBA8},
+        {}, nullptr, &error);
+    REQUIRE_MESSAGE(pipeline, error);
+    gpu::ConstantsRing ring(device);
+    const std::array<std::array<float, 4>, 2> colors{{{1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f}}};
+    const gpu::TextureDesc desc{.format = gpu::Format::RGBA8, .width = 2, .height = 2,
+                                .usage = gpu::Usage::RenderTarget};
+    const std::array<gpu::Texture, 2> targets{device.makeTexture(desc), device.makeTexture(desc)};
+    gpu::Scope scope;
+    gpu::CommandBuffer cmd = queue.commandBuffer();
+    for (size_t i = 0; i < 2; ++i) {
+        std::vector<std::array<float, 4>> values(512);
+        values.back() = colors[i];
+        gpu::RenderPass pass = cmd.begin(gpu::RenderTarget{&targets[i], gpu::Load::Clear});
+        pass.setPipeline(pipeline);
+        ring.set(pass, 0, values.data(), values.size() * sizeof(values[0]));
+        pass.draw(3);
+        pass.end();
+    }
+    cmd.commit();
+    cmd.waitUntilCompleted();
+    REQUIRE(cmd.completion().ok);
+    const std::vector<uint8_t> first = readBack(device, queue, targets[0]);
+    const std::vector<uint8_t> second = readBack(device, queue, targets[1]);
+    CHECK(first[0] == 255);
+    CHECK(first[1] == 0);
+    CHECK(second[0] == 0);
+    CHECK(second[1] == 255);
+}
