@@ -190,7 +190,13 @@ bool MainComponent::clipKey(const juce::KeyPress& key)
     const auto clip = session_.selectedClip();
     const ChainOwner owner = clip ? ChainOwner{clip->layer, clip->column}
                                   : ChainOwner{session_.selectedLayer().value_or(kNoLayer)};
-    if (key == juce::KeyPress('d', cmd, 0))
+    if (key == juce::KeyPress('a', cmd, 0))
+        session_.selectClips(session_.deckClips());
+    else if (key == juce::KeyPress('c', cmd, 0))
+        stack.copyClips();
+    else if (key == juce::KeyPress('v', cmd, 0))
+        stack.pasteClips();
+    else if (key == juce::KeyPress('d', cmd, 0))
         stack.duplicateClips();
     else if (key == juce::KeyPress('r', cmd, 0))
         session_.repeatLastEdit();
@@ -228,6 +234,31 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
             code == juce::KeyPress::downKey)
             return map_.nudge(code == juce::KeyPress::leftKey ? -step : code == juce::KeyPress::rightKey ? step : 0,
                               code == juce::KeyPress::upKey ? -step : code == juce::KeyPress::downKey ? step : 0);
+    }
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0)) {
+        session_.client().undo();
+        return true;
+    }
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0) ||
+        key == juce::KeyPress('y', juce::ModifierKeys::commandModifier, 0)) {
+        session_.client().redo();
+        return true;
+    }
+    if (key == juce::KeyPress(',', juce::ModifierKeys::commandModifier, 0)) {
+        transport_.openSettings();
+        return true;
+    }
+    if (key == juce::KeyPress('s', juce::ModifierKeys::commandModifier, 0)) {
+        transport_.save();
+        return true;
+    }
+    if (key == juce::KeyPress('s', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0)) {
+        transport_.saveAs();
+        return true;
+    }
+    if (key == juce::KeyPress('o', juce::ModifierKeys::commandModifier, 0)) {
+        transport_.open();
+        return true;
     }
     if (grid_.isVisible() && clipKey(key))
         return true;
@@ -334,16 +365,10 @@ MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> s
     commands_.registerAllCommandsForTarget(this);
     commands_.registerAllCommandsForTarget(main);
     commands_.setFirstCommandTarget(this);
-    addKeyListener(commands_.getKeyMappings());
     setResizable(true, false);
     setResizeLimits(1100, 700, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
     setVisible(visible);
-}
-
-MainWindow::~MainWindow()
-{
-    removeKeyListener(commands_.getKeyMappings());
 }
 
 juce::ApplicationCommandTarget* MainWindow::getNextCommandTarget()

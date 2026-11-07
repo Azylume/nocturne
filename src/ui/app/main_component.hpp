@@ -105,7 +105,6 @@ private:
 class MainWindow : public juce::DocumentWindow, public juce::ApplicationCommandTarget {
 public:
     MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible);
-    ~MainWindow() override;
     void focusGained(FocusChangeType cause) override;
     void closeButtonPressed() override;
 
