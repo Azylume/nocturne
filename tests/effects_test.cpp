@@ -632,6 +632,29 @@ GapWidths gapWidths(const azl::Image& gapped, const azl::Image& plain, int colum
 
 } // namespace
 
+TEST_CASE("golden frame of Grain on the test card")
+{
+    azl::EngineHarness harness({.width = 960, .height = 540});
+    Client client(harness.document());
+    addEffect(client, "grain");
+    harness.step(30);
+    checkGolden(harness.readScreen(), "grain");
+}
+
+TEST_CASE("the ported Grain, Classic Auto Mask and Blank keep their ids and fuse as pointwise stages")
+{
+    for (const char* type : {"grain", "classicAutoMask"}) {
+        CAPTURE(type);
+        const azl::EffectDef* def = azl::findEffect(type);
+        REQUIRE(def);
+        CHECK(def->kind == azl::StageKind::Pointwise);
+    }
+    CHECK(azl::findEffect("grain")->category.empty());
+    CHECK(azl::findEffect("classicAutoMask")->category == "Classic");
+    CHECK(azl::isGenerator("blank"));
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"transform", "colorize", "classicAutoMask", "grain"})).size() == 1);
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
