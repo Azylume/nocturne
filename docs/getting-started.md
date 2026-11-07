@@ -85,7 +85,21 @@ Autopilot plays the show when nobody is at the controls.
 
 Leave both on, walk away, and the show keeps moving on the beat.
 
-## 6. Add an effect
+## 6. Map a controller
+
+MIDI learn is in the UI, so plug the controller into the Mac the UI runs on.
+
+1. Right-click a parameter, a macro knob, a clip, a column header, a deck tab, **Tap** or **Resync** and pick
+   **MIDI learn**. The status area says what it waits for.
+2. Move a knob or fader (or press a key or pad). A CC or the pitch bend moves a parameter or a macro; a note, or a
+   CC pressed past half way, fires a clip, a column, a deck, Tap or Resync. Esc cancels.
+3. Right-click the same item and pick **Forget MIDI** to remove it. **Settings > MIDI** picks the inputs and lists
+   every mapping with Remove.
+
+A knob picks its target up instead of making it jump. The engine takes no MIDI itself: the UI turns the controller
+into the same edits as a click. A headless engine without a UI is controlled with `nocturne-ctl`.
+
+## 7. Add an effect
 
 - Open the **Effects** tab in the browser (bottom right). Our own effects are under **Ours**, the Classic pack
   under **Classic**, ISF shaders under **ISF**.
@@ -99,7 +113,7 @@ Leave both on, walk away, and the show keeps moving on the beat.
 
 Every edit is one undo step: Cmd+Z and Cmd+Shift+Z, or Undo and Redo in the transport bar.
 
-## 7. A screen on a second display
+## 8. A screen on a second display
 
 The engine started with one screen showing the whole composition on the first display. To add a second one:
 
@@ -112,7 +126,7 @@ Without `--windowed` the engine runs each display fullscreen, which is what you 
 display, try `build/nocturne --virtual 2 --composition examples/first-show/show.json`: two simulated displays,
 each a window on your screen.
 
-## 8. Record a minute
+## 9. Record a minute
 
 Click **REC** in the transport bar. It lights while recording; click it again to stop. The movie goes to
 `~/Movies/Nocturne` (HEVC by default; the file is in REC's tooltip). `build/nocturne-ctl record state` shows what

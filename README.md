@@ -114,7 +114,7 @@ for the night, see [`docs/show-machine.md`](docs/show-machine.md).
 
 **Status:** early. It has played real club nights on a Mac mini, and the interfaces still change. macOS only for now.
 - The downloadable app is an unsigned preview ([Download](#download)); signed and notarised comes later.
-- No MIDI or OSC control yet. Play it from the UI or `nocturne-ctl`, or let Autopilot and Cues run it.
+- MIDI learn drives the UI (right-click a parameter, macro, clip or column, pick MIDI learn). The engine takes commands only from the UI or `nocturne-ctl`, never MIDI or any other input directly, so a headless show machine is controlled with `nocturne-ctl`. OSC is not planned: plain OSC is unauthenticated UDP, so anyone on the venue network could drive the show. Remote control goes through `nocturne-ctl`, which uses pairing tokens.
 - No DXV. Convert those clips (`tools/transcode-media.sh` does it for an imported Resolume show).
 - Resolume import is a translation, not a copy. Read the report.
 

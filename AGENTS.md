@@ -62,6 +62,8 @@ build/nocturne --offscreen                      # a smoke run that shows no wind
 - Keep the render thread free of waiting (below). Hand work to a service; pick up finished results.
 - Use the words in `CONTEXT.md`: Composition, Trigger, Effect, Engine, Director; not project, launch, filter,
   server, master.
+- Route every command to the engine through the UI or `nocturne-ctl`; the engine takes no MIDI or other control input
+  itself (MIDI learn lives in `src/ui/app/midi.*`).
 - Keep manual control optional: Autopilot and Cues run the show, and a control feature costs nothing when unused.
 - Update `docs/reference.md` for any user-visible, `nocturne-ctl` or protocol change. A new decision gets an ADR.
 - Report exactly what you ran, on which Mac (model, Apple silicon or Intel), and what you did not run.
