@@ -3,10 +3,12 @@
 # app icon, then ad-hoc signs it inside-out with the hardened runtime so Apple Silicon will run it.
 #
 #   tools/make-bundle.sh [--ui UI_APP] [--engine ENGINE_APP] [--out OUT_APP] [--version X.Y.Z] [--build N]
+#                        [--identity "Developer ID Application: ..."]
 #
 # Defaults read the two dev bundles from ./build and write build/release/Nocturne.app. The version defaults to the
-# project() version in CMakeLists.txt. This makes NO Developer ID signature: the result is unsigned to Gatekeeper
-# (spctl rejects it, on purpose). A signed, notarised build is #32.
+# project() version in CMakeLists.txt. Without --identity the signature is ad hoc and Gatekeeper rejects the result, on
+# purpose. With a Developer ID identity (tools/import-signing-cert.sh) it is signed with a secure timestamp, ready for
+# tools/notarize.sh (#32).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -17,6 +19,7 @@ ENTITLEMENTS="$here/tools/nocturne.entitlements"
 ICON="$here/assets/icon/nocturne.icns"
 VERSION=
 BUILD=1
+IDENTITY=-
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +28,7 @@ while [[ $# -gt 0 ]]; do
         --out) OUT_APP=$2; shift 2 ;;
         --version) VERSION=$2; shift 2 ;;
         --build) BUILD=$2; shift 2 ;;
+        --identity) IDENTITY=$2; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -72,9 +76,11 @@ set_plist NSMicrophoneUsageDescription string \
     "Nocturne analyses the audio input so visuals can react to the music."
 plutil -lint "$plist" > /dev/null
 
-# Ad-hoc sign inside-out: every nested binary first, then the bundle. Apple Silicon refuses to run unsigned arm64 code,
-# so even this placeholder signature matters. --timestamp=none keeps it offline.
-sign() { codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" -s - "$1"; }
+# Sign inside-out: every nested binary first, then the bundle. Apple Silicon refuses to run unsigned arm64 code, so
+# even the ad-hoc signature matters; it stays offline (--timestamp=none), a Developer ID one needs Apple's timestamp.
+timestamp=--timestamp
+[[ $IDENTITY == - ]] && timestamp=--timestamp=none
+sign() { codesign --force --options runtime "$timestamp" --entitlements "$ENTITLEMENTS" -s "$IDENTITY" "$1"; }
 for exe in nocturne nocturne-supervisor nocturne-ctl nocturne-desk "Nocturne UI"; do
     echo "signing Contents/MacOS/$exe"
     sign "$macos/$exe"
@@ -84,6 +90,8 @@ sign "$OUT_APP"
 
 echo "verifying"
 codesign --verify --deep --strict --verbose=2 "$OUT_APP"
-echo "--- spctl (expected to reject: this build is unsigned to Gatekeeper) ---"
-spctl -a -vv "$OUT_APP" || true
+if [[ $IDENTITY == - ]]; then
+    echo "--- spctl (expected to reject: this build is unsigned to Gatekeeper) ---"
+    spctl -a -vv "$OUT_APP" || true
+fi
 echo "--- done: $OUT_APP"

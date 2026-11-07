@@ -85,9 +85,9 @@ app is open.
 
 ## Why signed builds are not here yet
 
-Signing and notarisation need an Apple Developer ID and Apple's notary service. That work is tracked in
-[#32](https://github.com/Azylume/nocturne/issues/32). Until then this preview is the way to try Nocturne without
-building it from source.
+Signing and notarisation need an Apple Developer ID and Apple's notary service. The release workflow does both once a
+maintainer has added the secrets (`docs/release.md`, [#32](https://github.com/Azylume/nocturne/issues/32)); until then
+this preview is the way to try Nocturne without building it from source.
 
 ## Windows (preview, port in progress)
 
