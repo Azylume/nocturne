@@ -20,12 +20,12 @@ Apple's clang has no libFuzzer, so the harnesses build with Homebrew LLVM (`brew
 build folder, which holds the generated sources they need:
 
 ```sh
-cmake -S . -B build
+cmake --preset dev
 fuzz/build.sh build            # harnesses in build/fuzz
 ```
 
-or `cmake -S . -B build -DNOCTURNE_FUZZ=ON && cmake --build build --target fuzz`. `NOCTURNE_FUZZ_CXX` names another
-clang++, `NOCTURNE_FUZZ_JOBS` the parallel compiles (3).
+or `cmake --preset fuzz && cmake --build --preset fuzz` (harnesses in `build-fuzz/fuzz`). `NOCTURNE_FUZZ_CXX` names
+another clang++, `NOCTURNE_FUZZ_JOBS` the parallel compiles (3).
 
 ## Run
 

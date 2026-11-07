@@ -19,7 +19,7 @@ installed (`brew install ccache`); CI also uses `ninja`.
 
 ```sh
 tools/make-signing-identity.sh                  # once per machine: the local "Nocturne Dev" signing identity
-cmake -S . -B build                             # Universal (arm64 + x86_64) by default
+cmake --preset dev                              # Ninja, host architecture only, build/
 cmake --build build -j8
 build/nocturne_tests --test-case="*user ISF*"   # one engine case or a group (doctest wildcards)
 build/src/ui/nocturne_ui_tests --test-case="*Cues*"  # UI suite, same filters
@@ -28,11 +28,13 @@ tools/ci-tests.sh engine 0 3                    # what one CI shard runs (shards
 build/nocturne --offscreen                      # a smoke run that shows no window; build/nocturne-ctl watch talks to it
 ```
 
-- Faster local loop: `cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64` (what CI configures).
+- Presets (`CMakePresets.json`): `dev` is the default loop and what CI configures on arm64; `universal` (arm64 +
+  x86_64, `build-universal/`) is what a release and the show machine need; `sanitize` and `fuzz` are below.
+  Plain `cmake -S . -B build` still configures Universal with Unix Makefiles.
 - Run the narrowest test first, then the shard or `ctest` before you call it done.
 - The suite renders on the GPU and needs a logged-in macOS session. Some cases are GPU timing reports, not checks.
-- Optional builds: `-DNOCTURNE_SANITIZE=ON` (ASan + UBSan), `-DNOCTURNE_TRACY=ON` (profiler), fuzzing per
-  `fuzz/README.md` (a new parser gets a harness).
+- Optional builds: `cmake --preset sanitize` (ASan + UBSan, `build-sanitize/`), `-DNOCTURNE_TRACY=ON` (profiler),
+  `cmake --preset fuzz` and `fuzz/README.md` (a new parser gets a harness).
 - Windows (port in progress): the `cmd.exe` commands in CONTRIBUTING.md (VS x64 environment, clang-cl, Ninja,
   vcpkg), then `build\nocturne_tests.exe --test-case="*HAP*"` and `tools\make-installer.ps1`. CI's `windows` job runs
   the engine suite without `.github/windows-ci-tests.txt` and builds the installer.
