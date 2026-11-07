@@ -454,7 +454,7 @@ TEST_CASE("mapping survives a document round trip")
 // A measurement, not a check: nocturne_tests -tc="GPU cost*" --no-skip
 TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
 {
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    azl::gpu::Scope scope;
     auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
     auto queue = NS::TransferPtr(device->newCommandQueue());
     auto texture = [&] {
@@ -526,7 +526,6 @@ TEST_CASE("GPU cost of painting a 1080p screen" * doctest::skip())
         }
         MESSAGE(std::string(name) << ": " << best / kPerBatch * 1000.0 << " ms");
     }
-    pool->release();
 }
 #endif
 

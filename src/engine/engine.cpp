@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <set>
 #include <vector>
 
@@ -256,8 +257,29 @@ Engine::~Engine()
 // frame is drawn by one encoder, split only where a shader blend mode copies what is below it.
 void Engine::renderFrame(double seconds)
 {
-    AZL_ZONE("render frame");
     gpu::Scope scope;
+    try {
+        drawFrame(seconds);
+    } catch (const std::exception& error) {
+        reportFrameFailure(error.what());
+    } catch (...) {
+        reportFrameFailure("unknown error");
+    }
+}
+
+void Engine::reportFrameFailure(const char* what)
+{
+    stats_.skipped++;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastFailureLog_ < std::chrono::seconds(1))
+        return;
+    lastFailureLog_ = now;
+    std::fprintf(stderr, "nocturne: frame dropped, the previous frame stays on screen: %s\n", what);
+}
+
+void Engine::drawFrame(double seconds)
+{
+    AZL_ZONE("render frame");
     if (const int bound = maxInFlight_; bound > 0) {
         // Waits for a frame to leave the GPU rather than skipping this one: the GPU goes straight on to the next
         // frame, while only `bound` are ever queued ahead of the outputs' presents. A GPU stuck for a frame's time is
