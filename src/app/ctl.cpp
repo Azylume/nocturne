@@ -1431,7 +1431,7 @@ void modulatorArgs(azl::Message& m, const std::vector<std::string>& c, size_t fr
             m["shape"] = "custom";
         } else if (key == "beats")
             m[key] = beatValue(value);
-        else if (key == "phase" || key == "min" || key == "max")
+        else if (key == "phase" || key == "cycles" || key == "min" || key == "max")
             m[key] = std::stod(value);
         else if (key == "attack" || key == "hold" || key == "release")
             setEnvelopeTime(m, key, std::stod(value));

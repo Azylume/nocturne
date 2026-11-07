@@ -76,6 +76,7 @@ enum class Combine { Add, Multiply };
 inline constexpr double kMinLfoBeats = 1.0 / 16.0;
 inline constexpr double kMaxEnvelopeMs = 10000.0;
 inline constexpr double kMaxLfoBeats = 64.0;
+inline constexpr int kMaxLfoCycles = 64;
 
 // A point of a custom LFO curve: where it sits in the period (0..1, below 1) and its value (0..1). The curve runs from
 // each point to the next, the last one wrapping round to the first; straight, or eased when the point is smooth.
@@ -119,8 +120,9 @@ struct Modulator {
     LfoShape shape = LfoShape::Sine;
     // The custom curve, in phase order; kept when another shape is chosen.
     std::vector<LfoPoint> points;
-    // The LFO's period in beats and its offset in periods.
+    // The LFO's span in beats, how many times its shape repeats within it, and its offset in cycles.
     double beats = 1.0;
+    int cycles = 1;
     double phase = 0.0;
     // The audio feature by name: level, sub, bass, lowMid, mid, highMid, high, kick, snare, hat, or the adjustable
     // lowBand, midBand or highBand.

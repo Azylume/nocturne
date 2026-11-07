@@ -189,6 +189,8 @@ void checkModulator(const Composition& composition, const Modulator& m, bool mis
 {
     if (!(m.beats >= kMinLfoBeats && m.beats <= kMaxLfoBeats))
         throw ProtocolError("an LFO's period must be within 1/16..64 beats");
+    if (m.cycles < 1 || m.cycles > kMaxLfoCycles)
+        throw ProtocolError("an LFO's cycles must be an integer within 1.." + std::to_string(kMaxLfoCycles));
     if (!(m.phase >= 0.0 && m.phase <= 1.0))
         throw ProtocolError("an LFO's phase must be within 0..1");
     named<int>(kFeatureNames, m.feature, "audio feature");
@@ -797,6 +799,8 @@ void to_json(nlohmann::json& j, const Modulator& m)
         j["envelope"] = kEnvelopeNames[size_t(m.envelope)];
     if (m.autoRange)
         j["autoRange"] = true;
+    if (m.cycles != 1)
+        j["cycles"] = m.cycles;
     if (!m.points.empty())
         j["points"] = m.points;
 }
@@ -811,6 +815,12 @@ void from_json(const nlohmann::json& j, Modulator& m)
     m.shape = named<LfoShape>(kShapeNames, j.value("shape", std::string("sine")), "LFO shape");
     m.points = j.value("points", m.points);
     m.beats = j.value("beats", m.beats);
+    if (const auto cycles = j.find("cycles"); cycles != j.end()) {
+        const double value = cycles->is_number() ? cycles->get<double>() : 0.0;
+        if (!(value >= 1.0 && value <= kMaxLfoCycles && value == std::floor(value)))
+            throw ProtocolError("an LFO's cycles must be an integer within 1.." + std::to_string(kMaxLfoCycles));
+        m.cycles = int(value);
+    }
     m.phase = j.value("phase", m.phase);
     m.feature = j.value("feature", m.feature);
     m.envelope = named<EnvelopePreset>(kEnvelopeNames, j.value("envelope", std::string("none")), "envelope");

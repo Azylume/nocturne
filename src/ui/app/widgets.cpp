@@ -671,7 +671,7 @@ double LfoEditor::plotAt(double x) const
     if (!m)
         return 0.0;
     const Composition& composition = session_.composition();
-    const double source = std::clamp(lfoAt(m->shape, x, m->points) * lfoSensitivity(composition), 0.0, 1.0);
+    const double source = std::clamp(lfoAt(m->shape, x * m->cycles, m->points) * lfoSensitivity(composition), 0.0, 1.0);
     return modulatedAt(composition, *m, source);
 }
 
@@ -684,7 +684,7 @@ juce::Point<float> LfoEditor::pointPosition(size_t index) const
     const LfoPoint& point = m->points[index];
     const double y = modulatedAt(composition, *m, std::clamp(point.value * lfoSensitivity(composition), 0.0, 1.0));
     const auto r = plot();
-    return {r.getX() + r.getWidth() * float(point.phase), r.getBottom() - r.getHeight() * float(y)};
+    return {r.getX() + r.getWidth() * float(point.phase / m->cycles), r.getBottom() - r.getHeight() * float(y)};
 }
 
 // The point value that plots nearest to `y`; of several that plot alike (past a clamp), the one nearest `previous`.
@@ -730,6 +730,10 @@ void LfoEditor::paint(juce::Graphics& g)
     const auto r = plot();
     g.setColour(p.muted.withAlpha(0.3f));
     g.drawHorizontalLine(juce::roundToInt(r.getCentreY()), r.getX(), r.getRight());
+    if (r.getWidth() / float(m->cycles) >= 6.0f)
+        for (int i = 1; i < m->cycles; ++i)
+            g.drawVerticalLine(juce::roundToInt(r.getX() + r.getWidth() * float(i) / float(m->cycles)), r.getY(),
+                               r.getBottom());
     auto yAt = [&](double x) { return r.getBottom() - r.getHeight() * float(plotAt(x)); };
     const int steps = std::max(1, juce::roundToInt(r.getWidth()));
     juce::Path curve;
@@ -747,7 +751,7 @@ void LfoEditor::paint(juce::Graphics& g)
             else
                 g.fillRect(dot.reduced(0.5f));
         }
-    const double periods = session_.client().beatNow() / std::max(m->beats, kMinLfoBeats) + m->phase;
+    const double periods = session_.client().beatNow() / std::max(m->beats, kMinLfoBeats) + m->phase / m->cycles;
     const double head = periods - std::floor(periods);
     const float x = r.getX() + r.getWidth() * float(head);
     g.setColour(p.white.withAlpha(0.7f));
@@ -784,7 +788,7 @@ void LfoEditor::mouseDrag(const juce::MouseEvent& e)
     const double high = i + 1 < dragPoints_.size() ? dragPoints_[i + 1].phase - kPointGap : 1.0 - kPointGap;
     const auto r = plot();
     LfoPoint& point = dragPoints_[i];
-    point.phase = std::clamp(double((e.position.x - r.getX()) / r.getWidth()), low, std::max(low, high));
+    point.phase = std::clamp(double((e.position.x - r.getX()) / r.getWidth()) * m->cycles, low, std::max(low, high));
     point.value = sourceAt(*m, e.position.y, point.value);
     moved_ = true;
     if (seconds() - lastSend_ >= kSendInterval)
@@ -813,7 +817,10 @@ void LfoEditor::mouseDoubleClick(const juce::MouseEvent& e)
     if (m->points.size() >= kMaxLfoPoints)
         return;
     const auto r = plot();
-    const double phase = std::clamp(double((e.position.x - r.getX()) / r.getWidth()), 0.0, 1.0 - kPointGap);
+    const double at = double((e.position.x - r.getX()) / r.getWidth()) * m->cycles;
+    if (m->cycles > 1 && at >= 1.0)
+        return;
+    const double phase = std::clamp(at, 0.0, 1.0 - kPointGap);
     const auto next = std::find_if(m->points.begin(), m->points.end(), [&](const LfoPoint& p) { return p.phase >= phase; });
     if ((next != m->points.end() && next->phase - phase < kPointGap) ||
         (next != m->points.begin() && phase - std::prev(next)->phase < kPointGap))
@@ -828,9 +835,9 @@ juce::String LfoEditor::getTooltip()
 {
     const auto m = shown();
     if (m && m->shape == LfoShape::Custom)
-        return "One LFO cycle: double-click to add a point or make one smooth or straight, drag a point to move it, "
-               "right-click to remove it";
-    return "One LFO cycle as it moves the value, with the playhead at the beat; pick Custom to draw your own";
+        return "The LFO's first cycle, repeated by Cycles: double-click to add a point or make one smooth or straight, "
+               "drag a point to move it, right-click to remove it";
+    return "The LFO over its span as it moves the value, with the playhead at the beat; pick Custom to draw your own";
 }
 
 void LfoEditor::sendPoints()
@@ -959,6 +966,7 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
     : session_(session), ref_(info.ref), scale_(info.unit.scale),
       envelope_(session,
                 [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
+      cycles_(session, 1, kMaxLfoCycles, 1, "x"),
       from_(session, info.min * scale_, info.max * scale_, std::pow(10.0, -info.unit.decimals), utf8(info.unit.suffix)),
       to_(session, info.min * scale_, info.max * scale_, std::pow(10.0, -info.unit.decimals), utf8(info.unit.suffix)),
       lfo_(session, [this] { return animationOf(session_.composition(), ref_); },
@@ -970,8 +978,8 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
         shape_.addItem(kShapeNames[i], int(i) + 1);
     for (int beats : kBeats)
         beats_.addItem(juce::String(beats) + (beats == 1 ? " beat" : " beats"), beats);
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &stop_, &envelope_,
-                                                                      &from_, &to_, &lfo_, &autoRange_, &learned_})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &cycles_,
+                                                                      &stop_, &envelope_, &from_, &to_, &lfo_, &autoRange_, &learned_})
         addAndMakeVisible(c);
     autoRange_.setTooltip("Map the range the feature has had over the last 30 s of music, not raw 0..1, so it swings "
                           "the same at any input level");
@@ -985,7 +993,8 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
     stop_.setTooltip("Stop animating");
     source_.setTooltip("What animates it: an LFO on the beat, or the kick, snare, hat, bass or the Low, Mid or High band of the audio input");
     shape_.setTooltip("The LFO's wave shape");
-    beats_.setTooltip("How many beats one LFO cycle takes");
+    beats_.setTooltip("How many beats the LFO's span takes");
+    cycles_.setTooltip("Cycles: how many times the shape repeats within the span, 1 to 64");
     from_.setTooltip("From: the LFO's low end, or where an audio source rests; " + rangeText(info));
     to_.setTooltip("To: the LFO's high end, or an audio source's peak; " + rangeText(info));
     stop_.onClick = [this] { session_.stopAnimating(ref_); };
@@ -1004,6 +1013,9 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
     beats_.onChange = [this] {
         const int beats = beats_.getSelectedId();
         send([beats](Modulator& m, const ParamInfo&) { m.beats = beats; });
+    };
+    cycles_.onChange = [this](double cycles) {
+        send([cycles](Modulator& m, const ParamInfo&) { m.cycles = int(cycles); });
     };
     auto rangeEnd = [this](double Modulator::*end) {
         return [this, end](double shown) {
@@ -1046,6 +1058,7 @@ void AnimateBox::refresh()
         if (m->shape == kShapes[i])
             shape_.setSelectedId(int(i) + 1, juce::dontSendNotification);
     beats_.setSelectedId(int(m->beats), juce::dontSendNotification);
+    cycles_.setValue(m->cycles);
     envelope_.refresh(*m);
     lfo_.repaint();
     const Ends ends = endsOf(*info, m->min, m->max);
@@ -1092,8 +1105,11 @@ void AnimateBox::resized()
     auto second = line();
     shape_.setVisible(beat_);
     beats_.setVisible(beat_);
+    cycles_.setVisible(beat_);
     envelope_.setVisible(!beat_);
     envelope_.setBounds(second);
+    cycles_.setBounds(second.removeFromRight(kCyclesWidth));
+    second.removeFromRight(4);
     shape_.setBounds(second.removeFromLeft(second.getWidth() / 2 - 2));
     second.removeFromLeft(4);
     beats_.setBounds(second);

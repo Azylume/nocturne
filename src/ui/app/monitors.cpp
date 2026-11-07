@@ -945,7 +945,7 @@ void AudioPanel::paintModulator(juce::Graphics& g, const Modulator& m, juce::Rec
     const double sensitivity = it == levels.end() ? 1.0 : it->second;
     const auto bounds = area.toFloat();
     auto yAt = [&](double x) {
-        const double source = std::clamp(lfoAt(m.shape, x + m.phase, m.points) * sensitivity, 0.0, 1.0);
+        const double source = std::clamp(lfoAt(m.shape, x * m.cycles + m.phase, m.points) * sensitivity, 0.0, 1.0);
         return bounds.getBottom() - bounds.getHeight() * float(modulatedAt(session_.composition(), m, source));
     };
     auto xAt = [&](double x) { return bounds.getX() + bounds.getWidth() * float(x); };
