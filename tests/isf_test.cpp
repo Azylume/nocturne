@@ -183,6 +183,34 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
     CHECK(user.category == "User");
 }
 
+TEST_CASE("a built-in shader's NOCTURNE header gives its parameters a unit, wrapping, group and full label; a user's is ignored")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": "", "PARAMS": {"hue": {
+            "UNIT": {"SUFFIX": "deg", "SCALE": 360, "DECIMALS": 0}, "WRAPS": true, "GROUP": "Tint", "FULL_LABEL": "Hue shift"}}},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "hue", "TYPE": "float", "LABEL": "Hue"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+    const azl::ParamDef builtin = parsed({"Test Native", text, false}).params.at(0);
+    CHECK(builtin.unit.suffix == "deg");
+    CHECK(builtin.unit.scale == 360.0);
+    CHECK(builtin.unit.decimals == 0);
+    CHECK(builtin.wraps);
+    CHECK(builtin.group == "Tint");
+    CHECK(builtin.fullLabel == "Hue shift");
+    CHECK(builtin.label == "Hue");
+    const azl::ParamDef user = parsed({"Test Native", text, true}).params.at(0);
+    CHECK(user.unit.suffix.empty());
+    CHECK(user.unit.scale == 1.0);
+    CHECK_FALSE(user.wraps);
+    CHECK(user.group.empty());
+    CHECK(user.fullLabel.empty());
+
+    const std::string typo = R"(/*{"NOCTURNE": {"PARAMS": {"nope": {"WRAPS": true}}},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+    CHECK(std::holds_alternative<std::string>(azl::parseIsf({"Test Native", typo, false})));
+    CHECK(std::holds_alternative<azl::IsfShader>(azl::parseIsf({"Test Native", typo, true})));
+}
+
 TEST_CASE("ISF inputs become parameters that colour pickers, macros and modulators work on")
 {
     azl::EffectDef def = azl::isfEffect(parsed(kTint));

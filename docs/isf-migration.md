@@ -8,7 +8,7 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 
 | Feature the loader lacks | Why a port needs it |
 |---|---|
-| F1 parameter metadata | `ParamDef` has a unit, `wraps`, a group and shortened labels; an ISF input carries none, so a port would show `0.25` for `25%` and stop a hue from wrapping under a modulator |
+| F1 parameter metadata (**done**) | `ParamDef` has a unit, `wraps`, a group and shortened labels; an ISF input carries none, so a port would show `0.25` for `25%` and stop a hue from wrapping under a modulator. The `NOCTURNE` header's `PARAMS` now carries them (below) |
 | F2 the stage's Opacity | the Classic wrapper's Add mixer (`addMixer`) reads the stage's `mix`, which an ISF shader cannot see |
 | F3 driven parameters | `ParamDrive::Phase`, `Beats` and `Audio`: a rate integrated over time, beats counted by the beat clock, an audio feature's level |
 | F4 remap stage kind | a shader that reads its input at one other coordinate fuses as `Remap`; the importer makes it a neighbourhood pass of its own |
@@ -21,12 +21,12 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 
 | Type | How | Kind | Parameters | Goldens | Class |
 |---|---|---|---|---|---|
-| transform | one remap body | R | positionX, positionY, scale, rotation | `test_card_warp`, `transform_colorize`, chain goldens | needs F1, F4 |
-| colorize | one pointwise body | P | hue, saturation, brightness, invert, alpha | `colorize_brightness`, `edge_detection`, `transform_colorize`, chain goldens | needs F1 |
-| edgeDetection | Sobel over 3x3 | N | multiplier | `edge_detection` | needs F1 |
-| stripper | pointwise, variants `cross` and `live` | P | 22 (number, direction, speed, spread, width, feather, ..., audioBand, evolve) | `stripper`, `stripper_add`, `stripper_spread`, `stripper_step`, `stripper_swing` | needs F1, F3 |
-| trails | side pass, persistent 16F history | M | feedback | `trails` | needs F1, F6 |
-| reveal | pointwise, hashed cell rank | P | progress, columns, rows, gap, seed, reshuffle, softness, black, evolve | `reveal` | needs F1, F3 |
+| transform | one remap body | R | positionX, positionY, scale, rotation | `test_card_warp`, `transform_colorize`, chain goldens | needs F4 |
+| colorize | one pointwise body | P | hue, saturation, brightness, invert, alpha | `colorize_brightness`, `edge_detection`, `transform_colorize`, chain goldens | **ported** |
+| edgeDetection | Sobel over 3x3 | N | multiplier | `edge_detection` | **ported** |
+| stripper | pointwise, variants `cross` and `live` | P | 22 (number, direction, speed, spread, width, feather, ..., audioBand, evolve) | `stripper`, `stripper_add`, `stripper_spread`, `stripper_step`, `stripper_swing` | needs F3 |
+| trails | side pass, persistent 16F history | M | feedback | `trails` | needs F6 |
+| reveal | pointwise, hashed cell rank | P | progress, columns, rows, gap, seed, reshuffle, softness, black, evolve | `reveal` | needs F3 |
 | slicer | 6 layouts, 10 styles, CPU-derived cells | N | 24 | none | keep native: CPU-derived cell table (F5) shared with the C++ layout code, no goldens |
 | thermal | pointwise, shared style globals | P | hue, colour | none | needs F1 |
 | grain | pointwise, hashed specks | P | none | none before this PR (`grain`, added) | **ported** |
@@ -62,7 +62,7 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | Type | How | Parameters | Goldens | Class |
 |---|---|---|---|---|
 | blank | constant | none | `generator_blank` | **ported** |
-| solid | constant colour | red, green, blue | `generator_solid` | needs F1 |
+| solid | constant colour | red, green, blue | `generator_solid` | **ported** |
 | strobe | beat clock duty | rate, duty, colour | `generator_strobe` | needs F1, F3 |
 | lines | box-filtered lines | count, width, angle, speed, softness, colour | `generator_lines` | needs F1, F3 |
 | checker | rotated checker | count, angle, speed, colour | `generator_checker` | needs F1, F3 |
@@ -70,7 +70,7 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | needs F1, F3 |
 | noise | value noise | scale, speed, contrast, colour | `generator_noise` | needs F1, F3 |
 
-Totals: 38 types, 3 ports, 34 need a loader feature, 1 stays native for now.
+Totals: 38 types, 6 ports, 31 need a loader feature, 1 stays native for now. F1 is done; thermal, letters, dots, duotone and outline need it and nothing else (none has a golden).
 
 ## How a ported shader keeps its identity
 
@@ -80,3 +80,10 @@ native effect load unchanged and no alias table is needed. Parameter names, rang
 The header is ignored in a user shader, so a file in the user folder cannot replace a built-in effect.
 Ported shaders live in `third_party/isf/nocturne/`: our own work, AGPL-3.0-or-later like the rest of the repository.
 Ported effects register after the remaining native ones, so they list after them in their group.
+
+## Parameter metadata (F1)
+
+A built-in shader's `NOCTURNE` header may carry `"PARAMS": {"<input name>": {...}}` with `UNIT` (`SUFFIX`, `SCALE`,
+`DECIMALS`), `WRAPS`, `GROUP` and `FULL_LABEL`; the input's own `LABEL` is the short label. A name that is not an input
+is an error. A user shader's `NOCTURNE` header, `PARAMS` included, is ignored. Colorize, Edge Detection and Solid are
+ported with it; a test compares their parameter specs to the native ones.
