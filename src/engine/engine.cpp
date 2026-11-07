@@ -1,6 +1,7 @@
 #include "engine/engine.hpp"
 
 #include "engine/transport.hpp"
+#include "platform/atomic_max.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -438,12 +439,12 @@ void Engine::drawFrame(double seconds)
         const auto gpu = uint64_t(std::max(0.0, done.gpuEnd - done.gpuStart) * 1e6);
         stats_.gpuMicros += gpu;
         recentGpu_ = (recentGpu_ * 7 + gpu) / 8;
-        stats_.maxGpuMicros = std::max(stats_.maxGpuMicros.load(), gpu);
-        stats_.maxDoneMicros = std::max(stats_.maxDoneMicros.load(), microsSince(frame->started));
+        atomicMax(stats_.maxGpuMicros, gpu);
+        atomicMax(stats_.maxDoneMicros, microsSince(frame->started));
         const auto queued =
             uint64_t(std::max(0.0, traceFromHost(done.gpuStart) - traceSeconds(frame->started)) * 1e6);
         stats_.queueMicros += queued;
-        stats_.maxQueueMicros = std::max(stats_.maxQueueMicros.load(), queued);
+        atomicMax(stats_.maxQueueMicros, queued);
         if (profile)
             profile_->finish(*profile, done);
         if (previewTimes)
@@ -453,7 +454,7 @@ void Engine::drawFrame(double seconds)
     });
     encoding.cmd.commit();
     AZL_FRAME_MARK;
-    stats_.maxCpuMicros = std::max(stats_.maxCpuMicros.load(), microsSince(frame->started));
+    atomicMax(stats_.maxCpuMicros, microsSince(frame->started));
 }
 
 // A slice's picture of a layer ignores the layer's opacity, blend mode and solo, but not its bypass. An output-only
