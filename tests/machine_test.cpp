@@ -117,6 +117,7 @@ TEST_CASE("the machine status names each output's state as the status bar does: 
     CHECK(s["render"]["fps"].get<double>() > 30.0);
     CHECK(s["render"]["gpuMs"].is_number());
     CHECK(s["render"]["guard"] == 0);
+    CHECK(s["render"]["gpuErrors"] == 0);
     CHECK(s["thermal"] == Message{{"cpuSpeedLimit", 70.0}, {"temperatureC", 88.5}, {"state", "serious"}});
     REQUIRE(s["outputs"].size() == 4);
 
@@ -170,6 +171,19 @@ TEST_CASE("the machine status names the next Cue and moves on once the beat cloc
     CHECK(s["nextCue"]["bar"] == 3);
     CHECK(s["clock"]["bar"] == 2);
     CHECK(s["clock"]["beatInBar"] == 2);
+}
+
+TEST_CASE("the machine status reports the GPU command buffers that failed in the last second")
+{
+    azl::EngineHarness harness(kSize, 60.0, {}, stage({"proj-a"}));
+    harness.displays().attach(display("proj-a"));
+    Client client(harness.document());
+    status(client);
+    harness.runLive(0.6);
+    harness.engine().stats().gpuErrors += 3;
+    const Message s = status(client);
+    INFO(s.dump());
+    CHECK(s["render"]["gpuErrors"] == 3);
 }
 
 TEST_CASE("the machine status reports the audio analysis's gain, level and liveness")

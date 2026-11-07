@@ -209,6 +209,7 @@ private:
     std::chrono::steady_clock::time_point statsAt_ = std::chrono::steady_clock::now();
     uint64_t rendered_ = 0;
     uint64_t gpuMicros_ = 0;
+    uint64_t gpuErrors_ = 0;
     std::map<std::string, std::pair<uint64_t, uint64_t>> presentsAndHitches_;
     Message stats_;
     MachineService machineService_;
