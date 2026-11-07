@@ -13,10 +13,11 @@ FFmpeg 9.0.2 [licenses\FFmpeg]
   Source: FFmpeg 9.0.2, https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz (git tag n9.0.2 of
   https://git.ffmpeg.org/ffmpeg.git), built by the vcpkg port at vcpkg commit
   9a5dfef5d1a0438a7d24856a85bd60f309d355e9 (https://github.com/microsoft/vcpkg/tree/9a5dfef5d1a0438a7d24856a85bd60f309d355e9/ports/ffmpeg,
-  whose patches and portfile are the exact build), triplet x64-windows, features avcodec, avformat, avdevice,
+  plus Nocturne's one patch, vcpkg-overlay-ports/ffmpeg/0053-mf-low-latency-mode-is-a-bool.patch, which makes the Media
+  Foundation encoder's low latency setting a VT_BOOL), triplet x64-windows, features avcodec, avformat, avdevice,
   avfilter, swresample, swscale, nvcodec, opus, ffmpeg and ffprobe. Wherever this installer is offered for download,
   the exact FFmpeg source it was built from is offered beside it as nocturne-windows-ffmpeg-source: the source tarball the
-  port downloaded (ffmpeg-n9.0.2.tar.gz, checked against the port's SHA512), the port with its patches and triplet,
+  port downloaded (ffmpeg-n9.0.2.tar.gz, checked against the port's SHA512), the port (the overlay port with all its patches) and triplet,
   and BUILD-INFO.txt with the features and the build's configuration. For a CI build that is an artifact of the
   same CI run; for a release, an asset of the same release. Nocturne loads these DLLs dynamically: you may replace
   them with your own build of the same FFmpeg version.
