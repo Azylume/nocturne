@@ -655,6 +655,68 @@ TEST_CASE("the ported Grain, Classic Auto Mask and Blank keep their ids and fuse
     CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"transform", "colorize", "classicAutoMask", "grain"})).size() == 1);
 }
 
+namespace {
+
+struct Spec {
+    const char* name;
+    double min, max, def;
+    const char* suffix;
+    double scale;
+    int decimals;
+    bool wraps;
+};
+
+constexpr Spec kPercent{"", 0.0, 1.0, 0.0, "%", 100.0, 0, false};
+
+Spec percentSpec(const char* name, double def)
+{
+    Spec s = kPercent;
+    s.name = name;
+    s.def = def;
+    return s;
+}
+
+void checkParams(const char* type, const std::vector<Spec>& expected)
+{
+    CAPTURE(type);
+    const azl::EffectDef* def = azl::findEffect(type);
+    REQUIRE(def);
+    REQUIRE(def->params.size() == expected.size() + 1);
+    CHECK(def->params.back().name == "mix");
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const azl::ParamDef& p = def->params[i];
+        const Spec& e = expected[i];
+        CAPTURE(e.name);
+        CHECK(p.name == e.name);
+        CHECK(p.min == e.min);
+        CHECK(p.max == e.max);
+        CHECK(p.defaultValue == e.def);
+        CHECK(p.unit.suffix == e.suffix);
+        CHECK(p.unit.scale == e.scale);
+        CHECK(p.unit.decimals == e.decimals);
+        CHECK(p.wraps == e.wraps);
+        CHECK(p.label.empty());
+        CHECK(p.group.empty());
+        CHECK_FALSE(p.choice);
+    }
+}
+
+} // namespace
+
+TEST_CASE("the ported Colorize, Edge Detection and Solid keep the native parameter units and wrapping")
+{
+    checkParams("colorize", {{"hue", 0.0, 1.0, 0.0, "\xc2\xb0", 360.0, 0, true}, percentSpec("saturation", 1.0),
+                             percentSpec("brightness", 1.0), percentSpec("invert", 0.0), percentSpec("alpha", 1.0)});
+    checkParams("edgeDetection", {{"multiplier", 0.0, 2.0, 0.25, "x", 1.0, 2, false}});
+    checkParams("solid", {percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    CHECK(azl::isGenerator("solid"));
+    for (const char* type : {"colorize", "edgeDetection", "solid"})
+        CHECK(azl::findEffect(type)->category.empty());
+    CHECK(azl::findEffect("colorize")->kind == azl::StageKind::Pointwise);
+    CHECK(azl::findEffect("edgeDetection")->kind == azl::StageKind::Neighbourhood);
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"colorize", "colorize", "grain"})).size() == 1);
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
