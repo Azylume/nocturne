@@ -68,6 +68,25 @@ std::optional<Packet> packetOf(const Message& message)
     return packet;
 }
 
+bool RateGuard::admit(double seconds)
+{
+    if (started_)
+        debtBits_ = std::max(0.0, debtBits_ - (seconds - last_) * bitsPerSecond_);
+    started_ = true;
+    last_ = seconds;
+    if (debtBits_ <= kBurstSeconds * bitsPerSecond_)
+        return true;
+    keyWanted_ = true;
+    return false;
+}
+
+void RateGuard::sent(const Packet& packet)
+{
+    debtBits_ += double(packet.data.size() + packet.config.size()) * 8.0;
+    if (packet.key)
+        keyWanted_ = false;
+}
+
 bool Gate::pass(const std::string& output, bool key, bool congested)
 {
     std::lock_guard lock(mutex_);
