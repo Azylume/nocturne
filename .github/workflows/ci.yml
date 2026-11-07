@@ -107,6 +107,7 @@ jobs:
       - name: Unpack the build
         run: mkdir -p build && tar -C build -xzf tests.tgz
       - name: Run the shard
+        timeout-minutes: 20
         env:
           SHARD: ${{ matrix.shard }}
         run: |
