@@ -2,6 +2,7 @@
 
 #include "document/composition.hpp"
 #include "effects/effect_registry.hpp"
+#include "engine/id_set.hpp"
 #include "gpu/gpu.hpp"
 
 #include <cstdint>
@@ -35,7 +36,7 @@ public:
     // Called once per frame for every drawn layer, before its side passes, with the layer's own chain.
     void use(uint64_t layer, const std::string& clip, uint64_t parent, const std::vector<Effect>& own = {});
     // Drops the targets of layers that are gone and of effects no longer in the document. Called once per frame.
-    void keep(const std::set<uint64_t>& layers, const std::set<uint64_t>& effects);
+    void keep(const IdSet& layers, const IdSet& effects);
     // The target side pass `side` of effect `effect` writes this frame, for a layer drawn at `width` x `height` (0 is
     // the composition size); a change of size or format restarts it.
     Target begin(uint64_t layer, uint64_t effect, size_t side, const SidePass& pass, bool float16, uint32_t width = 0,
