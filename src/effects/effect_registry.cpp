@@ -77,50 +77,6 @@ EffectDef transform()
             {}};
 }
 
-// Replaces colour by luminance (inverted on request) times a tint of the given hue, saturation and brightness;
-// alpha is how much of the tinted picture replaces the original.
-EffectDef colorize()
-{
-    return {"colorize",
-            StageKind::Pointwise,
-            {wrapping(units::turns, {"hue", 0.0, 1.0, 0.0}),
-             percent({"saturation", 0.0, 1.0, 1.0}),
-             percent({"brightness", 0.0, 1.0, 1.0}),
-             percent({"invert", 0.0, 1.0, 0.0}),
-             percent({"alpha", 0.0, 1.0, 1.0})},
-            false,
-            R"(
-    if (pb[p + 4] == 0.0)
-        return c;
-    vec3 tint = saturate(abs(fract(pb[p + 0] + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
-    tint = mix(vec3(1.0), tint, pb[p + 1]) * pb[p + 2];
-    float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-    return vec4(mix(c.rgb, mix(y, 1.0 - y, pb[p + 3]) * tint, pb[p + 4]), c.a);
-)",
-            {}};
-}
-
-// Sobel gradient magnitude per colour channel, scaled by the multiplier.
-EffectDef edgeDetection()
-{
-    return {"edgeDetection",
-            StageKind::Neighbourhood,
-            {in(units::times, {"multiplier", 0.0, 2.0, 0.25})},
-            false,
-            R"(
-    if (pb[p + 0] == 0.0)
-        return vec4(0.0, 0.0, 0.0, samplePixel(t, px).a);
-    vec3 k[9];
-    for (int j = 0; j < 3; ++j)
-        for (int i = 0; i < 3; ++i)
-            k[j * 3 + i] = samplePixel(t, px + vec2(i - 1, j - 1)).rgb;
-    vec3 gx = k[2] + 2.0 * k[5] + k[8] - k[0] - 2.0 * k[3] - k[6];
-    vec3 gy = k[6] + 2.0 * k[7] + k[8] - k[0] - 2.0 * k[1] - k[2];
-    return vec4(saturate(sqrt(gx * gx + gy * gy) * pb[p + 0]), samplePixel(t, px).a);
-)",
-            {}};
-}
-
 // Shows the picture through parallel strips and fills the rest with a colour. `number` strips span the composition
 // across `direction` (degrees, 0 = vertical strips) and move along it at `speed` strips per second. Each strip's width
 // is `width` times a random share between minWidth and maxWidth (relative to maxWidth); `spread` varies it further and
@@ -1858,13 +1814,6 @@ std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef
     return a;
 }
 
-EffectDef solid()
-{
-    return generator("solid", colour(), R"(
-    return vec4(pb[p + 0], pb[p + 1], pb[p + 2], 1.0);
-)");
-}
-
 // On for `duty` of every `rate` beats of the beat clock, from each period's start; off is transparent.
 EffectDef strobe()
 {
@@ -2045,7 +1994,7 @@ struct Registry {
 Registry& registry()
 {
     static Registry effects{.effects = withIsf(withVariants(
-        {withMix(transform()), withMix(colorize()), withMix(edgeDetection()), withMix(stripper()),
+        {withMix(transform()), withMix(stripper()),
          withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()),
          withMix(letters()), withMix(dots()), withMix(duotone()), withMix(outline()), withMix(classicStripper()),
          withMix(classicColorize()),
@@ -2054,7 +2003,7 @@ Registry& registry()
          withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
          withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
-         withMix(solid()), withMix(strobe()), withMix(lines()),
+         withMix(strobe()), withMix(lines()),
          withMix(checker()), withMix(rings()), withMix(gradient()), withMix(noise())}))};
     return effects;
 }
