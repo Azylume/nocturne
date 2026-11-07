@@ -145,3 +145,46 @@ TEST_CASE("a decoded HAP image uploads into a BC texture block for block")
     azl::HapImage wrongSize{azl::HapTexture::BC1, std::vector<uint8_t>(8)};
     CHECK(!azl::uploadHapImage(device, wrongSize, width, height));
 }
+
+TEST_CASE("a HAP texture pool reuses textures no frame holds and never one a frame still holds")
+{
+    const azl::gpu::Device device = azl::gpu::Device::systemDefault();
+    REQUIRE(device);
+    const azl::gpu::Queue queue = device.makeQueue();
+    const int width = 64, height = 32;
+    std::vector<azl::HapImage> images[2];
+    for (int i = 0; i < 2; ++i) {
+        std::vector<uint8_t> source = testPicture(width, height);
+        for (uint8_t& byte : source)
+            byte = uint8_t(byte ^ (i ? 0x5a : 0));
+        const std::vector<uint8_t> frame = azl::encodeHapFrame(source.data(), width, height, azl::HapCodec::Hap);
+        REQUIRE(azl::decodeHapFrame(frame.data(), frame.size(), width, height, images[i]) == "");
+    }
+    const auto pixels = [&](const azl::gpu::Texture& texture) {
+        azl::gpu::Scope scope;
+        const azl::gpu::Readback readback(device, texture);
+        azl::gpu::CommandBuffer cmd = queue.commandBuffer();
+        readback.encode(cmd);
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        return std::vector<uint8_t>(readback.data(), readback.data() + readback.size());
+    };
+
+    azl::HapTexturePool pool(device);
+    for (int frame = 0; frame < 30; ++frame) {
+        const auto texture = pool.upload(images[frame % 2][0], width, height);
+        REQUIRE(texture);
+        CHECK(pixels(*texture) == images[frame % 2][0].blocks);
+    }
+    CHECK(pool.size() == 1);
+
+    const auto held = pool.upload(images[0][0], width, height);
+    for (int frame = 0; frame < 30; ++frame)
+        REQUIRE(pool.upload(images[1][0], width, height));
+    CHECK(pool.size() == 2);
+    CHECK(pixels(*held) == images[0][0].blocks);
+
+    azl::HapImage wrongSize{azl::HapTexture::BC1, std::vector<uint8_t>(8)};
+    CHECK(!pool.upload(wrongSize, width, height));
+    CHECK(pool.size() == 2);
+}
