@@ -283,6 +283,46 @@ juce::TextEditor* focusedEditor()
 
 } // namespace
 
+void MainComponent::newComposition()
+{
+    const auto replace = [this] {
+        Composition empty = defaultComposition();
+        empty.screens = session_.composition().screens;
+        session_.client().newComposition(empty);
+    };
+    if (!session_.client().unsaved())
+        return replace();
+    session_.confirm("The live show has unsaved changes. A new composition replaces it; Undo brings it back.", "New",
+                     replace);
+}
+
+void MainComponent::openRecent(const std::string& path)
+{
+    const auto open = [this, path] { session_.client().loadComposition(path); };
+    if (!session_.client().unsaved())
+        return open();
+    session_.confirm("The live show has unsaved changes. Opening replaces it; the engine keeps a backup of it.", "Open",
+                     open);
+}
+
+void MainComponent::clearRecent()
+{
+    session_.recentShows().clear();
+    refreshCommands();
+}
+
+std::vector<RecentItem> MainComponent::recentItems() const
+{
+    const bool connected = session_.client().connected();
+    const bool local = session_.client().local();
+    std::vector<RecentItem> items;
+    for (const std::string& path : session_.recentShows().paths()) {
+        const juce::File file(utf8(path));
+        items.push_back({file.getFileNameWithoutExtension(), path, connected && (!local || file.existsAsFile())});
+    }
+    return items;
+}
+
 bool MainComponent::commandEnabled(Command id) const
 {
     const bool connected = session_.client().connected();
@@ -291,7 +331,10 @@ bool MainComponent::commandEnabled(Command id) const
     switch (id) {
     case CmdOpen:
     case CmdSave:
-    case CmdSaveAs: return connected;
+    case CmdSaveAs:
+    case CmdImportPresets: return connected;
+    case CmdNew: return connected && !session_.client().preparing();
+    case CmdImportMedia: return connected && session_.client().local();
     case CmdUndo: return editing || (connected && history.undo > 0);
     case CmdRedo: return editing || (connected && history.redo > 0);
     case CmdCut: return editing;
@@ -306,7 +349,10 @@ bool MainComponent::commandEnabled(Command id) const
 void MainComponent::refreshCommands()
 {
     const History history = session_.client().history();
-    const std::string state = std::to_string(session_.client().connected()) + std::to_string(focusedEditor() != nullptr) +
+    std::string recent;
+    for (const RecentItem& item : recentItems())
+        recent += item.path + (item.enabled ? "+" : "-") + "|";
+    const std::string state = recent + std::to_string(session_.client().connected()) + std::to_string(focusedEditor() != nullptr) +
                               std::to_string(grid_.isVisible()) + std::to_string(map_.isVisible()) +
                               std::to_string(machines_.isVisible()) + std::to_string(browserHidden_) +
                               std::to_string(session_.previewsOn()) + "|" + std::to_string(history.undo) + history.undoOp +
@@ -320,7 +366,7 @@ void MainComponent::refreshCommands()
 
 void MainComponent::getAllCommands(juce::Array<juce::CommandID>& commands)
 {
-    commands.addArray({CmdOpen, CmdSave, CmdSaveAs, CmdUndo, CmdRedo, CmdCut, CmdCopy, CmdPaste, CmdSelectAll,
+    commands.addArray({CmdNew, CmdImportMedia, CmdImportPresets, CmdOpen, CmdSave, CmdSaveAs, CmdUndo, CmdRedo, CmdCut, CmdCopy, CmdPaste, CmdSelectAll,
                        CmdSettings, CmdViewPerform, CmdViewMap, CmdViewMachines, CmdToggleBrowser, CmdTogglePreviews});
 }
 
@@ -342,6 +388,9 @@ bool MainComponent::perform(const InvocationInfo& info)
 {
     juce::TextEditor* editor = focusedEditor();
     switch (Command(info.commandID)) {
+    case CmdNew: newComposition(); break;
+    case CmdImportMedia: browser_.addMedia(); break;
+    case CmdImportPresets: importPresetsFromDialog(session_); break;
     case CmdOpen: transport_.open(); break;
     case CmdSave: transport_.save(); break;
     case CmdSaveAs: transport_.saveAs(); break;
@@ -391,6 +440,9 @@ MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> s
     commands_.setFirstCommandTarget(this);
     main->onCommandsChanged = [this] { commands_.commandStatusChanged(); };
     menu_ = std::make_unique<MenuBar>(commands_, *this);
+    menu_->recentShows = [main] { return main->recentItems(); };
+    menu_->openRecent = [main](const std::string& path) { main->openRecent(path); };
+    menu_->clearRecent = [main] { main->clearRecent(); };
     setResizable(true, false);
     setResizeLimits(1100, 700, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
