@@ -95,7 +95,7 @@ To build it yourself instead, read on.
 
 ```sh
 tools/make-signing-identity.sh   # once per Mac
-cmake -S . -B build && cmake --build build -j8
+cmake --preset dev && cmake --build build -j8
 build/nocturne --windowed        # the engine
 open "build/Nocturne UI.app"     # the UI
 ```
@@ -181,7 +181,7 @@ C++20 engine rendering with Metal, a separate JUCE UI, one WebSocket protocol be
 
 ```sh
 tools/make-signing-identity.sh   # once per machine: the local "Nocturne Dev" signing identity
-cmake -S . -B build              # Universal (arm64 + x86_64)
+cmake --preset dev                # host architecture only; --preset universal for arm64 + x86_64
 cmake --build build -j8
 (cd build && ctest --output-on-failure)
 ```

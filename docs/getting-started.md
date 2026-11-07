@@ -13,7 +13,7 @@ xcode-select --install          # once, if you have no command line tools
 brew install cmake ffmpeg
 git clone https://github.com/Azylume/nocturne.git && cd nocturne
 tools/make-signing-identity.sh  # once per Mac: a local "Nocturne Dev" signing identity
-cmake -S . -B build
+cmake --preset dev
 cmake --build build -j8         # the first build fetches JUCE and takes a while
 ```
 

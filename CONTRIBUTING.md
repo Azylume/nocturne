@@ -55,10 +55,14 @@ macOS 14 or later, Xcode command line tools, CMake 3.24+ and Homebrew `ffmpeg` (
 
 ```sh
 tools/make-signing-identity.sh # once per machine: the local code-signing identity
-cmake -S . -B build
+cmake --preset dev
 cmake --build build -j8
 (cd build && ctest --output-on-failure)
 ```
+
+`cmake --preset dev` builds the host architecture only with Ninja. `--preset universal` builds arm64 + x86_64 into
+`build-universal/`; `sanitize` and `fuzz` are listed in `CMakePresets.json`. A `build/` folder configured earlier with Makefiles needs
+deleting once before the preset configures it.
 
 The suite renders on the GPU and needs a logged-in session; some tests are GPU timing reports, not pass/fail checks.
 CI builds once (arm64, Ninja, ccache) and runs everything except the real-time and hardware tests listed in
