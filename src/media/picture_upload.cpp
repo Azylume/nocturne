@@ -88,16 +88,47 @@ std::array<gpu::Texture, 2> uploadPicture(const gpu::Device& device, const Decod
     return textures;
 }
 
-gpu::Texture uploadHapImage(const gpu::Device& device, const HapImage& image, int width, int height)
+namespace {
+
+PicturePlane hapPlane(const HapImage& image, int width, int height)
 {
-    if (image.blocks.size() != hapTextureBytes(image.texture, width, height))
-        return {};
     const PlaneFormat format = image.texture == HapTexture::BC1   ? PlaneFormat::BC1
                                : image.texture == HapTexture::BC4 ? PlaneFormat::BC4
                                                                   : PlaneFormat::BC3;
-    const PicturePlane plane{format, width, height, gpu::rowBytes(textureFormat(format), uint32_t(width)),
-                             image.blocks.data()};
-    return uploadPlane(device, plane, false);
+    return {format, width, height, gpu::rowBytes(textureFormat(format), uint32_t(width)), image.blocks.data()};
+}
+
+bool hapSizeOk(const HapImage& image, int width, int height)
+{
+    return image.blocks.size() == hapTextureBytes(image.texture, width, height);
+}
+
+} // namespace
+
+gpu::Texture uploadHapImage(const gpu::Device& device, const HapImage& image, int width, int height)
+{
+    if (!hapSizeOk(image, width, height))
+        return {};
+    return uploadPlane(device, hapPlane(image, width, height), false);
+}
+
+std::shared_ptr<const gpu::Texture> HapTexturePool::upload(const HapImage& image, int width, int height)
+{
+    if (!hapSizeOk(image, width, height))
+        return nullptr;
+    const PicturePlane plane = hapPlane(image, width, height);
+    const gpu::Format format = textureFormat(plane.format);
+    for (const auto& texture : textures_)
+        if (texture.use_count() == 1 && texture->format() == format && int(texture->width()) == width &&
+            int(texture->height()) == height) {
+            device_.upload(*texture, 0, plane.data, plane.stride);
+            return texture;
+        }
+    auto texture = std::make_shared<gpu::Texture>(uploadPlane(device_, plane, false));
+    if (!*texture)
+        return nullptr;
+    textures_.push_back(texture);
+    return texture;
 }
 
 } // namespace azl
