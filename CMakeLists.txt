@@ -313,6 +313,7 @@ else()
   target_sources(nocturne_media PRIVATE
     src/media/hap_movie_ffmpeg.cpp
     src/media/stills_ffmpeg.cpp
+    src/media/video_hardware.cpp
     src/media/video_source_ffmpeg.cpp
   )
   target_include_directories(nocturne_media PRIVATE ${FFMPEG_INCLUDE_DIRS})

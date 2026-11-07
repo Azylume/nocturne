@@ -1,5 +1,8 @@
 #include "clips.hpp"
 #include "media/media_library.hpp"
+#if !defined(__APPLE__)
+#include "media/video_hardware.hpp"
+#endif
 
 TEST_CASE("a clip added to the Media Library plays on a layer at the frame for its time")
 {
@@ -54,6 +57,50 @@ TEST_CASE("a BT.601 full-range clip converts with its own matrix and range")
     CHECK(frameAfterStep(harness, 21) == 10);
     checkPatches(harness.readScreen());
 }
+
+#if !defined(__APPLE__)
+namespace {
+
+void setSoftwareDecode(const char* value)
+{
+#if defined(_WIN32)
+    _putenv_s("NOCTURNE_SOFTWARE_DECODE", value);
+#else
+    setenv("NOCTURNE_SOFTWARE_DECODE", value, 1);
+#endif
+}
+
+} // namespace
+
+TEST_CASE("off Apple, a clip decodes on the GPU and shows the picture the CPU decode shows")
+{
+    if (!azl::GpuDecode::open(azl::gpu::Device::systemDefault())) {
+        MESSAGE("this machine has no Vulkan Video decode: nothing to compare");
+        return;
+    }
+    TempDir media;
+    const fs::path file = copyMedia("count_709_tv.mp4", media.path / "count.mp4");
+    const auto screenAfter = [&](const char* software) {
+        setSoftwareDecode(software);
+        azl::EngineHarness harness({.width = 960, .height = 540});
+        Client client(harness.document());
+        playMedia(client, file);
+        harness.step(21);
+        return harness.readScreen();
+    };
+    const azl::Image gpu = screenAfter("");
+    const azl::Image cpu = screenAfter("1");
+    setSoftwareDecode("");
+
+    CHECK(shownFrame(gpu) == 10);
+    checkPatches(gpu);
+    REQUIRE(gpu.rgba.size() == cpu.rgba.size());
+    int worst = 0;
+    for (size_t i = 0; i < gpu.rgba.size(); ++i)
+        worst = std::max(worst, std::abs(int(gpu.rgba[i]) - int(cpu.rgba[i])));
+    CHECK(worst <= 2);
+}
+#endif
 
 TEST_CASE("a renamed and moved file is still found by its hash")
 {
