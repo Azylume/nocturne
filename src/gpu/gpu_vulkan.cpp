@@ -171,6 +171,8 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     uint32_t family = 0;
     bool timestamps = false;
     bool presentWait = false;
+    // Windows: the adapter's LUID when the device can import D3D11 textures, else 0.
+    uint64_t sharingAdapter = 0;
     std::shared_mutex presentationMutex;
     VkDeviceSize uniformAlign = 256;
     PFN_vkCmdPushDescriptorSetKHR pushDescriptorSet = nullptr;
@@ -416,6 +418,29 @@ void beginRecording(VkCommandBuffer cmd)
     VkCommandBufferBeginInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &info);
+}
+
+// The uploader's next command buffer, recording once its previous submission is done; null when that wait failed.
+// Under uploader.mutex.
+Uploader::Recording* beginUpload(DeviceObject& d)
+{
+    Uploader& u = d.uploader;
+    Uploader::Recording& rec = u.recordings[u.next++ % kUploadCommands];
+    if (rec.value && !waitReached(d, u.slot->timeline, rec.value))
+        return nullptr;
+    vkResetCommandPool(d.device, rec.pool, 0);
+    beginRecording(rec.cmd);
+    return &rec;
+}
+
+// Ends and submits what beginUpload began, returning the timeline value its completion signals. Under uploader.mutex.
+uint64_t submitUpload(DeviceObject& d, Uploader::Recording& rec)
+{
+    vkEndCommandBuffer(rec.cmd);
+    VkCommandBufferSubmitInfo cmd{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmd.commandBuffer = rec.cmd;
+    std::vector<VkSemaphoreSubmitInfo> none, signals;
+    return rec.value = submit(d, *d.uploader.slot, &cmd, 1, none, signals, nullptr);
 }
 
 VkCommandBuffer prologue(CommandObject* c)
@@ -837,6 +862,20 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
     if (calibration)
         extensions.push_back(calibration);
 
+#if defined(_WIN32)
+    if (hasExtension(available, VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME) &&
+        hasExtension(available, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME)) {
+        VkPhysicalDeviceIDProperties id{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &id};
+        vkGetPhysicalDeviceProperties2(d.physical, &properties);
+        if (id.deviceLUIDValid) {
+            std::memcpy(&d.sharingAdapter, id.deviceLUID, sizeof(d.sharingAdapter));
+            extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+        }
+    }
+#endif
+
     VkPhysicalDevicePresentWaitFeaturesKHR hasWait{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR};
     VkPhysicalDevicePresentIdFeaturesKHR hasId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR, &hasWait};
     VkPhysicalDeviceVulkan13Features has13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, &hasId};
@@ -1001,6 +1040,17 @@ TextureObject::~TextureObject()
         device->allocator.release(memory);
     }
 }
+
+#if defined(_WIN32)
+SharedPictureObject::~SharedPictureObject()
+{
+    for (size_t i = 0; i < images.size(); ++i) {
+        vkDestroyImage(device->device, images[i], nullptr);
+        vkFreeMemory(device->device, memories[i], nullptr);
+    }
+}
+
+#endif
 
 BufferObject::~BufferObject()
 {
@@ -1739,26 +1789,142 @@ bool Device::upload(const Texture& texture, uint32_t level, const void* data, si
         std::memcpy(u.memory.mapped + start + VkDeviceSize(r) * tight, static_cast<const uint8_t*>(data) + r * rowBytes,
                     tight);
 
-    vk::Uploader::Recording& rec = u.recordings[u.next++ % vk::kUploadCommands];
-    if (rec.value && !vk::waitReached(d, u.slot->timeline, rec.value))
+    vk::Uploader::Recording* rec = vk::beginUpload(d);
+    if (!rec)
         return false;
-    vkResetCommandPool(d.device, rec.pool, 0);
-    vk::beginRecording(rec.cmd);
     const bool whole = t->mipLevels == 1;
-    vk::barrier(rec.cmd, t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, whole);
+    vk::barrier(rec->cmd, t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, whole);
     const VkBufferImageCopy copy = vk::region(*t, level, start);
-    vkCmdCopyBufferToImage(rec.cmd, u.staging, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-    vk::barrier(rec.cmd, t, t->resting);
-    vkEndCommandBuffer(rec.cmd);
-    VkCommandBufferSubmitInfo cmd{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cmd.commandBuffer = rec.cmd;
-    std::vector<VkSemaphoreSubmitInfo> none, signals;
-    rec.value = vk::submit(d, *u.slot, &cmd, 1, none, signals, nullptr);
-    u.spans.push_back({start, end, rec.value});
-    const uint64_t value = rec.value;
+    vkCmdCopyBufferToImage(rec->cmd, u.staging, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    vk::barrier(rec->cmd, t, t->resting);
+    const uint64_t value = vk::submitUpload(d, *rec);
+    u.spans.push_back({start, end, value});
     lock.unlock();
     return vk::waitReached(d, u.slot->timeline, value);
 }
+
+#if defined(_WIN32)
+uint64_t Device::sharingAdapter() const
+{
+    return handle_->sharingAdapter;
+}
+
+// Binds `image` (made with kHandleType's external memory info) to the D3D11 texture shared at `handle`.
+static bool importTexture(vk::DeviceObject& d, VkFormat format, void* handle, uint32_t width, uint32_t height, VkImage& image,
+                   VkDeviceMemory& memory)
+{
+    constexpr VkExternalMemoryHandleTypeFlagBits kHandleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+    VkPhysicalDeviceExternalImageFormatInfo external{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO};
+    external.handleType = kHandleType;
+    VkPhysicalDeviceImageFormatInfo2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2, &external};
+    query.format = format;
+    query.type = VK_IMAGE_TYPE_2D;
+    query.tiling = VK_IMAGE_TILING_OPTIMAL;
+    query.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    VkExternalImageFormatProperties support{VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES};
+    VkImageFormatProperties2 properties{VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, &support};
+    if (vkGetPhysicalDeviceImageFormatProperties2(d.physical, &query, &properties) != VK_SUCCESS ||
+        !(support.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT))
+        return false;
+    VkExternalMemoryImageCreateInfo share{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
+    share.handleTypes = kHandleType;
+    VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, &share};
+    info.imageType = VK_IMAGE_TYPE_2D;
+    info.format = format;
+    info.extent = {width, height, 1};
+    info.mipLevels = 1;
+    info.arrayLayers = 1;
+    info.samples = VK_SAMPLE_COUNT_1_BIT;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (vkCreateImage(d.device, &info, nullptr, &image) != VK_SUCCESS)
+        return false;
+    VkMemoryRequirements req;
+    vkGetImageMemoryRequirements(d.device, image, &req);
+    const uint32_t type = d.memoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
+    VkMemoryDedicatedAllocateInfo dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
+    dedicated.image = image;
+    VkImportMemoryWin32HandleInfoKHR import{VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR, &dedicated};
+    import.handleType = kHandleType;
+    import.handle = handle;
+    VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &import};
+    alloc.allocationSize = req.size;
+    alloc.memoryTypeIndex = type;
+    return type != ~0u && vkAllocateMemory(d.device, &alloc, nullptr, &memory) == VK_SUCCESS &&
+           vkBindImageMemory(d.device, image, memory, 0) == VK_SUCCESS;
+}
+
+SharedPicture Device::importSharedPicture(void* lumaHandle, void* chromaHandle, uint32_t width, uint32_t height) const
+{
+    vk::DeviceObject& d = *handle_;
+    if (!d.sharingAdapter)
+        return {};
+    auto picture = std::make_shared<vk::SharedPictureObject>();
+    picture->device = handle_;
+    picture->widths = {width, width / 2};
+    picture->heights = {height, height / 2};
+    void* handles[2] = {lumaHandle, chromaHandle};
+    const VkFormat formats[2] = {VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM};
+    for (size_t i = 0; i < 2; ++i)
+        if (!importTexture(d, formats[i], handles[i], picture->widths[i], picture->heights[i], picture->images[i],
+                           picture->memories[i]))
+            return {};
+    SharedPicture result;
+    result.handle_ = std::move(picture);
+    return result;
+}
+
+bool Device::copyPicture(const SharedPicture& picture, const Texture& luma, const Texture& chroma) const
+{
+    vk::DeviceObject& d = *handle_;
+    vk::SharedPictureObject* source = picture.handle_.get();
+    vk::TextureObject* targets[2] = {luma.native(), chroma.native()};
+    if (!source || !targets[0] || !targets[1])
+        return false;
+
+    std::unique_lock lock(d.uploader.mutex);
+    vk::Uploader::Recording* rec = vk::beginUpload(d);
+    if (!rec)
+        return false;
+    // The textures' contents are D3D11's: a transition out of undefined would discard them.
+    const auto own = [&](VkImage image, uint32_t from, uint32_t to) {
+        VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        b.dstStageMask = to == VK_QUEUE_FAMILY_EXTERNAL ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        b.dstAccessMask = to == VK_QUEUE_FAMILY_EXTERNAL ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_READ_BIT;
+        b.oldLayout = b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        b.srcQueueFamilyIndex = from;
+        b.dstQueueFamilyIndex = to;
+        b.image = image;
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        return b;
+    };
+    const auto transfer = [&](uint32_t from, uint32_t to) {
+        const std::array<VkImageMemoryBarrier2, 2> barriers{own(source->images[0], from, to),
+                                                            own(source->images[1], from, to)};
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.imageMemoryBarrierCount = 2;
+        dependency.pImageMemoryBarriers = barriers.data();
+        vkCmdPipelineBarrier2(rec->cmd, &dependency);
+    };
+    transfer(VK_QUEUE_FAMILY_EXTERNAL, d.family);
+    for (size_t i = 0; i < 2; ++i) {
+        vk::barrier(rec->cmd, targets[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
+        VkImageCopy copy{};
+        copy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.extent = {source->widths[i], source->heights[i], 1};
+        vkCmdCopyImage(rec->cmd, source->images[i], VK_IMAGE_LAYOUT_GENERAL, targets[i]->image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        vk::barrier(rec->cmd, targets[i], targets[i]->resting);
+    }
+    transfer(d.family, VK_QUEUE_FAMILY_EXTERNAL);
+    const uint64_t value = vk::submitUpload(d, *rec);
+    lock.unlock();
+    return vk::waitReached(d, d.uploader.slot->timeline, value);
+}
+#endif
 
 ShaderModule Device::makeShaderModule(const ShaderSource& source, std::string* error) const
 {

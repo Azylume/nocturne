@@ -313,6 +313,7 @@ else()
   target_sources(nocturne_media PRIVATE
     src/media/hap_movie_ffmpeg.cpp
     src/media/stills_ffmpeg.cpp
+    src/media/video_hardware.cpp
     src/media/video_source_ffmpeg.cpp
   )
   target_include_directories(nocturne_media PRIVATE ${FFMPEG_INCLUDE_DIRS})
@@ -321,7 +322,7 @@ else()
 endif()
 if(WIN32)
   target_sources(nocturne_media PRIVATE src/media/text_renderer_dwrite.cpp)
-  target_link_libraries(nocturne_media PUBLIC d2d1 dwrite ole32 windowscodecs)
+  target_link_libraries(nocturne_media PUBLIC d2d1 d3d11 dwrite dxgi ole32 windowscodecs)
 endif()
 
 # Return video's packet rules; its H.264 encoder and decoder are added with recording's encoder below.

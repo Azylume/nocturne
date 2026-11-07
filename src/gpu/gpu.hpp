@@ -413,6 +413,20 @@ private:
     ScopeHandle handle_{};
 };
 
+#if defined(_WIN32)
+// A picture another API wrote into two textures it shares by NT handle, luma (R8) and chroma (RG8 at half size): the way
+// a hardware decoder's picture reaches the GPU without a trip through system memory (Windows).
+class SharedPicture {
+public:
+    SharedPicture() = default;
+    explicit operator bool() const { return bool(handle_); }
+
+private:
+    friend class Device;
+    SharedPictureHandle handle_;
+};
+#endif
+
 class Device {
 public:
     Device() = default;
@@ -438,6 +452,17 @@ public:
     // Any thread but the render thread: a backend without CPU-visible textures copies through a staging buffer and
     // waits for that copy.
     bool upload(const Texture& texture, uint32_t level, const void* data, size_t rowBytes) const;
+
+#if defined(_WIN32)
+    // The LUID of the adapter, which D3D11 must open to share textures with this device; 0 when it cannot.
+    uint64_t sharingAdapter() const;
+    // Imports the two D3D11 textures shared at these NT handles (the caller keeps and closes them): R8 `width` x `height`
+    // and RG8 at half that size. Null when the device cannot.
+    SharedPicture importSharedPicture(void* lumaHandle, void* chromaHandle, uint32_t width, uint32_t height) const;
+    // Copies the picture into `luma` (R8) and `chroma` (RG8) and waits for the copy. Any thread but the render thread.
+    // D3D11's writes to the picture must have finished, and it writes no more until this returns.
+    bool copyPicture(const SharedPicture& picture, const Texture& luma, const Texture& chroma) const;
+#endif
 
     // Compile thread: these compile. Null with `error` set on failure.
     ShaderModule makeShaderModule(const ShaderSource& source, std::string* error = nullptr) const;
