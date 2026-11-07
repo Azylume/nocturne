@@ -212,12 +212,13 @@ public:
         const nlohmann::json stats = collect(s);
         const auto& r = stats["render"];
         const auto& d = stats["decode"];
-        std::printf("render %.1f fps, gpu %.2f ms (previews %.2f ms, max %.2f, skipped %llu, video misses %llu, %llu "
-                    "passes, %llu intermediates, %llu at half resolution) | compiled %llu pipelines, %llu cached (max "
-                    "%.1f ms) | cpu %.0f%%\n",
+        std::printf("render %.1f fps, gpu %.2f ms (previews %.2f ms, max %.2f, skipped %llu, gpu errors %llu, "
+                    "video misses %llu, %llu passes, %llu intermediates, %llu at half resolution) | compiled %llu "
+                    "pipelines, %llu cached (max %.1f ms) | cpu %.0f%%\n",
                     r["fps"].get<double>(), r["gpuMs"].get<double>(), r["previews"]["gpuMs"].get<double>(),
                     r["gpuMaxMs"].get<double>(),
-                    r["skipped"].get<unsigned long long>(), r["videoMisses"].get<unsigned long long>(),
+                    r["skipped"].get<unsigned long long>(), r["gpuErrors"].get<unsigned long long>(),
+                    r["videoMisses"].get<unsigned long long>(),
                     r["passes"].get<unsigned long long>(), r["intermediates"].get<unsigned long long>(),
                     r["budgetLevel"].get<unsigned long long>(),
                     r["compiles"].get<unsigned long long>(), r["cachedPipelines"].get<unsigned long long>(),
@@ -275,6 +276,7 @@ private:
               {"cpuMaxMs", r.maxCpuMicros.exchange(0) / 1000.0},
               {"doneMaxMs", r.maxDoneMicros.exchange(0) / 1000.0},
               {"skipped", r.skipped.exchange(0)},
+              {"gpuErrors", r.gpuErrors.exchange(0)},
               {"videoMisses", r.videoMisses.exchange(0)},
               {"passes", r.passes.load()},
               {"intermediates", r.intermediates.load()},

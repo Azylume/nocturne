@@ -332,6 +332,8 @@ struct Completion {
     bool ok = false;
     double gpuStart = 0.0;
     double gpuEnd = 0.0;
+    // Why the command buffer failed, when the backend says; empty otherwise.
+    std::string error;
 };
 
 // A render pass whose target and timestamps are set but which has not begun: the native descriptor is open for
