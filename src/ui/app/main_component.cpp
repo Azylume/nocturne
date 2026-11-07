@@ -2,6 +2,7 @@
 
 #include "protocol/build_info.hpp"
 #include "ui/app/midi.hpp"
+#include "ui/app/window_display.hpp"
 
 namespace azl::ui {
 
@@ -85,12 +86,15 @@ MainComponent::MainComponent(Session& session, std::unique_ptr<juce::PropertiesF
     };
     setBrowserHidden(browserHidden_);
     session_.addView(this);
+    juce::Desktop::getInstance().addFocusChangeListener(this);
     setWantsKeyboardFocus(true);
     setSize(1600, 950);
 }
 
 MainComponent::~MainComponent()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener(this);
+    onCommandsChanged = nullptr;
     session_.useSettings(nullptr);
     session_.removeView(this);
     setLookAndFeel(nullptr);
@@ -98,6 +102,7 @@ MainComponent::~MainComponent()
 
 void MainComponent::sessionChanged(int changes)
 {
+    refreshCommands();
     if (changes & Session::Panels)
         repaint();
 }
@@ -113,6 +118,7 @@ void MainComponent::setTab(TransportBar::Tab tab)
     strip_.setVisible(perform && browserHidden_);
     map_.setVisible(tab == TransportBar::Tab::Map);
     machines_.setVisible(tab == TransportBar::Tab::Machines);
+    refreshCommands();
 }
 
 void MainComponent::setBrowserHidden(bool hidden)
@@ -268,15 +274,174 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
     return false;
 }
 
+namespace {
+
+juce::TextEditor* focusedEditor()
+{
+    return dynamic_cast<juce::TextEditor*>(juce::Component::getCurrentlyFocusedComponent());
+}
+
+} // namespace
+
+bool MainComponent::commandEnabled(Command id) const
+{
+    const bool connected = session_.client().connected();
+    const History history = session_.client().history();
+    const bool editing = focusedEditor() != nullptr;
+    switch (id) {
+    case CmdOpen:
+    case CmdSave:
+    case CmdSaveAs: return connected;
+    case CmdUndo: return editing || (connected && history.undo > 0);
+    case CmdRedo: return editing || (connected && history.redo > 0);
+    case CmdCut: return editing;
+    case CmdCopy:
+    case CmdPaste:
+    case CmdSelectAll: return editing || grid_.isVisible();
+    case CmdToggleBrowser: return grid_.isVisible();
+    default: return true;
+    }
+}
+
+void MainComponent::refreshCommands()
+{
+    const History history = session_.client().history();
+    const std::string state = std::to_string(session_.client().connected()) + std::to_string(focusedEditor() != nullptr) +
+                              std::to_string(grid_.isVisible()) + std::to_string(map_.isVisible()) +
+                              std::to_string(machines_.isVisible()) + std::to_string(browserHidden_) +
+                              std::to_string(session_.previewsOn()) + "|" + std::to_string(history.undo) + history.undoOp +
+                              "|" + std::to_string(history.redo) + history.redoOp;
+    if (state == commandState_)
+        return;
+    commandState_ = state;
+    if (onCommandsChanged)
+        onCommandsChanged();
+}
+
+void MainComponent::getAllCommands(juce::Array<juce::CommandID>& commands)
+{
+    commands.addArray({CmdOpen, CmdSave, CmdSaveAs, CmdUndo, CmdRedo, CmdCut, CmdCopy, CmdPaste, CmdSelectAll,
+                       CmdSettings, CmdViewPerform, CmdViewMap, CmdViewMachines, CmdToggleBrowser, CmdTogglePreviews});
+}
+
+void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info)
+{
+    const auto command = Command(id);
+    const bool ticked = (command == CmdViewPerform && grid_.isVisible()) || (command == CmdViewMap && map_.isVisible()) ||
+                        (command == CmdViewMachines && machines_.isVisible()) ||
+                        (command == CmdToggleBrowser && grid_.isVisible() && !browserHidden_) ||
+                        (command == CmdTogglePreviews && session_.previewsOn());
+    const History history = session_.client().history();
+    const juce::String name = command == CmdUndo && history.undo ? "Undo " + utf8(history.undoOp)
+                              : command == CmdRedo && history.redo ? "Redo " + utf8(history.redoOp)
+                                                                   : juce::String();
+    describeCommand(command, info, commandEnabled(command), ticked, name);
+}
+
+bool MainComponent::perform(const InvocationInfo& info)
+{
+    juce::TextEditor* editor = focusedEditor();
+    switch (Command(info.commandID)) {
+    case CmdOpen: transport_.open(); break;
+    case CmdSave: transport_.save(); break;
+    case CmdSaveAs: transport_.saveAs(); break;
+    case CmdUndo:
+        if (editor)
+            editor->undo();
+        else
+            session_.client().undo();
+        break;
+    case CmdRedo:
+        if (editor)
+            editor->redo();
+        else
+            session_.client().redo();
+        break;
+    case CmdCut:
+        if (editor)
+            editor->cut();
+        break;
+    case CmdCopy: editor ? editor->copy() : grid_.stack().copyClips(); break;
+    case CmdPaste: editor ? editor->paste() : grid_.stack().pasteClips(); break;
+    case CmdSelectAll:
+        if (editor)
+            editor->selectAll();
+        else
+            session_.selectClips(session_.deckClips());
+        break;
+    case CmdSettings: transport_.openSettings(); break;
+    case CmdViewPerform: transport_.tabButton(TransportBar::Tab::Perform).triggerClick(); break;
+    case CmdViewMap: transport_.tabButton(TransportBar::Tab::Map).triggerClick(); break;
+    case CmdViewMachines: transport_.tabButton(TransportBar::Tab::Machines).triggerClick(); break;
+    case CmdToggleBrowser: setBrowserHidden(!browserHidden_); break;
+    case CmdTogglePreviews: transport_.previewsButton().triggerClick(); break;
+    default: return false;
+    }
+    return true;
+}
+
 MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible)
     : DocumentWindow("Nocturne " + juce::String(versionLabel()), Look::palette().background, DocumentWindow::allButtons)
 {
     setUsingNativeTitleBar(true);
-    setContentOwned(new MainComponent(session, std::move(settings)), true);
+    auto* main = new MainComponent(session, std::move(settings));
+    setContentOwned(main, true);
+    commands_.registerAllCommandsForTarget(this);
+    commands_.registerAllCommandsForTarget(main);
+    commands_.setFirstCommandTarget(this);
+    main->onCommandsChanged = [this] { commands_.commandStatusChanged(); };
+    menu_ = std::make_unique<MenuBar>(commands_, *this);
     setResizable(true, false);
     setResizeLimits(1100, 700, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
     setVisible(visible);
+}
+
+MainWindow::~MainWindow()
+{
+    if (auto* main = dynamic_cast<MainComponent*>(getContentComponent()))
+        main->onCommandsChanged = nullptr;
+}
+
+void MainWindow::resized()
+{
+    DocumentWindow::resized();
+    if (fullScreen_ != inFullScreen()) {
+        fullScreen_ = inFullScreen();
+        commands_.commandStatusChanged();
+    }
+}
+
+juce::ApplicationCommandTarget* MainWindow::getNextCommandTarget()
+{
+    return dynamic_cast<MainComponent*>(getContentComponent());
+}
+
+void MainWindow::getAllCommands(juce::Array<juce::CommandID>& commands)
+{
+    commands.addArray({CmdClose, CmdFullScreen, CmdMinimise, CmdZoom});
+}
+
+void MainWindow::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info)
+{
+    const auto command = Command(id);
+    describeCommand(command, info, true, false,
+                    command == CmdFullScreen && inFullScreen() ? "Exit Full Screen" : juce::String());
+}
+
+bool MainWindow::perform(const InvocationInfo& info)
+{
+    switch (Command(info.commandID)) {
+    case CmdClose: closeButtonPressed(); break;
+    case CmdFullScreen: setFullScreen(!inFullScreen()); break;
+    case CmdMinimise: setMinimised(true); break;
+    case CmdZoom:
+        if (juce::ComponentPeer* peer = getPeer())
+            zoomWindow(peer->getNativeHandle());
+        break;
+    default: return false;
+    }
+    return true;
 }
 
 void MainWindow::focusGained(FocusChangeType)
