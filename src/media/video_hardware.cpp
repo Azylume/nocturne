@@ -73,8 +73,10 @@ std::shared_ptr<GpuDecode> GpuDecode::open(const gpu::Device& device)
     if (!context)
         return nullptr;
     std::shared_ptr<GpuDecode> decode(new GpuDecode(device, context));
-    std::fprintf(stderr, "nocturne: video decodes on the GPU through Vulkan Video (H.264 and HEVC, 8-bit up to the "
-                         "driver's limits); anything else on the CPU\n");
+    static bool announced = false;
+    if (!std::exchange(announced, true))
+        std::fprintf(stderr, "nocturne: video decodes on the GPU through Vulkan Video (H.264 and HEVC, 8-bit up to the "
+                             "driver's limits); anything else on the CPU\n");
     slot = decode;
     return decode;
 }
