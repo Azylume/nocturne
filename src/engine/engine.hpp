@@ -235,7 +235,8 @@ public:
     // Any thread: the macros and modulators as of the last rendered frame.
     std::shared_ptr<const ModulationPlan> modulation() const;
 
-    // Render thread only. The frame is published once the GPU has finished it.
+    // Render thread only. The frame is published once the GPU has finished it. A frame that throws is dropped, never
+    // published, and logged at most once a second; the last good frame stays on screen.
     void renderFrame(double seconds);
     void waitUntilIdle();
 
@@ -549,6 +550,8 @@ private:
     const gpu::Texture* poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size);
     void traceDone(FrameTrace::Render& mark, const gpu::Completion& done) const;
     void finished(std::shared_ptr<Frame> frame, bool ok);
+    void drawFrame(double seconds);
+    void reportFrameFailure(const char* what);
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
 
     gpu::Device device_;
@@ -569,6 +572,8 @@ private:
     // Render thread only: seconds since the previous rendered frame, for effects that fade by elapsed time.
     double frameDt_ = 1.0 / 60.0;
     double lastFrameSeconds_ = -1.0;
+    // Render thread only.
+    std::chrono::steady_clock::time_point lastFailureLog_{};
     // Render thread only: what the decoders were last asked to keep.
     std::set<ClipKey> playing_;
     std::vector<Preload> preloads_;
