@@ -296,6 +296,7 @@ Message EngineHarness::machineStats()
     };
     const uint64_t frames = since(engine_.stats().rendered.load(), rendered_);
     const uint64_t gpu = since(engine_.stats().gpuMicros.load(), gpuMicros_);
+    const uint64_t gpuErrors = since(engine_.stats().gpuErrors.load(), gpuErrors_);
     Message outputs = Message::array();
     for (DisplayOutput* output : outputs_.all()) {
         auto& [presents, hitches] = presentsAndHitches_[output->display()];
@@ -307,7 +308,8 @@ Message EngineHarness::machineStats()
     statsAt_ = now;
     stats_ = {{"render",
                {{"fps", live ? Message(frames / s) : Message(nullptr)},
-                {"gpuMs", frames ? gpu / 1000.0 / double(frames) : 0.0}}},
+                {"gpuMs", frames ? gpu / 1000.0 / double(frames) : 0.0},
+                {"gpuErrors", gpuErrors}}},
               {"outputs", outputs}};
     return stats_;
 }
