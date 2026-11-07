@@ -33,6 +33,8 @@ struct IsfShader {
     // Set by a built-in shader's NOCTURNE header, which gives it the id and category of the native effect it replaces
     // ("" is our own effects). A user shader's NOCTURNE header is ignored.
     std::optional<std::string> category{};
+    // A built-in shader's NOCTURNE header can ask for STAGE_OPACITY, the stage's Opacity, which the stage mixes by too.
+    bool stageOpacity = false;
     IsfKind kind = IsfKind::Effect;
     // An effect that reads its input only at its own pixel fuses as a pointwise stage; a transition must, since it mixes
     // the two pictures pixel by pixel.

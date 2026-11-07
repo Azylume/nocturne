@@ -1476,108 +1476,6 @@ EffectDef classicTwitch()
     return def;
 }
 
-// Measured against the reference: adds brightness to the colour, then scales it about black by 1 + contrast below 0
-// and 1 + 5 x contrast above.
-EffectDef classicBrightnessContrast()
-{
-    return {"classicBrightnessContrast",
-            StageKind::Pointwise,
-            {in({" %", 100.0, 0}, {"brightness", -1.0, 1.0, 0.0, ParamDrive::Value, {}, "Brightness"}),
-             in(units::plain, {"contrast", -1.0, 1.0, 0.0, ParamDrive::Value, {}, "Contrast"}),
-             classicBlend()},
-            false,
-            R"(
-    float gain = 1.0 + (pb[p + 1] < 0.0 ? pb[p + 1] : 5.0 * pb[p + 1]);
-    vec4 o = vec4(saturate((c.rgb + pb[p + 0]) * gain), c.a);
-)" + addMixer(2, 3),
-            {},
-            {},
-            "Classic"};
-}
-
-// Measured against the reference, each control alone: colour^(2 x (1 - midpoint)) (0 stays 0), times (2 x ratio)^2,
-// plus 4 x (base - 0.5); all three neutral at 0.5. Their order is assumed.
-EffectDef classicLevels()
-{
-    return {"classicLevels",
-            StageKind::Pointwise,
-            {in(units::plain, classic("base", "Base", 0.5)),
-             in(units::plain, classic("midpoint", "Midpoint", 0.5)),
-             in(units::plain, classic("ratio", "Ratio", 0.5)),
-             classicBlend()},
-            false,
-            R"(
-    vec3 x = mix(pow(c.rgb, vec3(2.0 * (1.0 - pb[p + 1]))), vec3(0.0), lessThanEqual(c.rgb, vec3(0.0)));
-    vec4 o = vec4(saturate(x * (4.0 * pb[p + 2] * pb[p + 2]) + 4.0 * (pb[p + 0] - 0.5)), c.a);
-)" + addMixer(3, 4),
-            {},
-            {},
-            "Classic"};
-}
-
-// Measured against the reference: colour 1 where the luma (0.30 R + 0.59 G + 0.11 B) is above the threshold, colour 2
-// below (each colour multiplied by its own alpha), blended by a smoothstep between luma -+ smoothness / 2 clamped to
-// 0..1. Alpha keeps the picture's (Original), multiplies the colour's alpha by it (Combine) or is 1 (Replace).
-EffectDef classicThreshold()
-{
-    auto channel = [](std::string name, std::string label, double defaultValue) {
-        return in(units::plain, classic(std::move(name), std::move(label), defaultValue));
-    };
-    return {"classicThreshold",
-            StageKind::Pointwise,
-            {channel("threshold", "Threshold", 0.5),
-             channel("smoothness", "Smoothness", 0.0),
-             channel("color1Red", "Color 1 Red", 1.0),
-             channel("color1Green", "Color 1 Green", 1.0),
-             channel("color1Blue", "Color 1 Blue", 1.0),
-             channel("color1Alpha", "Color 1 Alpha", 1.0),
-             channel("color2Red", "Color 2 Red", 0.0),
-             channel("color2Green", "Color 2 Green", 0.0),
-             channel("color2Blue", "Color 2 Blue", 0.0),
-             channel("color2Alpha", "Color 2 Alpha", 1.0),
-             classicChoice("alpha", "Alpha", 0.0, {"Original", "Combine", "Replace"}),
-             classicBlend()},
-            false,
-            R"(
-    float y = dot(c.rgb, vec3(0.30, 0.59, 0.11));
-    float soft = pb[p + 1] * 0.5;
-    float below = soft > 0.0 ? smoothstep(max(y - soft, 0.0), min(y + soft, 1.0), pb[p + 0]) : float(y <= pb[p + 0]);
-    vec4 one = vec4(pb[p + 2], pb[p + 3], pb[p + 4], pb[p + 5]), two = vec4(pb[p + 6], pb[p + 7], pb[p + 8], pb[p + 9]);
-    vec4 o = mix(vec4(one.rgb * one.a, one.a), vec4(two.rgb * two.a, two.a), below);
-    int alpha = int(pb[p + 10] + 0.5);
-    o.a = alpha == 0 ? c.a : alpha == 1 ? o.a * c.a : 1.0;
-)" + addMixer(11, 12),
-            {},
-            {},
-            "Classic"};
-}
-
-// Measured against the reference, in HSL: the hue (reds below pure red count as negative, from -1/6 to 5/6) times
-// hueScale plus hueRotate in turns, the saturation times 2 x satScale.
-EffectDef classicHueRotate()
-{
-    return {"classicHueRotate",
-            StageKind::Pointwise,
-            {in(units::plain, classic("hueScale", "Hue Scale", 1.0)),
-             wrapping(units::plain, classic("hueRotate", "Hue Rotate", 0.0)),
-             in(units::plain, classic("satScale", "Sat. Scale", 0.5)),
-             classicBlend()},
-            false,
-            R"(
-    float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b)), d = hi - lo;
-    float l = (hi + lo) * 0.5;
-    float s = d / max(1.0 - abs(2.0 * l - 1.0), 1e-5);
-    float hue = d <= 0.0 ? 0.0 : hi == c.r ? (c.g - c.b) / d : hi == c.g ? 2.0 + (c.b - c.r) / d : 4.0 + (c.r - c.g) / d;
-    hue = fract(hue / 6.0 * pb[p + 0] + pb[p + 1]);
-    s = saturate(s * 2.0 * pb[p + 2]);
-    vec3 pure = saturate(abs(fract(hue + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
-    vec4 o = vec4(saturate(l + (pure - 0.5) * s * (1.0 - abs(2.0 * l - 1.0))), c.a);
-)" + addMixer(3, 4),
-            {},
-            {},
-            "Classic"};
-}
-
 // Measured against the reference, whose history takes the picture 30 times a second, so each 60th of a second mixes by
 // the square root of feedback, whatever the frame rate. Alpha mixes the picture into the history, Luma keeps the
 // history wherever its Rec. 601 luma is above 1 - feedback and takes the picture elsewhere. Lighten keeps the lighter of
@@ -2011,8 +1909,7 @@ Registry& registry()
          withMix(letters()), withMix(dots()), withMix(duotone()), withMix(outline()), withMix(classicStripper()),
          withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
-         withMix(classicBrightnessContrast()), withMix(classicLevels()),
-         withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
+         withMix(classicMirrorQuad()),
          withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
          withMix(strobe()), withMix(lines()),

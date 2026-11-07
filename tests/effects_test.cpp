@@ -720,6 +720,87 @@ TEST_CASE("the ported Colorize, Edge Detection and Solid keep the native paramet
     CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"colorize", "colorize", "grain"})).size() == 1);
 }
 
+namespace {
+
+struct ClassicSpec {
+    const char* name;
+    const char* label;
+    double min, max, def;
+    std::vector<std::string> options{};
+    const char* suffix = "";
+    double scale = 1.0;
+    int decimals = 2;
+    bool wraps = false;
+};
+
+ClassicSpec classicFloat(const char* name, const char* label, double def)
+{
+    return {name, label, 0.0, 1.0, def};
+}
+
+ClassicSpec classicBlendSpec()
+{
+    return {"blendMode", "Blend Mode", 0.0, 1.0, 0.0, {"Alpha", "Add"}, "", 1.0, 0};
+}
+
+void checkClassicParams(const char* type, const std::vector<ClassicSpec>& expected)
+{
+    CAPTURE(type);
+    const azl::EffectDef* def = azl::findEffect(type);
+    REQUIRE(def);
+    CHECK(def->category == "Classic");
+    REQUIRE(def->params.size() == expected.size() + 1);
+    CHECK(def->params.back().name == "mix");
+    CHECK(def->params.back().label == "Opacity");
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const azl::ParamDef& p = def->params[i];
+        const ClassicSpec& e = expected[i];
+        CAPTURE(e.name);
+        CHECK(p.name == e.name);
+        CHECK(p.label == e.label);
+        CHECK(p.min == e.min);
+        CHECK(p.max == e.max);
+        CHECK(p.defaultValue == e.def);
+        CHECK(p.options == e.options);
+        CHECK(p.choice == !e.options.empty());
+        CHECK(p.unit.suffix == e.suffix);
+        CHECK(p.unit.scale == e.scale);
+        CHECK(p.unit.decimals == e.decimals);
+        CHECK(p.wraps == e.wraps);
+        CHECK(p.group.empty());
+        CHECK(p.fullLabel.empty());
+        CHECK(p.optionStarts.empty());
+    }
+}
+
+} // namespace
+
+TEST_CASE("the ported Classic Brightness Contrast, Levels, Threshold and Hue Rotate keep the native parameters and fuse")
+{
+    checkClassicParams("classicBrightnessContrast",
+                       {{"brightness", "Brightness", -1.0, 1.0, 0.0, {}, " %", 100.0, 0},
+                        {"contrast", "Contrast", -1.0, 1.0, 0.0}, classicBlendSpec()});
+    checkClassicParams("classicLevels", {classicFloat("base", "Base", 0.5), classicFloat("midpoint", "Midpoint", 0.5),
+                                         classicFloat("ratio", "Ratio", 0.5), classicBlendSpec()});
+    checkClassicParams(
+        "classicThreshold",
+        {classicFloat("threshold", "Threshold", 0.5), classicFloat("smoothness", "Smoothness", 0.0),
+         classicFloat("color1Red", "Color 1 Red", 1.0), classicFloat("color1Green", "Color 1 Green", 1.0),
+         classicFloat("color1Blue", "Color 1 Blue", 1.0), classicFloat("color1Alpha", "Color 1 Alpha", 1.0),
+         classicFloat("color2Red", "Color 2 Red", 0.0), classicFloat("color2Green", "Color 2 Green", 0.0),
+         classicFloat("color2Blue", "Color 2 Blue", 0.0), classicFloat("color2Alpha", "Color 2 Alpha", 1.0),
+         {"alpha", "Alpha", 0.0, 2.0, 0.0, {"Original", "Combine", "Replace"}, "", 1.0, 0}, classicBlendSpec()});
+    checkClassicParams("classicHueRotate",
+                       {classicFloat("hueScale", "Hue Scale", 1.0),
+                        {"hueRotate", "Hue Rotate", 0.0, 1.0, 0.0, {}, "", 1.0, 2, true},
+                        classicFloat("satScale", "Sat. Scale", 0.5), classicBlendSpec()});
+    for (const char* type : {"classicBrightnessContrast", "classicLevels", "classicThreshold", "classicHueRotate"})
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"classicBrightnessContrast", "classicLevels", "classicThreshold",
+                                                        "classicHueRotate", "colorize"}))
+              .size() == 1);
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.

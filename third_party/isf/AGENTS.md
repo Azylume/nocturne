@@ -20,7 +20,7 @@ Curated ISF shaders, built into the engine. CMake embeds every `third_party/isf/
 - `nocturne/` holds Nocturne's own shaders, ported from native effects (issue #34, inventory in
   `docs/isf-migration.md`), AGPL-3.0-or-later and exempt from the vendoring rules above. Each header's `NOCTURNE`
   object gives the native effect's type and category; keep its parameter names, ranges and defaults, and its golden. Its `PARAMS` object carries what an ISF input cannot:
-  per input name `UNIT` (`SUFFIX`, `SCALE`, `DECIMALS`), `WRAPS`, `GROUP` and `FULL_LABEL`; a user shader's is ignored.
+  per input name `UNIT` (`SUFFIX`, `SCALE`, `DECIMALS`), `WRAPS`, `GROUP` and `FULL_LABEL`; a user shader's is ignored. `"STAGE_OPACITY": true` there makes `STAGE_OPACITY`, the stage's Opacity, readable in the shader (the Classic Add mixer).
 
 ## Fusion: check it, do not assume it
 

@@ -211,6 +211,21 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
     CHECK(std::holds_alternative<azl::IsfShader>(azl::parseIsf({"Test Native", typo, true})));
 }
 
+TEST_CASE("only a built-in shader can read the stage's Opacity, which is the argument after its inputs")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": "", "STAGE_OPACITY": true},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "amount", "TYPE": "color"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * STAGE_OPACITY; })";
+    const azl::IsfShader builtin = parsed({"Test Native", text, false});
+    CHECK(builtin.stageOpacity);
+    const azl::IsfGlsl glsl = azl::translateIsf(builtin, {});
+    CHECK_MESSAGE(glsl.error.empty(), glsl.error);
+    CHECK(glsl.body.find("pb[p + 4]);") != std::string::npos);
+    const azl::IsfShader user = parsed({"Test Native", text, true});
+    CHECK_FALSE(user.stageOpacity);
+    CHECK_FALSE(azl::translateIsf(user, {}).error.empty());
+}
+
 TEST_CASE("ISF inputs become parameters that colour pickers, macros and modulators work on")
 {
     azl::EffectDef def = azl::isfEffect(parsed(kTint));

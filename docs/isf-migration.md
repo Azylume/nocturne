@@ -9,7 +9,7 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | Feature the loader lacks | Why a port needs it |
 |---|---|
 | F1 parameter metadata (**done**) | `ParamDef` has a unit, `wraps`, a group and shortened labels; an ISF input carries none, so a port would show `0.25` for `25%` and stop a hue from wrapping under a modulator. The `NOCTURNE` header's `PARAMS` now carries them (below) |
-| F2 the stage's Opacity | the Classic wrapper's Add mixer (`addMixer`) reads the stage's `mix`, which an ISF shader cannot see |
+| F2 the stage's Opacity (**done**) | the Classic wrapper's Add mixer (`addMixer`) reads the stage's `mix`, which an ISF shader cannot see. A built-in shader's `NOCTURNE` header can now ask for `STAGE_OPACITY` (below) |
 | F3 driven parameters | `ParamDrive::Phase`, `Beats` and `Audio`: a rate integrated over time, beats counted by the beat clock, an audio feature's level |
 | F4 remap stage kind | a shader that reads its input at one other coordinate fuses as `Remap`; the importer makes it a neighbourhood pass of its own |
 | F5 CPU-derived values | `EffectDef::derive`: values worked out once a frame on the CPU and read by every pixel |
@@ -46,10 +46,10 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | classicKaleidoscope | remap | R | 6 | `classic_kaleidoscope` | needs F2, F4 |
 | classicTwitch | 3x3 blur, shifts, per-frame hash | N | 16 | `classic_twitch` | needs F1, F2 |
 | classicAutoMask | pointwise | P | channel, contrast, invert | `classic_auto_mask` | **ported** |
-| classicBrightnessContrast | pointwise | P | brightness, contrast, blendMode | `classic_brightness_contrast` | needs F1, F2 |
-| classicLevels | pointwise | P | base, midpoint, ratio, blendMode | `classic_levels` | needs F2 |
-| classicThreshold | pointwise | P | 12 | `classic_threshold` | needs F2 |
-| classicHueRotate | pointwise, HSL | P | hueScale, hueRotate, satScale, blendMode | `classic_hue_rotate`, `_add` | needs F2 |
+| classicBrightnessContrast | pointwise | P | brightness, contrast, blendMode | `classic_brightness_contrast` | **ported** |
+| classicLevels | pointwise | P | base, midpoint, ratio, blendMode | `classic_levels` | **ported** |
+| classicThreshold | pointwise | P | 12 | `classic_threshold` | **ported** |
+| classicHueRotate | pointwise, HSL | P | hueScale, hueRotate, satScale, blendMode | `classic_hue_rotate`, `_add` | **ported** |
 | classicMirrorQuad | remap | R | flipX, flipY, blendMode | `classic_mirror_quad` | needs F2, F4 |
 | classicPolarKaleido | remap | R | rings, parts, angle, blendMode | `classic_polar_kaleido` | needs F2, F4 |
 | classicTrails | side pass, persistent history | M | feedback, mode, blendMode | `classic_trails` | needs F2, F6 |
@@ -70,7 +70,7 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | needs F1, F3 |
 | noise | value noise | scale, speed, contrast, colour | `generator_noise` | needs F1, F3 |
 
-Totals: 38 types, 6 ports, 31 need a loader feature, 1 stays native for now. F1 is done; thermal, letters, dots, duotone and outline need it and nothing else (none has a golden).
+Totals: 38 types, 10 ports, 27 need a loader feature, 1 stays native for now. F1 and F2 are done; thermal, letters, dots, duotone and outline need F1 and nothing else (none has a golden).
 
 ## How a ported shader keeps its identity
 
@@ -87,3 +87,11 @@ A built-in shader's `NOCTURNE` header may carry `"PARAMS": {"<input name>": {...
 `DECIMALS`), `WRAPS`, `GROUP` and `FULL_LABEL`; the input's own `LABEL` is the short label. A name that is not an input
 is an error. A user shader's `NOCTURNE` header, `PARAMS` included, is ignored. Colorize, Edge Detection and Solid are
 ported with it; a test compares their parameter specs to the native ones.
+
+## The stage's Opacity (F2)
+
+A built-in shader's `NOCTURNE` header may carry `"STAGE_OPACITY": true`. The shader then reads `STAGE_OPACITY`, a float
+global holding the stage's own Opacity (`mix`), the value the native Add mixer reads. It is not an input, so it adds no
+parameter; the compiler passes it after the inputs and a user shader that names it does not translate. Classic
+Brightness Contrast, Levels, Threshold and Hue Rotate are ported with it; a test compares their parameter specs to the
+native ones.

@@ -296,6 +296,7 @@ void applyNativeIdentity(const json& meta, IsfShader& shader)
         shader.type = type;
     if (native->contains("CATEGORY"))
         shader.category = text(*native, "CATEGORY");
+    shader.stageOpacity = native->value("STAGE_OPACITY", json(false)) == json(true);
 }
 
 ParamUnit nativeUnit(const json& unit)

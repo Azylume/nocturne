@@ -115,6 +115,8 @@ TEST_CASE("static bake: what counts as static")
 {
     CHECK(azl::clockFree(effect("colorize")));
     CHECK(azl::clockFree(effect("edgeDetection")));
+    for (const char* type : {"classicBrightnessContrast", "classicLevels", "classicThreshold", "classicHueRotate"})
+        CHECK(azl::clockFree(effect(type)));
     CHECK_FALSE(azl::clockFree(effect("trails")));
     CHECK_FALSE(azl::clockFree(effect("classicTrails")));
     CHECK_FALSE(azl::clockFree(effect("classicStrobe")));
@@ -123,6 +125,7 @@ TEST_CASE("static bake: what counts as static")
     using azl::SourceKind;
     CHECK(prefixOf(SourceKind::Yuv, {"edgeDetection", "colorize"}) == 1);
     CHECK(prefixOf(SourceKind::Yuv, {"edgeDetection", "edgeDetection", "colorize"}) == 2);
+    CHECK(prefixOf(SourceKind::Yuv, {"edgeDetection", "classicLevels", "classicThreshold", "classicHueRotate"}) == 1);
     CHECK(prefixOf(SourceKind::Yuv, {"colorize"}) == 0);
     CHECK(prefixOf(SourceKind::Text, {"edgeDetection"}) == 1);
     CHECK(prefixOf(SourceKind::TestCard, {"edgeDetection", "colorize"}) == 0);
