@@ -801,6 +801,43 @@ TEST_CASE("the ported Classic Brightness Contrast, Levels, Threshold and Hue Rot
               .size() == 1);
 }
 
+TEST_CASE("the ported Strobe, Lines, Checker and Classic Strobe keep the native parameters, drives and fusion")
+{
+    const auto driveOf = [](const char* type, const char* name) {
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            if (p.name == name)
+                return p.drive;
+        return azl::ParamDrive::Value;
+    };
+    checkParams("strobe", {{"rate", 0.25, 16.0, 1.0, " beats", 1.0, 2, false}, percentSpec("duty", 0.5),
+                           percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("lines", {{"count", 1.0, 64.0, 8.0, " lines", 1.0, 1, false}, percentSpec("width", 0.5),
+                          {"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                          {"speed", -8.0, 8.0, 0.0, " lines/s", 1.0, 2, false}, percentSpec("softness", 0.0),
+                          percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("checker", {{"count", 1.0, 64.0, 8.0, " cells", 1.0, 1, false},
+                            {"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                            {"speed", -8.0, 8.0, 0.0, " cells/s", 1.0, 2, false}, percentSpec("red", 1.0),
+                            percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkClassicParams("classicStrobe",
+                       {classicFloat("frequency", "Frequency", 0.5),
+                        {"fade", "Fade", 0.0, 1.0, 0.0, {"Off", "On"}, "", 1.0, 0},
+                        classicFloat("colorRed", "Color Red", 1.0), classicFloat("colorGreen", "Color Green", 1.0),
+                        classicFloat("colorBlue", "Color Blue", 1.0), classicFloat("colorAlpha", "Color Alpha", 1.0),
+                        {"syncToBeat", "Sync to Beat", 0.0, 1.0, 1.0, {"Off", "On"}, "", 1.0, 0}, classicBlendSpec()});
+    CHECK(driveOf("strobe", "rate") == azl::ParamDrive::Beats);
+    CHECK(driveOf("lines", "speed") == azl::ParamDrive::Phase);
+    CHECK(driveOf("checker", "speed") == azl::ParamDrive::Phase);
+    for (const char* type : {"strobe", "lines", "checker", "classicStrobe"}) {
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            if (p.name != "rate" && p.name != "speed")
+                CHECK(p.drive == azl::ParamDrive::Value);
+    }
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"classicStrobe", "colorize", "classicLevels"})).size() == 1);
+    CHECK(azl::planChain(azl::SourceKind::Generator, effects({"lines", "classicStrobe", "colorize"})).size() == 1);
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.

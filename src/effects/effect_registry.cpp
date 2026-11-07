@@ -1521,37 +1521,6 @@ EffectDef classicTrails()
             "Classic"};
 }
 
-// Measured against the reference: a flash every 2 x (1 - frequency) seconds at any tempo, on for half of it; frequency 0
-// never flashes and 1 stays on. Sync to Beat, our own control and on by default, counts that period in beats at
-// 120 BPM instead (4 x (1 - frequency) beats), so the flash follows the tempo. Fade turns the flash into a ramp up and
-// down over the period. The flash replaces the picture with the colour at its alpha.
-EffectDef classicStrobe()
-{
-    return {"classicStrobe",
-            StageKind::Pointwise,
-            {in(units::plain, classic("frequency", "Frequency", 0.5)),
-             classicFlag("fade", "Fade"),
-             classic("colorRed", "Color Red", 1.0),
-             classic("colorGreen", "Color Green", 1.0),
-             classic("colorBlue", "Color Blue", 1.0),
-             classic("colorAlpha", "Color Alpha", 1.0),
-             classicFlag("syncToBeat", "Sync to Beat", 1.0),
-             classicBlend()},
-            false,
-            R"(
-    float period = 2.0 * (1.0 - pb[p + 0]);
-    float clock = pb[p + 6] > 0.5 ? h.beat * 0.5 : h.time;
-    float ramp = period > 0.0 ? 1.0 - abs(2.0 * fract(clock / period) - 1.0) : 1.0;
-    float flash = pb[p + 0] <= 0.0 ? 0.0 : pb[p + 1] > 0.5 ? ramp : step(0.5, ramp);
-    // On its nearest 8-bit step, a half rounding up: a GPU may store a colour of exactly half a step either way.
-    vec3 colour = floor(vec3(pb[p + 2], pb[p + 3], pb[p + 4]) * 255.0 + 0.5) / 255.0;
-    vec4 o = mix(c, vec4(colour, pb[p + 5]), flash);
-)" + addMixer(7, 8),
-            {},
-            {},
-            "Classic"};
-}
-
 constexpr uint32_t kShiftGlitchBands = 12;
 
 // The pattern the shader should work out this frame as two 16-bit halves and 1, then for each axis and band the 16-bit
@@ -1724,43 +1693,6 @@ std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef
     return a;
 }
 
-// On for `duty` of every `rate` beats of the beat clock, from each period's start; off is transparent.
-EffectDef strobe()
-{
-    return generator("strobe",
-                     joined({in(units::beats, {"rate", 0.25, 16.0, 1.0, ParamDrive::Beats}),
-                             percent({"duty", 0.0, 1.0, 0.5})},
-                            colour()),
-                     R"(
-    return fract(pb[p + 0]) < pb[p + 1] ? vec4(pb[p + 2], pb[p + 3], pb[p + 4], 1.0) : vec4(0.0);
-)");
-}
-
-// `count` parallel lines across the height, each `width` of its period wide, moving across at `speed` lines per
-// second; `softness` blurs their edges by up to half a period. Between them it is transparent. Edges are box filtered
-// over a pixel, so a thin line never flickers.
-EffectDef lines()
-{
-    return generator("lines",
-                     joined({in(units::lines, {"count", 1.0, 64.0, 8.0}), percent({"width", 0.0, 1.0, 0.5}),
-                             wrapping(units::degrees, {"angle", -180.0, 180.0, 0.0}),
-                             in(units::linesPerSecond, {"speed", -8.0, 8.0, 0.0, ParamDrive::Phase}),
-                             percent({"softness", 0.0, 1.0, 0.0})},
-                            colour()),
-                     R"(
-    float a = pb[p + 2] * (M_PI_F / 180.0);
-    vec2 d = vec2(cos(a), sin(a));
-    float perPixel = pb[p + 0] / h.size.y;
-    float s = dot(px - h.size * 0.5, d) * perPixel - pb[p + 3];
-    float v = abs(fract(s + 0.5) - 0.5);
-    float hw = pb[p + 1] * 0.5;
-    float w = max(perPixel, pb[p + 4] * 0.5);
-    float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
-                  max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
-    return vec4(pb[p + 5], pb[p + 6], pb[p + 7], saturate(cover / w));
-)");
-}
-
 // `count` concentric rings from the centre to the top edge, each `width` of its period wide, around a centre moved by
 // `x` and `y` (shares of the width and height), spreading outward at `speed` rings per second (inward when negative):
 // a tunnel on the beat with speed as a phase. `softness` blurs the edges by up to half a period. Between them it is
@@ -1783,28 +1715,6 @@ EffectDef rings()
     float cover = max(min(v + w * 0.5, hw) - max(v - w * 0.5, -hw), 0.0) +
                   max(min(v + w * 0.5, 1.0 + hw) - max(v - w * 0.5, 1.0 - hw), 0.0);
     return vec4(pb[p + 6], pb[p + 7], pb[p + 8], saturate(cover / w));
-)");
-}
-
-// `count` squares across the height, turned by `angle`, scrolling at `speed` squares per second; the others are
-// transparent.
-EffectDef checker()
-{
-    return generator("checker",
-                     joined({in(units::cells, {"count", 1.0, 64.0, 8.0}),
-                             wrapping(units::degrees, {"angle", -180.0, 180.0, 0.0}),
-                             in(units::cellsPerSecond, {"speed", -8.0, 8.0, 0.0, ParamDrive::Phase})},
-                            colour()),
-                     R"(
-    float a = pb[p + 1] * (M_PI_F / 180.0);
-    float s = sin(a), k = cos(a);
-    float perPixel = pb[p + 0] / h.size.y;
-    vec2 q = px - h.size * 0.5;
-    q = vec2(k * q.x + s * q.y, -s * q.x + k * q.y) * perPixel;
-    q.x -= pb[p + 2];
-    vec2 lo = q - 0.5 * perPixel, hi = q + 0.5 * perPixel;
-    vec2 sq = (abs(fract(lo) - 0.5) - abs(fract(hi) - 0.5)) / perPixel;
-    return vec4(pb[p + 3], pb[p + 4], pb[p + 5], saturate(0.5 + 0.5 * sq.x * sq.y));
 )");
 }
 
@@ -1910,10 +1820,9 @@ Registry& registry()
          withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
          withMix(classicMirrorQuad()),
-         withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
+         withMix(classicPolarKaleido()), withMix(classicTrails()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
-         withMix(strobe()), withMix(lines()),
-         withMix(checker()), withMix(rings()), withMix(gradient()), withMix(noise())}))};
+         withMix(rings()), withMix(gradient()), withMix(noise())}))};
     return effects;
 }
 

@@ -297,6 +297,7 @@ void applyNativeIdentity(const json& meta, IsfShader& shader)
     if (native->contains("CATEGORY"))
         shader.category = text(*native, "CATEGORY");
     shader.stageOpacity = native->value("STAGE_OPACITY", json(false)) == json(true);
+    shader.beatClock = native->value("BEAT_CLOCK", json(false)) == json(true);
 }
 
 ParamUnit nativeUnit(const json& unit)
@@ -306,6 +307,17 @@ ParamUnit nativeUnit(const json& unit)
     out.scale = number(unit, "SCALE", 1.0);
     out.decimals = int(number(unit, "DECIMALS", 2.0));
     return out;
+}
+
+ParamDrive nativeDrive(const std::string& name)
+{
+    if (name == "PHASE")
+        return ParamDrive::Phase;
+    if (name == "BEATS")
+        return ParamDrive::Beats;
+    if (name == "AUDIO")
+        return ParamDrive::Audio;
+    throw std::string("NOCTURNE PARAMS DRIVE is " + name + ", not PHASE, BEATS or AUDIO");
 }
 
 void applyNativeParams(const json& meta, IsfShader& shader)
@@ -323,6 +335,14 @@ void applyNativeParams(const json& meta, IsfShader& shader)
         param->wraps = number(spec, "WRAPS", 0.0) != 0.0;
         param->group = text(spec, "GROUP");
         param->fullLabel = text(spec, "FULL_LABEL");
+        if (spec.contains("DRIVE"))
+            param->drive = nativeDrive(text(spec, "DRIVE"));
+        param->scaledBy = text(spec, "SCALED_BY");
+    }
+    for (const ParamDef& param : shader.params) {
+        const auto named = [&](const ParamDef& p) { return p.name == param.scaledBy; };
+        if (!param.scaledBy.empty() && std::none_of(shader.params.begin(), shader.params.end(), named))
+            throw std::string("NOCTURNE PARAMS SCALED_BY names " + param.scaledBy + ", which is not an input");
     }
 }
 

@@ -35,6 +35,8 @@ struct IsfShader {
     std::optional<std::string> category{};
     // A built-in shader's NOCTURNE header can ask for STAGE_OPACITY, the stage's Opacity, which the stage mixes by too.
     bool stageOpacity = false;
+    // A built-in shader's NOCTURNE header can ask for BEAT, the beat clock's beats, which the native stages read as h.beat.
+    bool beatClock = false;
     IsfKind kind = IsfKind::Effect;
     // An effect that reads its input only at its own pixel fuses as a pointwise stage; a transition must, since it mixes
     // the two pictures pixel by pixel.
