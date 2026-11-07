@@ -196,6 +196,70 @@ TEST_CASE("return video packets become a raw H.264 stream, and a slow viewer dro
     CHECK(gate.pass("a", false, false));
 }
 
+namespace {
+
+// An encoder whose rate control ignores its target: every picture is `bytes` long, a key frame three times that.
+struct OvershootingEncoder {
+    size_t bytes;
+    rv::Packet encode(bool key) const
+    {
+        return {.data = std::vector<uint8_t>(key ? bytes * 3 : bytes), .key = key};
+    }
+};
+
+struct Run {
+    double kbps = 0;
+    int dropped = 0;
+    bool keyAfterDrop = true;
+};
+
+Run runOvershoot(bool guarded, uint32_t kbps, double fps, double seconds)
+{
+    const OvershootingEncoder encoder{size_t(2.0 * kbps * 1000.0 / 8.0 / fps)};
+    rv::RateGuard guard(kbps);
+    Run run;
+    double bits = 0;
+    bool dropBefore = false;
+    for (int i = 0; i < int(seconds * fps); ++i) {
+        if (guarded && !guard.admit(i / fps)) {
+            ++run.dropped;
+            dropBefore = true;
+            continue;
+        }
+        const bool key = i == 0 || (guarded && guard.keyWanted());
+        const rv::Packet packet = encoder.encode(key);
+        run.keyAfterDrop = run.keyAfterDrop && (!dropBefore || packet.key);
+        dropBefore = false;
+        guard.sent(packet);
+        bits += double(packet.data.size()) * 8.0;
+    }
+    run.kbps = bits / seconds / 1000.0;
+    return run;
+}
+
+} // namespace
+
+TEST_CASE("an encoder that overshoots its share is held to it by dropping pictures, the next one a key frame")
+{
+    const Run unguarded = runOvershoot(false, 400, 10.0, 20.0);
+    CHECK(unguarded.kbps > 400 * 1.5);
+
+    const Run guarded = runOvershoot(true, 400, 10.0, 20.0);
+    CHECK(guarded.kbps <= 400 * 1.1);
+    CHECK(guarded.dropped > 0);
+    CHECK(guarded.keyAfterDrop);
+}
+
+TEST_CASE("an encoder inside its share loses no picture to the guard")
+{
+    rv::RateGuard guard(400);
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(guard.admit(i / 10.0));
+        CHECK_FALSE(guard.keyWanted());
+        guard.sent({.data = std::vector<uint8_t>(4000)});
+    }
+}
+
 TEST_CASE("a Director watching gets every output as H.264 at 240 lines, in hardware where the encoder takes the size; "
           "the tiles match the outputs")
 {
