@@ -13,7 +13,7 @@ xcode-select --install          # once, if you have no command line tools
 brew install cmake ffmpeg
 git clone https://github.com/Azylume/nocturne.git && cd nocturne
 tools/make-signing-identity.sh  # once per Mac: a local "Nocturne Dev" signing identity
-cmake -S . -B build
+cmake --preset dev
 cmake --build build -j8         # the first build fetches JUCE and takes a while
 ```
 
@@ -22,21 +22,24 @@ it, macOS asks again after every build.
 
 ## 2. Get the example show's clips
 
-The repo ships no footage. Save these free clips into `examples/first-show/` under exactly these names:
+The repo ships no footage. One command downloads the free clips, checks their SHA-1 and converts the NASA `.webm`
+(needs `curl` and `ffmpeg`). It skips files that are already there:
+
+```sh
+tools/fetch-example-media.sh
+```
 
 | file | source |
 |---|---|
-| `serpentine.mp4` | [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter) (public domain) |
-| `diagonale.mp4` | [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (public domain) |
-| `opus3.mp4` | [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (public domain) |
+| `serpentine.mp4` | [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter) (no licence stated on the item) |
+| `diagonale.mp4` | [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (no licence stated on the item) |
+| `opus3.mp4` | [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (Public Domain Mark) |
 | `moon.mp4` | [NASA SVS 14992](https://commons.wikimedia.org/wiki/File:Lunar_Near_and_Far_Side_Phases_(SVS14992_-_Waxing_4K).webm) (public domain) |
 | `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4` | [Beeple VJ loops](https://www.beeple-crap.com/vjloops) (CC BY, credit "Beeple") |
 
-Nocturne plays H.264, HEVC, ProRes and HAP. The NASA clip is a `.webm`; convert it first:
-
-```sh
-ffmpeg -i Lunar_Near_and_Far_Side_Phases*.webm -c:v libx264 -pix_fmt yuv420p -an examples/first-show/moon.mp4
-```
+The script does not fetch the Beeple clips: their downloads are MediaFire zips. Open the
+[Beeple VJ loops](https://www.beeple-crap.com/vjloops) page, download the loops named in the table, and save each
+under exactly the name shown, as H.264, HEVC, ProRes or HAP (convert with `ffmpeg` if a loop is something else).
 
 A show finds its media by path, then by name, then by content, so another clip saved under one of these names
 plays in its place. A missing one leaves its cell empty.
@@ -85,7 +88,21 @@ Autopilot plays the show when nobody is at the controls.
 
 Leave both on, walk away, and the show keeps moving on the beat.
 
-## 6. Add an effect
+## 6. Map a controller
+
+MIDI learn is in the UI, so plug the controller into the Mac the UI runs on.
+
+1. Right-click a parameter, a macro knob, a clip, a column header, a deck tab, **Tap** or **Resync** and pick
+   **MIDI learn**. The status area says what it waits for.
+2. Move a knob or fader (or press a key or pad). A CC or the pitch bend moves a parameter or a macro; a note, or a
+   CC pressed past half way, fires a clip, a column, a deck, Tap or Resync. Esc cancels.
+3. Right-click the same item and pick **Forget MIDI** to remove it. **Settings > MIDI** picks the inputs and lists
+   every mapping with Remove.
+
+A knob picks its target up instead of making it jump. The engine takes no MIDI itself: the UI turns the controller
+into the same edits as a click. A headless engine without a UI is controlled with `nocturne-ctl`.
+
+## 7. Add an effect
 
 - Open the **Effects** tab in the browser (bottom right). Our own effects are under **Ours**, the Classic pack
   under **Classic**, ISF shaders under **ISF**.
@@ -99,7 +116,7 @@ Leave both on, walk away, and the show keeps moving on the beat.
 
 Every edit is one undo step: Cmd+Z and Cmd+Shift+Z, or Undo and Redo in the transport bar.
 
-## 7. A screen on a second display
+## 8. A screen on a second display
 
 The engine started with one screen showing the whole composition on the first display. To add a second one:
 
@@ -112,7 +129,7 @@ Without `--windowed` the engine runs each display fullscreen, which is what you 
 display, try `build/nocturne --virtual 2 --composition examples/first-show/show.json`: two simulated displays,
 each a window on your screen.
 
-## 8. Record a minute
+## 9. Record a minute
 
 Click **REC** in the transport bar. It lights while recording; click it again to stop. The movie goes to
 `~/Movies/Nocturne` (HEVC by default; the file is in REC's tooltip). `build/nocturne-ctl record state` shows what

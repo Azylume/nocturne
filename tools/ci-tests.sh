@@ -103,7 +103,7 @@ PY
     return $status
 }
 
-echo "== $name: $(echo "${files:-ui}" | tr ',' '\n' | wc -l | tr -d ' ') file(s)"
+echo "== $name: $(echo "${files:-ui}" | tr ',' '\n' | wc -l | tr -d ' ') file(s), $(echo "$skip" | tr ',' '\n' | grep -c .) listed case pattern(s) skipped"
 if run "$name"; then
     exit 0
 fi

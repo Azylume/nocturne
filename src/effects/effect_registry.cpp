@@ -867,14 +867,6 @@ EffectDef thermal()
 )");
 }
 
-// White specks on black, denser where the picture is brighter, drawn anew 24 times a second.
-EffectDef grain()
-{
-    return styleEffect("grain", StageKind::Pointwise, {}, R"(
-    return vec4(styleGrain(px, styleLuma(c.rgb), h.time), c.a);
-)");
-}
-
 // Random letters on black in a grid of `rows` rows where the picture is lit, as bright as it is there, changing six
 // times a second.
 EffectDef letters()
@@ -1441,6 +1433,30 @@ EffectDef classicPolarKaleido()
             "Classic"};
 }
 
+// The Classic Twitch's derived values, worked out once a frame with the shader's formulas: the move (picture sizes), the
+// zoom, the red and blue pull (fractions of the width), the blur spread in pixels, and the brightness and opacity gains.
+constexpr size_t kTwitchValues = 7;
+
+void classicTwitchValues(const float* p, const float*, float time, float, float* out)
+{
+    const auto tick = uint32_t(std::max(time, 0.0f) * 60.0f);
+    auto random = [&](uint32_t n) { return float(pcg(tick * 16u + n) & 0xffffu) / 65535.0f; };
+    float amount[6];
+    for (uint32_t k = 0; k < 6; ++k) {
+        const float f = p[3 + 2 * k];
+        amount[k] = random(k) < std::min(1.0f, 8.0f * f * f * f * f) ? random(k + 8u) : -1.0f;
+    }
+    const float g = p[0];
+    const bool moves = amount[0] >= 0.0f;
+    out[0] = moves ? (amount[0] * 2.0f - 1.0f) * p[1] * g : 0.0f;
+    out[1] = moves ? (random(7u) * 2.0f - 1.0f) * p[2] * g : 0.0f;
+    out[2] = amount[1] < 0.0f ? 1.0f : std::exp2((amount[1] * 2.0f - 1.0f) * p[4] * g);
+    out[3] = amount[4] < 0.0f ? 0.0f : (amount[4] * 2.0f - 1.0f) * p[10] * g * 0.05f;
+    out[4] = amount[5] < 0.0f ? 0.0f : amount[5] * p[12] * g * 40.0f;
+    out[5] = amount[3] < 0.0f ? 1.0f : 1.0f + 4.0f * amount[3] * p[8] * g;
+    out[6] = amount[2] < 0.0f ? 1.0f : 1.0f - p[6] * g * (0.3f + 0.35f * amount[2]);
+}
+
 // Each frame (at 60 per second) every kind of twitch fires on its own with a chance of 8 x frequency^4 and then takes
 // a random amount up to its maximum, times globalTwitch: a move of up to maxPos picture sizes, a zoom between
 // 1 / 2^maxScale and 2^maxScale, an opacity drop, a brightness gain of up to 1 + 4 x maxLight, red and blue pulled
@@ -1471,27 +1487,15 @@ EffectDef classicTwitch()
             false,
             R"(
     vec4 c = samplePixel(t, px);
-    uint tick = uint(max(h.time, 0.0) * 60.0);
-    float amount[6];
-    for (uint k = 0; k < 6; ++k) {
-        float f = pb[p + 3 + 2 * k];
-        bool on = float(pcg(tick * 16u + k) & 0xffffu) / 65535.0 < min(1.0, 8.0 * f * f * f * f);
-        amount[k] = on ? float(pcg(tick * 16u + k + 8u) & 0xffffu) / 65535.0 : -1.0;
-    }
-    float g = pb[p + 0];
-    vec2 shift = amount[0] < 0.0 ? vec2(0.0)
-                                 : (vec2(amount[0], float(pcg(tick * 16u + 7u) & 0xffffu) / 65535.0) * 2.0 - 1.0) *
-                                       vec2(pb[p + 1], pb[p + 2]) * g;
-    float zoom = amount[1] < 0.0 ? 1.0 : exp2((amount[1] * 2.0 - 1.0) * pb[p + 4] * g);
-    vec2 q = h.size * 0.5 + (px - h.size * 0.5) / zoom - shift * h.size;
-    float split = amount[4] < 0.0 ? 0.0 : (amount[4] * 2.0 - 1.0) * pb[p + 10] * g * 0.05 * h.size.x;
-    float blur = amount[5] < 0.0 ? 0.0 : amount[5] * pb[p + 12] * g * 40.0;
+    vec2 at0 = h.size * 0.5 + (px - h.size * 0.5) / pb[q + 2] - vec2(pb[q], pb[q + 1]) * h.size;
+    float split = pb[q + 3] * h.size.x;
+    float blur = pb[q + 4];
     vec4 o = vec4(0.0);
     float taps = 0.0;
     int reach = blur > 0.0 ? 1 : 0;
     for (int j = -reach; j <= reach; ++j)
         for (int i = -reach; i <= reach; ++i) {
-            vec2 at = q + vec2(i, j) * blur;
+            vec2 at = at0 + vec2(i, j) * blur;
             vec4 m = inPicture(at, h.size) ? samplePixel(t, at) : vec4(0.0);
             if (split != 0.0) {
                 vec2 ar = at + vec2(split, 0.0), ab = at - vec2(split, 0.0);
@@ -1503,42 +1507,16 @@ EffectDef classicTwitch()
             taps += 1.0;
         }
     o /= taps;
-    if (amount[3] >= 0.0)
-        o.rgb *= 1.0 + 4.0 * amount[3] * pb[p + 8] * g;
-    if (amount[2] >= 0.0)
-        o.a *= 1.0 - pb[p + 6] * g * (0.3 + 0.35 * amount[2]);
+    o.rgb *= pb[q + 5];
+    o.a *= pb[q + 6];
 )" + blackBackground(14) + addMixer(15, 16),
             {},
             {},
             "Classic"};
+    def.derive = classicTwitchValues;
+    def.derived = kTwitchValues;
     def.globals = "\nbool inPicture(vec2 q, vec2 size)\n"
                   "{\n    return all(greaterThanEqual(q, vec2(0.0))) && all(lessThanEqual(q, size));\n}\n";
-    return def;
-}
-
-// The picture's alpha becomes a mask from its colour, so black turns transparent: Rec. 601 luma, or for Red, Green or
-// Blue the sum of the other two channels, times a gain of 2 x contrast up to 0.5 and 1 + 10 x (contrast - 0.5) above;
-// inverted, the gain applies to one minus that. The colour stays as it is.
-EffectDef classicAutoMask()
-{
-    EffectDef def{"classicAutoMask",
-            StageKind::Pointwise,
-            {classicChoice("channel", "Channel", 0.0, {"Luminance", "Red", "Green", "Blue"}),
-             in(units::plain, classic("contrast", "Contrast", 0.5)),
-             classicFlag("invert", "Invert")},
-            false,
-            R"(
-    int channel = int(pb[p + 0] + 0.5);
-    float m = channel == 0 ? dot(c.rgb, vec3(0.299, 0.587, 0.114))
-            : channel == 1 ? c.g + c.b : channel == 2 ? c.r + c.b : c.r + c.g;
-    float gain = pb[p + 1] <= 0.5 ? 2.0 * pb[p + 1] : 1.0 + 10.0 * (pb[p + 1] - 0.5);
-    return vec4(c.rgb, c.a * saturate((pb[p + 2] > 0.5 ? 1.0 - m : m) * gain));
-)",
-            {},
-            {},
-            "Classic"};
-    // It changes only alpha.
-    def.keepsBlack = [](const float*) { return true; };
     return def;
 }
 
@@ -1892,14 +1870,6 @@ std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef
     return a;
 }
 
-// A step that shows nothing.
-EffectDef blank()
-{
-    return generator("blank", {}, R"(
-    return vec4(0.0);
-)");
-}
-
 EffectDef solid()
 {
     return generator("solid", colour(), R"(
@@ -2088,15 +2058,15 @@ Registry& registry()
 {
     static Registry effects{.effects = withIsf(withVariants(
         {withMix(transform()), withMix(colorize()), withMix(edgeDetection()), withMix(stripper()),
-         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()), withMix(grain()),
+         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()),
          withMix(letters()), withMix(dots()), withMix(duotone()), withMix(outline()), withMix(classicStripper()),
          withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
-         withMix(classicAutoMask()), withMix(classicBrightnessContrast()), withMix(classicLevels()),
+         withMix(classicBrightnessContrast()), withMix(classicLevels()),
          withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
          withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
-         withMix(blank()), withMix(solid()), withMix(strobe()), withMix(lines()),
+         withMix(solid()), withMix(strobe()), withMix(lines()),
          withMix(checker()), withMix(rings()), withMix(gradient()), withMix(noise())}))};
     return effects;
 }

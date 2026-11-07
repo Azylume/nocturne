@@ -111,9 +111,9 @@ TEST_CASE("every built-in ISF shader loads: effects and generators register unde
         const azl::IsfGlsl glsl = azl::translateIsf(shader, {});
         CHECK_MESSAGE(glsl.error.empty(), glsl.error);
         if (shader.kind != azl::IsfKind::Transition)
-            types.push_back(azl::isfType(source.name));
+            types.push_back(shader.type);
     }
-    std::vector<std::string> expected;
+    std::vector<std::string> expected{"grain", "classicAutoMask", "blank"};
     for (const Look& look : kEffects)
         expected.push_back(look.type);
     for (const Look& look : kGenerators)

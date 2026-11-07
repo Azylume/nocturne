@@ -440,6 +440,7 @@ target_link_libraries(nocturne_app_config PUBLIC nocturne_media nocturne_net)
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
 add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
+  tests/id_set_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
   tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
@@ -652,6 +653,7 @@ add_dependencies(nocturne_tests app)
 target_link_libraries(nocturne_tests PRIVATE "-framework CoreGraphics" "-framework ImageIO" "-framework CoreFoundation"
   "-framework WebKit")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
+add_test(NAME setup_machine_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/setup_machine_test.sh")
 
 # The protocol, pairing and clock cases again, against the plain-socket WebSocket and UDP clock other platforms use
 # instead of Network.framework. The product keeps nocturne_net and nocturne_udp_clock.

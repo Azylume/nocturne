@@ -54,7 +54,7 @@ azl::HapTexture hapTextureOf(azl::PictureFormat format, int plane)
 std::vector<uint8_t> textureBytes(const azl::gpu::Texture& from, size_t rowBytes, size_t rows)
 {
     MTL::Texture* texture = from.native();
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    azl::gpu::Scope scope;
     MTL::Device* device = texture->device();
     MTL::CommandQueue* queue = device->newCommandQueue();
     MTL::Buffer* buffer = device->newBuffer(rowBytes * rows, MTL::ResourceStorageModeShared);
@@ -69,7 +69,6 @@ std::vector<uint8_t> textureBytes(const azl::gpu::Texture& from, size_t rowBytes
     std::vector<uint8_t> bytes(contents, contents + rowBytes * rows);
     buffer->release();
     queue->release();
-    pool->release();
     return bytes;
 }
 

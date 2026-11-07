@@ -240,6 +240,35 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravir
     std::filesystem::remove(cache);
 }
 
+TEST_CASE("a start on an empty pipeline cache pre-warms every effect in the background, so a show compiles none")
+{
+    const auto device = gpu::Device::systemDefault();
+    if (!azl::archivesWork(device.name()))
+        return;
+    const std::filesystem::path cache = std::filesystem::temp_directory_path() /
+                                        ("nocturne-prewarm-" + std::to_string(azl::currentProcessId()) +
+                                         gpu::kPipelineCacheExtension);
+    std::filesystem::remove(cache);
+    {
+        azl::ChainCompiler compiler(device, cache);
+        compiler.waitPrewarmed();
+        CHECK(compiler.stats().pipelines > 0);
+    }
+    REQUIRE(std::filesystem::exists(cache));
+
+    azl::ChainCompiler compiler(device, cache);
+    const azl::Composition composition = azl::defaultComposition();
+    for (const std::string type : {"transform", "colorize", "edgeDetection"}) {
+        CAPTURE(type);
+        const std::vector<azl::Effect> effects{{1, type, {}}};
+        compiler.prepare(composition, azl::ChainKind::Layer, azl::effectList(effects));
+        compiler.waitIdle();
+    }
+    CHECK(compiler.stats().pipelines == 0);
+    CHECK(compiler.stats().archived > 0);
+    std::filesystem::remove(cache);
+}
+
 TEST_CASE("effect edits are undoable and seen by every client")
 {
     azl::EngineHarness harness({.width = 960, .height = 540});
@@ -602,6 +631,29 @@ GapWidths gapWidths(const azl::Image& gapped, const azl::Image& plain, int colum
 }
 
 } // namespace
+
+TEST_CASE("golden frame of Grain on the test card")
+{
+    azl::EngineHarness harness({.width = 960, .height = 540});
+    Client client(harness.document());
+    addEffect(client, "grain");
+    harness.step(30);
+    checkGolden(harness.readScreen(), "grain");
+}
+
+TEST_CASE("the ported Grain, Classic Auto Mask and Blank keep their ids and fuse as pointwise stages")
+{
+    for (const char* type : {"grain", "classicAutoMask"}) {
+        CAPTURE(type);
+        const azl::EffectDef* def = azl::findEffect(type);
+        REQUIRE(def);
+        CHECK(def->kind == azl::StageKind::Pointwise);
+    }
+    CHECK(azl::findEffect("grain")->category.empty());
+    CHECK(azl::findEffect("classicAutoMask")->category == "Classic");
+    CHECK(azl::isGenerator("blank"));
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"transform", "colorize", "classicAutoMask", "grain"})).size() == 1);
+}
 
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {

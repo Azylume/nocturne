@@ -4,6 +4,7 @@
 #include "document/composition_file.hpp"
 #include "document/cue_edits.hpp"
 #include "engine/beat_clock.hpp"
+#include "engine/id_set.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -49,7 +50,7 @@ public:
     // The cell the layer plays at `beat`.
     std::optional<Play> steer(const Layer& layer, const Composition& composition, double beat);
     // Forgets the layers not in `ids`.
-    void keepLayers(const std::set<uint64_t>& ids);
+    void keepLayers(const IdSet& ids);
 
     // The cell the layer plays as of the last step.
     std::optional<Play> playOf(const Layer& layer) const;

@@ -95,18 +95,21 @@ To build it yourself instead, read on.
 
 ```sh
 tools/make-signing-identity.sh   # once per Mac
-cmake -S . -B build && cmake --build build -j8
+cmake --preset dev && cmake --build build -j8
 build/nocturne --windowed        # the engine
 open "build/Nocturne UI.app"     # the UI
 ```
 
-The repo ships no footage. To load the example show, save these free clips into `examples/first-show/` under the
-names shown. Then run `build/nocturne --windowed --composition examples/first-show/show.json`.
+The repo ships no footage. `tools/fetch-example-media.sh` downloads the free clips of the example show into
+`examples/first-show/` (needs `curl` and `ffmpeg`), then run
+`build/nocturne --windowed --composition examples/first-show/show.json`.
 
-- `serpentine.mp4`, `diagonale.mp4`, `opus3.mp4`: [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter),
-  [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale), [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (public domain).
+- `serpentine.mp4`, `diagonale.mp4`: [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter),
+  [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (no licence stated on the item).
+- `opus3.mp4`: [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (Public Domain Mark).
 - `moon.mp4`: [NASA SVS 14992](https://commons.wikimedia.org/wiki/File:Lunar_Near_and_Far_Side_Phases_(SVS14992_-_Waxing_4K).webm) (public domain).
-- `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4`: [Beeple VJ loops](https://www.beeple-crap.com/vjloops) (CC BY, credit "Beeple").
+- `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4`: [Beeple VJ loops](https://www.beeple-crap.com/vjloops)
+  (CC BY, credit "Beeple"). Download these by hand; see [`docs/getting-started.md`](docs/getting-started.md).
 
 First time? [`docs/getting-started.md`](docs/getting-started.md) walks from a fresh clone to a show playing on
 Autopilot. Coming from Resolume: [`docs/resolume-import.md`](docs/resolume-import.md). To run a Mac mini on its own
@@ -114,7 +117,7 @@ for the night, see [`docs/show-machine.md`](docs/show-machine.md).
 
 **Status:** early. It has played real club nights on a Mac mini, and the interfaces still change. macOS only for now.
 - The downloadable app is an unsigned preview ([Download](#download)); signed and notarised comes later.
-- No MIDI or OSC control yet. Play it from the UI or `nocturne-ctl`, or let Autopilot and Cues run it.
+- MIDI learn drives the UI (right-click a parameter, macro, clip or column, pick MIDI learn). The engine takes commands only from the UI or `nocturne-ctl`, never MIDI or any other input directly, so a headless show machine is controlled with `nocturne-ctl`. OSC is not planned: plain OSC is unauthenticated UDP, so anyone on the venue network could drive the show. Remote control goes through `nocturne-ctl`, which uses pairing tokens.
 - No DXV. Convert those clips (`tools/transcode-media.sh` does it for an imported Resolume show).
 - Resolume import is a translation, not a copy. Read the report.
 
@@ -178,7 +181,7 @@ C++20 engine rendering with Metal, a separate JUCE UI, one WebSocket protocol be
 
 ```sh
 tools/make-signing-identity.sh   # once per machine: the local "Nocturne Dev" signing identity
-cmake -S . -B build              # Universal (arm64 + x86_64)
+cmake --preset dev                # host architecture only; --preset universal for arm64 + x86_64
 cmake --build build -j8
 (cd build && ctest --output-on-failure)
 ```

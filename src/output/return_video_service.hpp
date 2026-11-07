@@ -54,6 +54,7 @@ private:
     struct Output {
         std::string display;
         uint64_t screen = 0;
+        return_video::RateGuard guard{0};
         std::unique_ptr<H264Encoder> encoder;
         uint64_t frame = 0;
 #ifndef __APPLE__

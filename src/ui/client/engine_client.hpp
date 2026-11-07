@@ -595,6 +595,10 @@ public:
     void watchMachine(bool on);
     bool watchingMachine() const;
     static constexpr double kMachineRate = 2.0;
+    // Matches the display refresh; at 20 the meters and the spectrum visibly step.
+    static constexpr double kAudioRate = 60.0;
+    static constexpr int kOnsetHold = 8;
+    static constexpr double kSpectrumRelease = 0.88;
     // While on, the engine streams every output's return video (the Machines tab is open); kept across reconnects.
     void watchVideo(bool on);
     bool watchingVideo() const;
@@ -686,6 +690,12 @@ private:
     AudioGain audioGain_;
     ModulationState modulation_;
     AudioLevels audio_;
+    struct OnsetState {
+        double count = -1.0;
+        int hold = 0;
+    };
+    std::map<std::string, OnsetState> onsets_;
+    bool onsetLit(const std::string& name, const Message& count);
     Message presets_ = Message::object();
     std::vector<PresetEntry> presetEntries_;
     std::map<std::string, std::string> presetDefaults_;

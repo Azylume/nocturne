@@ -78,9 +78,8 @@ bool deepOf(const AVCodecParameters* p)
     return format && format->comp[0].depth > 8;
 }
 
-// The hardware decoder clips larger than 1080p share when GpuDecode is unavailable: D3D11VA (NVDEC on NVIDIA, the
-// vendor's decoder elsewhere), then CUDA. Null when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip
-// decodes on the CPU.
+// The hardware decoder every clip larger than 1080p shares: D3D11VA (NVDEC on NVIDIA, the vendor's decoder elsewhere),
+// then CUDA. Null when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip decodes on the CPU.
 struct Hardware {
     AVBufferRef* device = nullptr;
     AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
@@ -105,8 +104,8 @@ const Hardware& hardware()
     return shared;
 }
 
-// Without GpuDecode, up to 1080p the CPU decodes a frame faster than the GPU does and hands it back: a GPU-decoded
-// picture comes back to system memory through a wait for the GPU, behind the render thread's work.
+// Larger than 1080p, where GpuDecode is not used and the shared hardware decoder reads frames back. Up to 1080p the CPU
+// decodes a frame faster than that readback, which waits for the GPU behind the render thread's work.
 bool worthHardware(const AVCodecParameters* p)
 {
     return int64_t(p->width) * p->height > int64_t(1920) * 1080;
@@ -446,7 +445,8 @@ public:
         track_.turns = turnsOf(video);
         track_.hap = stream->hap;
         track_.pictureBytes = int64_t(track_.width) * track_.height * 3 / 2 * (stream->deep ? 2 : 1);
-        if (device_ && stream->hap == HapCodec::None && !stream->deep && !((track_.width | track_.height) & 1))
+        if (device_ && stream->hap == HapCodec::None && !stream->deep && !((track_.width | track_.height) & 1) &&
+            !worthHardware(parameters))
             gpu_ = GpuDecode::open(device_);
         indexKeyframes(*format, *stream);
         yuvToRgb_ = yuvToRgbRows(stream->matrix, stream->fullRange);

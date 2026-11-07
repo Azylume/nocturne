@@ -18,7 +18,7 @@ void bind(gpu::RenderPass& pass, uint32_t slot, const gpu::Texture* texture)
 
 } // namespace
 
-ClipEffectsPreview::ClipEffectsPreview(const gpu::Device& device) : device_(device), compiler_(device)
+ClipEffectsPreview::ClipEffectsPreview(const gpu::Device& device) : device_(device), constants_(device), compiler_(device)
 {
 }
 
@@ -55,7 +55,7 @@ bool ClipEffectsPreview::draw(const gpu::Queue& queue, const std::shared_ptr<con
     dt_ = lastSeconds_ < 0.0 ? 1.0 / 60.0 : std::clamp(seconds - lastSeconds_, 0.0, 0.25);
     lastSeconds_ = seconds;
     plan_->evaluate(seconds, beat, plan_->usesAudio() && audio ? audio->at(seconds) : AudioFrame{});
-    std::set<uint64_t> ids;
+    IdSet ids;
     for (const Effect* effect : effects)
         ids.insert(effect->id);
     sides_->keep({0}, ids);
@@ -179,7 +179,7 @@ void ClipEffectsPreview::encodePass(gpu::RenderPass& into, const CompiledPass& p
         params_.push_back(0.0f);
     into.setPipeline(pass.pipelines[size_t(BlendVariant::Normal)]);
     into.setBytes(0, &header, sizeof(header));
-    into.setBytes(1, params_.data(), params_.size() * sizeof(float));
+    constants_.set(into, 1, params_.data(), params_.size() * sizeof(float));
     into.draw(3);
 }
 

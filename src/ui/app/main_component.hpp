@@ -7,6 +7,7 @@
 #include "ui/app/look.hpp"
 #include "ui/app/machines_view.hpp"
 #include "ui/app/map_view.hpp"
+#include "ui/app/menu_bar.hpp"
 #include "ui/app/monitors.hpp"
 #include "ui/app/session.hpp"
 #include "ui/app/tooltips.hpp"
@@ -34,7 +35,11 @@ public:
 // The one window: transport bar on top, the other venues' alerts under it while there are any, then Perform (monitors
 // and audio on the left, the clip grid, three panes below it), Map or Machines. It fills the window with no page scroll. The bottom panes' height and whether the browser is
 // hidden are remembered.
-class MainComponent : public juce::Component, public juce::DragAndDropContainer, private Session::View {
+class MainComponent : public juce::Component,
+                      public juce::DragAndDropContainer,
+                      public juce::ApplicationCommandTarget,
+                      private juce::FocusChangeListener,
+                      private Session::View {
 public:
     // Without a settings file nothing is remembered.
     explicit MainComponent(Session& session, std::unique_ptr<juce::PropertiesFile> settings = {});
@@ -63,7 +68,18 @@ public:
 
     static std::unique_ptr<juce::PropertiesFile> defaultSettings();
 
+    // Called when what a command's name, enabled or ticked state shows has changed.
+    std::function<void()> onCommandsChanged;
+    // The File, Edit and View menu commands and their shortcuts; the buttons' own handlers do the work.
+    juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
+    void getAllCommands(juce::Array<juce::CommandID>& commands) override;
+    void getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) override;
+    bool perform(const InvocationInfo& info) override;
+
 private:
+    bool commandEnabled(Command id) const;
+    void refreshCommands();
+    void globalFocusChanged(juce::Component*) override { refreshCommands(); }
     void sessionChanged(int changes) override;
     bool clipKey(const juce::KeyPress& key);
 
@@ -84,6 +100,7 @@ private:
     Splitter splitter_;
     MapView map_;
     MachinesView machines_;
+    std::string commandState_;
     bool browserHidden_ = false;
     int bottomHeight_ = 0;
     int dragStartHeight_ = 0;
@@ -91,11 +108,28 @@ private:
 
 // The app's window around a MainComponent. When the system activates it, the keyboard focus goes to that
 // MainComponent, so its shortcuts work before anything in the window was clicked.
-class MainWindow : public juce::DocumentWindow {
+class MainWindow : public juce::DocumentWindow, public juce::ApplicationCommandTarget {
 public:
     MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible);
+    ~MainWindow() override;
     void focusGained(FocusChangeType cause) override;
     void closeButtonPressed() override;
+    void resized() override;
+
+    // The Close, Full Screen, Minimize and Zoom commands; the rest go on to the MainComponent.
+    juce::ApplicationCommandTarget* getNextCommandTarget() override;
+    void getAllCommands(juce::Array<juce::CommandID>& commands) override;
+    void getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) override;
+    bool perform(const InvocationInfo& info) override;
+    juce::ApplicationCommandManager& commands() { return commands_; }
+    MenuBar& menu() { return *menu_; }
+
+private:
+    virtual bool inFullScreen() const { return isFullScreen(); }
+
+    juce::ApplicationCommandManager commands_;
+    std::unique_ptr<MenuBar> menu_;
+    bool fullScreen_ = false;
 };
 
 } // namespace azl::ui

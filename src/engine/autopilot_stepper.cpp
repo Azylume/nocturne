@@ -286,7 +286,7 @@ void AutopilotStepper::stepColumns(const Composition& composition, double beat)
     pilot.next = pickColumn(composition, pilot);
 }
 
-void AutopilotStepper::keepLayers(const std::set<uint64_t>& ids)
+void AutopilotStepper::keepLayers(const IdSet& ids)
 {
     std::erase_if(pilots_, [&](const auto& pilot) { return !ids.contains(pilot.first); });
     std::erase_if(columnCues_, [&](const auto& cued) { return !ids.contains(cued.first); });

@@ -191,25 +191,73 @@ ChainCompiler::ChainCompiler(const gpu::Device& device, std::filesystem::path ca
           run();
       })
 {
-    prepareIsf(cachePath_.empty() ? std::filesystem::path() : cachePath_.parent_path().parent_path() / "isf");
+    prepareIsf(isfCacheDir());
+}
+
+std::filesystem::path ChainCompiler::isfCacheDir() const
+{
+    return cachePath_.empty() ? std::filesystem::path() : cachePath_.parent_path().parent_path() / "isf";
 }
 
 // An archive that does not load, as after a kill mid-write or an OS update, starts empty.
 void ChainCompiler::openArchive()
 {
     if (cachePath_.empty())
-        return;
+        return finishPrewarm();
     if (!archivesWork(device_.name())) {
         std::fprintf(stderr, "nocturne: no pipeline cache on %s, which cannot keep one\n", device_.name().c_str());
-        return;
+        return finishPrewarm();
     }
     std::error_code ec;
     const bool exists = std::filesystem::exists(cachePath_, ec);
     archive_ = device_.openPipelineCache(exists ? cachePath_.string() : "");
+    bool loaded = exists && archive_;
     if (!archive_ && exists) {
         std::fprintf(stderr, "nocturne: pipeline cache %s not loaded, starting empty\n", cachePath_.string().c_str());
         archive_ = device_.openPipelineCache("");
     }
+    if (archive_ && !loaded)
+        startPrewarm();
+    else
+        finishPrewarm();
+}
+
+void ChainCompiler::finishPrewarm()
+{
+    std::lock_guard lock(mutex_);
+    prewarmed_ = true;
+    changed_.notify_all();
+}
+
+// Compile thread only: queues a single-effect layer chain for every registered effect, behind anything a show wants.
+void ChainCompiler::startPrewarm()
+{
+    prepareIsf(isfCacheDir());
+    std::lock_guard lock(mutex_);
+    for (const std::string& type : effectTypes())
+        prewarm_.push_back({type + ",", {type}, ChainKind::Layer, false});
+}
+
+// Compile thread only. A failure is counted and ignored; the show compiles the chain itself if it needs it.
+void ChainCompiler::prewarmOne()
+{
+    Job job;
+    {
+        std::lock_guard lock(mutex_);
+        job = std::move(prewarm_.front());
+        prewarm_.pop_front();
+    }
+    if (!compile(job, true))
+        ++prewarmFailed_;
+    {
+        std::lock_guard lock(mutex_);
+        if (!prewarm_.empty())
+            return;
+    }
+    saveArchive();
+    if (prewarmFailed_)
+        std::fprintf(stderr, "nocturne: %llu effects could not be pre-warmed\n", (unsigned long long)prewarmFailed_);
+    finishPrewarm();
 }
 
 void ChainCompiler::reportFirstIdle()
@@ -343,6 +391,12 @@ void ChainCompiler::hold(bool held)
     changed_.notify_all();
 }
 
+void ChainCompiler::waitPrewarmed()
+{
+    std::unique_lock lock(mutex_);
+    changed_.wait(lock, [this] { return prewarmed_; });
+}
+
 void ChainCompiler::waitIdle()
 {
     std::unique_lock lock(mutex_);
@@ -360,11 +414,17 @@ void ChainCompiler::run()
 {
     std::unique_lock lock(mutex_);
     while (true) {
-        changed_.wait(lock, [this] { return stopping_ || (!held_ && !queue_.empty()); });
+        changed_.wait(lock, [this] { return stopping_ || (!held_ && (!queue_.empty() || !prewarm_.empty())); });
         if (stopping_) {
             lock.unlock();
             saveArchive();
             return;
+        }
+        if (queue_.empty()) {
+            lock.unlock();
+            prewarmOne();
+            lock.lock();
+            continue;
         }
         Job job = std::move(queue_.front());
         queue_.pop_front();
@@ -392,7 +452,7 @@ void ChainCompiler::run()
     }
 }
 
-std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
+std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job, bool quiet)
 {
     AZL_ZONE("compile chain");
     gpu::Scope scope;
@@ -427,7 +487,8 @@ std::shared_ptr<const CompiledChain> ChainCompiler::compile(const Job& job)
             chain->text = compilePasses(SourceKind::Text, effects);
     } catch (const std::exception& e) {
         chain.reset();
-        fail(job.types, e.what());
+        if (!quiet)
+            fail(job.types, e.what());
     }
     return chain;
 }

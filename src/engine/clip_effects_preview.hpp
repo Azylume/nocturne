@@ -5,7 +5,7 @@
 #include "engine/chain_compiler.hpp"
 #include "engine/modulation_plan.hpp"
 #include "engine/side_targets.hpp"
-#include "gpu/gpu.hpp"
+#include "gpu/constants_ring.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -52,6 +52,7 @@ private:
                     const gpu::Texture& input, float seconds);
 
     gpu::Device device_;
+    gpu::ConstantsRing constants_;
     ChainCompiler compiler_;
     uint32_t width_ = 0;
     uint32_t height_ = 0;

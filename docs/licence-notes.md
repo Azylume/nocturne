@@ -54,6 +54,9 @@ Curated set (vendored in `third_party/isf/` with both licence files):
 | Radial | transition | Xaychru, ported by gre (gl-transitions) | MIT |
 | Random Squares | transition | gre (gl-transitions) | MIT |
 
+Also in `third_party/isf/nocturne/`: Nocturne's own shaders (Grain, Classic Auto Mask, Blank), written for this repository
+as ports of its native effects, AGPL-3.0-or-later; nothing in them comes from another project.
+
 Every other shader in ISF-Files 395072d, and why it is not vendored. The first groups are licence exclusions; the last three are licence-compatible but not picked.
 
 - non-commercial ShareAlike (CC BY-NC-SA) (1): Boxinator.

@@ -456,6 +456,38 @@ TEST_CASE("the frame budget guard draws layers at half resolution while frames o
     CHECK(difference() == 0.0);
 }
 
+TEST_CASE("a layer that mixes its clips before its own chain keeps its picture's place when the guard halves it")
+{
+    Grid guarded;
+    Grid reference;
+    for (Grid* grid : {&guarded, &reference}) {
+        REQUIRE(edit(grid->client, azl::AddEffect{1, std::nullopt, {0, "colorize", {{"hue", 0.3}}}})["op"] ==
+                "addEffect");
+        REQUIRE(edit(grid->client, azl::AddEffect{1, std::nullopt, {0, "trails", {{"feedback", 0.0}}}})["op"] ==
+                "addEffect");
+        for (uint64_t column : {1, 2})
+            REQUIRE(edit(grid->client, azl::AddEffect{1, std::nullopt, {0, "colorize", {{"mix", 0.0}}}, column})
+                        ["op"] == "addEffect");
+        REQUIRE(edit(grid->client, azl::SetQuantise{0})["op"] == "setQuantise");
+        transition(grid->client, TransitionMode::Alpha, 2.0);
+        triggerColumn(grid->client, 1);
+        grid->harness.step(30);
+    }
+    guarded.harness.engine().setFrameBudget(1e-6);
+    for (Grid* grid : {&guarded, &reference}) {
+        grid->harness.step(120);
+        triggerColumn(grid->client, 2);
+        grid->harness.step(30);
+    }
+    CHECK(guarded.harness.stats().budgetLevel >= 1);
+    const azl::Image a = guarded.harness.readScreen();
+    const azl::Image b = reference.harness.readScreen();
+    double sum = 0.0;
+    for (size_t i = 0; i < a.rgba.size(); ++i)
+        sum += std::abs(int(a.rgba[i]) - int(b.rgba[i]));
+    CHECK(sum / double(a.rgba.size()) < 2.0);
+}
+
 TEST_CASE("the frame guard setting turns the guard off, undoes, and is saved only when off")
 {
     Grid grid;

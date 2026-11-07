@@ -70,6 +70,30 @@ Message frameMessage(const std::string& display, uint64_t screen, uint64_t frame
 // Null when the message is no frame with a payload.
 std::optional<Packet> packetOf(const Message& message);
 
+// Holds one output to its share whatever its encoder's rate control does: the bits it produced are a debt that drains
+// at the share's rate, and while the debt is over kBurstSeconds of the share pictures are dropped before they are
+// encoded, the next one as a key frame. Not thread-safe; the service thread only.
+class RateGuard {
+public:
+    explicit RateGuard(uint32_t kbps) : bitsPerSecond_(double(kbps) * 1000.0) {}
+
+    // Whether to encode the picture taken at `seconds` (any steady clock). False drops it and asks for a key frame.
+    bool admit(double seconds);
+    // The next admitted picture must be a key frame.
+    bool keyWanted() const { return keyWanted_; }
+    // The packet an admitted picture produced.
+    void sent(const Packet& packet);
+
+    static constexpr double kBurstSeconds = 0.5;
+
+private:
+    double bitsPerSecond_;
+    double debtBits_ = 0.0;
+    double last_ = 0.0;
+    bool started_ = false;
+    bool keyWanted_ = false;
+};
+
 // Decides per viewer which frames a slow link sends: once a frame of an output is dropped (the link is `congested`),
 // that output's later frames are dropped too until its next key frame, which the decoder needs to go on.
 // Thread-safe.

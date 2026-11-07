@@ -20,12 +20,12 @@ Apple's clang has no libFuzzer, so the harnesses build with Homebrew LLVM (`brew
 build folder, which holds the generated sources they need:
 
 ```sh
-cmake -S . -B build
+cmake --preset dev
 fuzz/build.sh build            # harnesses in build/fuzz
 ```
 
-or `cmake -S . -B build -DNOCTURNE_FUZZ=ON && cmake --build build --target fuzz`. `NOCTURNE_FUZZ_CXX` names another
-clang++, `NOCTURNE_FUZZ_JOBS` the parallel compiles (3).
+or `cmake --preset fuzz && cmake --build --preset fuzz` (harnesses in `build-fuzz/fuzz`). `NOCTURNE_FUZZ_CXX` names
+another clang++, `NOCTURNE_FUZZ_JOBS` the parallel compiles (3).
 
 ## Run
 
@@ -44,4 +44,5 @@ mkdir -p build/fuzz/corpus/composition && cp examples/first-show/show.json build
 size in front) and blocks of `snappyCompress` than from an empty folder.
 
 A crash leaves `crash-<sha1>` in the working folder with the input; run the harness on that file alone to reproduce it.
-Fuzzing is not part of CI.
+`.github/workflows/nightly-sanitize.yml` builds and runs every harness for 90 s each, seeded as above, once a night; a
+crash input comes back as the `fuzz-crashes` artifact. Pull requests do not fuzz.

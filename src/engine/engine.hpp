@@ -10,10 +10,12 @@
 #include "engine/chain_compiler.hpp"
 #include "engine/frame_guard.hpp"
 #include "engine/frame_ring.hpp"
+#include "gpu/constants_ring.hpp"
 #include "engine/frame_trace.hpp"
 #include "engine/fsr_upscaler.hpp"
 #include "engine/modulation_plan.hpp"
 #include "engine/gpu_profile.hpp"
+#include "engine/id_set.hpp"
 #include "engine/playhead.hpp"
 #include "engine/side_targets.hpp"
 #include "engine/static_bake.hpp"
@@ -235,7 +237,8 @@ public:
     // Any thread: the macros and modulators as of the last rendered frame.
     std::shared_ptr<const ModulationPlan> modulation() const;
 
-    // Render thread only. The frame is published once the GPU has finished it.
+    // Render thread only. The frame is published once the GPU has finished it. A frame that throws is dropped, never
+    // published, and logged at most once a second; the last good frame stays on screen.
     void renderFrame(double seconds);
     void waitUntilIdle();
 
@@ -460,7 +463,7 @@ private:
         std::string label{};
         // Layers published only for preview watches, whether the pass being encoded is drawn only for them, those
         // passes and their timestamps.
-        std::set<uint64_t> previewOnly{};
+        const IdSet* previewOnly = nullptr;
         bool preview = false;
         uint64_t previewPasses = 0;
         std::shared_ptr<GpuProfile::Frame> previewTimes{};
@@ -501,7 +504,7 @@ private:
                              std::vector<std::shared_ptr<const CompiledChain>>& chains, float master);
     // `pictures` are the layers some slice reads.
     std::vector<Draw> collect(const std::vector<Layer>& layers, const Layer* group, bool solos,
-                              const std::set<uint64_t>& pictures, const std::shared_ptr<const Composition>& document,
+                              const IdSet& pictures, const std::shared_ptr<const Composition>& document,
                               std::vector<std::shared_ptr<const CompiledChain>>& chains);
     void encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                      std::vector<Draw>& draws);
@@ -549,9 +552,13 @@ private:
     const gpu::Texture* poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size);
     void traceDone(FrameTrace::Render& mark, const gpu::Completion& done) const;
     void finished(std::shared_ptr<Frame> frame, bool ok);
+    void drawFrame(double seconds);
+    void reportFrameFailure(const char* what);
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
 
     gpu::Device device_;
+    // Render thread only.
+    mutable gpu::ConstantsRing constants_;
     EngineConfig config_;
     gpu::Queue queue_;
     profile::GpuTimeline gpu_;
@@ -569,6 +576,8 @@ private:
     // Render thread only: seconds since the previous rendered frame, for effects that fade by elapsed time.
     double frameDt_ = 1.0 / 60.0;
     double lastFrameSeconds_ = -1.0;
+    // Render thread only.
+    std::chrono::steady_clock::time_point lastFailureLog_{};
     // Render thread only: what the decoders were last asked to keep.
     std::set<ClipKey> playing_;
     std::vector<Preload> preloads_;
@@ -626,6 +635,13 @@ private:
     mutable std::mutex compositionMutex_;
     std::shared_ptr<const Composition> composition_ = std::make_shared<const Composition>();
     std::set<uint64_t> previewPictures_;
+    // Render thread only: rebuilt every frame in place, so they stop allocating once warm.
+    IdSet ids_;
+    IdSet sided_;
+    IdSet chainEffects_;
+    IdSet published_;
+    IdSet previewOnly_;
+    std::vector<Preload> preloadScratch_;
     std::shared_ptr<FrameTap> tap_;
     std::shared_ptr<ModulationPlan> modulationShared_ = std::make_shared<ModulationPlan>(Composition{});
     // Render thread only: the plan of the frame being rendered and the parameter values of the pass being encoded.
