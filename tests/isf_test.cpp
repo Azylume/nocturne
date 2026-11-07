@@ -170,6 +170,19 @@ TEST_CASE("an ISF shader read from the cache is the same GLSL as one translated,
     std::filesystem::remove_all(dir);
 }
 
+TEST_CASE("only a built-in shader's NOCTURNE header names its effect type and category")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": ""},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+    const azl::EffectDef builtin = azl::isfEffect(parsed({"Test Native", text, false}));
+    CHECK(builtin.type == "grain");
+    CHECK(builtin.category.empty());
+    const azl::EffectDef user = azl::isfEffect(parsed({"Test Native", text, true}));
+    CHECK(user.type == "userTestNative");
+    CHECK(user.category == "User");
+}
+
 TEST_CASE("ISF inputs become parameters that colour pickers, macros and modulators work on")
 {
     azl::EffectDef def = azl::isfEffect(parsed(kTint));

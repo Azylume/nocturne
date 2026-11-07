@@ -77,8 +77,8 @@ bool expectError(const azl::Edit& edit, azl::Composition composition)
 TEST_CASE("generator clips validate, keep their generator first and round-trip; files without them are unchanged")
 {
     CHECK(azl::generatorTypes() ==
-          std::vector<std::string>{"blank", "solid", "strobe", "lines", "checker", "rings", "gradient", "noise", "isfGraphPaper",
-                                   "isfSineWarpGradient", "isfSpiral", "isfStripes", "isfWorleyCells"});
+          std::vector<std::string>{"solid", "strobe", "lines", "checker", "rings", "gradient", "noise", "blank",
+                                   "isfGraphPaper", "isfSineWarpGradient", "isfSpiral", "isfStripes", "isfWorleyCells"});
     const std::vector<std::string> effects = azl::effectTypes();
     for (const std::string& type : azl::generatorTypes())
         CHECK(std::find(effects.begin(), effects.end(), type) == effects.end());

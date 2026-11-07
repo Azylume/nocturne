@@ -867,14 +867,6 @@ EffectDef thermal()
 )");
 }
 
-// White specks on black, denser where the picture is brighter, drawn anew 24 times a second.
-EffectDef grain()
-{
-    return styleEffect("grain", StageKind::Pointwise, {}, R"(
-    return vec4(styleGrain(px, styleLuma(c.rgb), h.time), c.a);
-)");
-}
-
 // Random letters on black in a grid of `rows` rows where the picture is lit, as bright as it is there, changing six
 // times a second.
 EffectDef letters()
@@ -1516,32 +1508,6 @@ EffectDef classicTwitch()
     return def;
 }
 
-// The picture's alpha becomes a mask from its colour, so black turns transparent: Rec. 601 luma, or for Red, Green or
-// Blue the sum of the other two channels, times a gain of 2 x contrast up to 0.5 and 1 + 10 x (contrast - 0.5) above;
-// inverted, the gain applies to one minus that. The colour stays as it is.
-EffectDef classicAutoMask()
-{
-    EffectDef def{"classicAutoMask",
-            StageKind::Pointwise,
-            {classicChoice("channel", "Channel", 0.0, {"Luminance", "Red", "Green", "Blue"}),
-             in(units::plain, classic("contrast", "Contrast", 0.5)),
-             classicFlag("invert", "Invert")},
-            false,
-            R"(
-    int channel = int(pb[p + 0] + 0.5);
-    float m = channel == 0 ? dot(c.rgb, vec3(0.299, 0.587, 0.114))
-            : channel == 1 ? c.g + c.b : channel == 2 ? c.r + c.b : c.r + c.g;
-    float gain = pb[p + 1] <= 0.5 ? 2.0 * pb[p + 1] : 1.0 + 10.0 * (pb[p + 1] - 0.5);
-    return vec4(c.rgb, c.a * saturate((pb[p + 2] > 0.5 ? 1.0 - m : m) * gain));
-)",
-            {},
-            {},
-            "Classic"};
-    // It changes only alpha.
-    def.keepsBlack = [](const float*) { return true; };
-    return def;
-}
-
 // Measured against the reference: adds brightness to the colour, then scales it about black by 1 + contrast below 0
 // and 1 + 5 x contrast above.
 EffectDef classicBrightnessContrast()
@@ -1892,14 +1858,6 @@ std::vector<ParamDef> joined(std::vector<ParamDef> a, const std::vector<ParamDef
     return a;
 }
 
-// A step that shows nothing.
-EffectDef blank()
-{
-    return generator("blank", {}, R"(
-    return vec4(0.0);
-)");
-}
-
 EffectDef solid()
 {
     return generator("solid", colour(), R"(
@@ -2088,15 +2046,15 @@ Registry& registry()
 {
     static Registry effects{.effects = withIsf(withVariants(
         {withMix(transform()), withMix(colorize()), withMix(edgeDetection()), withMix(stripper()),
-         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()), withMix(grain()),
+         withMix(trails()), withMix(reveal()), withMix(slicer()), withMix(thermal()),
          withMix(letters()), withMix(dots()), withMix(duotone()), withMix(outline()), withMix(classicStripper()),
          withMix(classicColorize()),
          withMix(classicShiftRgb()), withMix(classicMirror()), withMix(classicKaleidoscope()), withMix(classicTwitch()),
-         withMix(classicAutoMask()), withMix(classicBrightnessContrast()), withMix(classicLevels()),
+         withMix(classicBrightnessContrast()), withMix(classicLevels()),
          withMix(classicThreshold()), withMix(classicHueRotate()), withMix(classicMirrorQuad()),
          withMix(classicPolarKaleido()), withMix(classicTrails()), withMix(classicStrobe()),
          withMix(classicShiftGlitch()), withMix(classicEdgeDetection()),
-         withMix(blank()), withMix(solid()), withMix(strobe()), withMix(lines()),
+         withMix(solid()), withMix(strobe()), withMix(lines()),
          withMix(checker()), withMix(rings()), withMix(gradient()), withMix(noise())}))};
     return effects;
 }

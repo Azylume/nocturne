@@ -17,6 +17,10 @@ Curated ISF shaders, built into the engine. CMake embeds every `third_party/isf/
 - A new transition needs a new `TransitionMode` (`src/document/composition.hpp`) and a file-format name: that changes
   the composition format, so ask first.
 
+- `nocturne/` holds Nocturne's own shaders, ported from native effects (issue #34, inventory in
+  `docs/isf-migration.md`), AGPL-3.0-or-later and exempt from the vendoring rules above. Each header's `NOCTURNE`
+  object gives the native effect's type and category; keep its parameter names, ranges and defaults, and its golden.
+
 ## Fusion: check it, do not assume it
 
 An effect fuses into the pass before it (ADR 0009) only when every read of `inputImage` is one of
