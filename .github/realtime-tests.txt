@@ -1,54 +1,83 @@
-# Test cases CI skips: they need a real GPU, real displays, a hardware video encoder, real-time scheduling or engine
-# processes started under the supervisor, which GitHub's macOS runners do not provide. They run in the full local
-# suite (`ctest`) and on the show machine. tools/ci-tests.sh reads this list; a new entry needs a reviewer's OK.
-*--composition starts the engine on the file*
-*a disconnected display parks its output*
+# Test cases CI skips, each with its reason on the line above. They run in the full local suite (`ctest`) and on the
+# show machine. tools/ci-tests.sh reads this list; a new entry needs a reviewer's OK.
+# An entry came off the list when it needs no hardware and passed 10 of 10 runs idle and 10 of 10 beside 4 busy CPU
+# loops (issue #31). Entries marked "not moved" pass but sit in files of a shard that is busier than engine-2 or the
+# UI shard (about 12 min against 5 and 8) or in engine-0, which gets no additions while it hangs (issue #75).
+# Mounts a disk image with hdiutil to fill it.
 *a full disk stops the recording cleanly*
+# Asserts at least 55 fps, no render gap over 50 ms and a reply under 250 ms while clients hang or crash.
 *a hung or crashed UI leaves rendering*
+# Wall-clock bound: the layer must play on within a fraction of a second while a read is stuck.
 *a layer whose decoder gets stuck in a read*
+# A live recording at 60 fps that must not drop a frame.
 *a live recording rolls over without a dropped frame*
+# Beat-clock offsets between two nodes over real sockets and sleeps.
 *a node follows the main engine's beat clock*
+# Live render: the other outputs must never drop a frame.
 *a projector power-cycled five times*
-*a restart keeps the show file the saved state belongs to*
+# Live render from the first frame: no missed frames though a first read is slow.
 *a show held at start-up misses no frames*
+# Live render rates over 1.5 s: render and two outputs above 50 fps while the third stays below 25.
 *a slowed output does not affect the other outputs*
-*after a restart*screens find their displays by identity*
+# Starts the nocturne-desk process, kills it and checks the longest render gap.
 *desk: killing the desk process leaves the engine's frames running*
-*displays: a projector back under a new id*
-*displays: macOS mirroring displays*
+# Fails 2 of 10 runs beside busy CPUs: the beat clock's worst bar offset exceeds its bound (djlink_test.cpp).
 *djlink: the simulator's scenario drives the beat clock*
+# 60 s UI soak of previews and column changes.
 *for a minute of selections*
+# Wall-clock playhead starvation with a throttled decoder, 49 s per run.
 *on a slow decoder*
+# Every output must show each rendered frame while display callbacks run late.
 *once locked*every output shows each rendered frame*
+# Live recording must not lower the render rate.
 *recording never stalls rendering*
+# A Director that stops reading must not slow the frames or the audio analysis.
 *return audio: a Director that stops reading*
+# Live render rate with a second output showing a group.
 *the frame guard still halves a previewed layer*
+# Not moved: machine_test.cpp is in engine-0.
 *the machine status names each output's state*
+# Live render: skipped frames and misses bounded while the preview is on.
 *the selected clip's preview never costs the show*
+# GPU overload: the render rate must degrade evenly.
 *under GPU overload the render rate degrades evenly*
+# Live frames while a viewer watches or stops reading.
 *watching the return video*
+# Late wakes of timed waits under 0.5 ms median and 1.5 ms at the 90th percentile.
 *with --realtime-frames*
+# Not moved: supervisor_test.cpp is in engine-1.
 *Autopilot resumes on the clip it had stepped to*
+# Starts the engine under the supervisor and crashes it.
 *a clip that crashed the engine while opening*
+# Starts the engine under the supervisor and waits out its 2 s hang deadline.
 *a hung engine is killed after 2 s without a frame*
+# Starts the engine under the supervisor, kills it and waits for the restart.
 *a killed engine restarts and resumes the same clip*
+# Not moved: supervisor_test.cpp is in engine-1.
 *a restart asked for over the protocol comes back with the same show*
+# Starts the engine under the supervisor and crashes a thread of it.
 *crashes on another thread while a clip opens*
+# Not moved: venue_alerts_test.cpp is in engine-1.
 *ctl's venue lines*
-*parity: a trigger on an Autopiloted layer shows manual*
+# Not moved: supervisor_test.cpp is in engine-1.
 *safe mode asked for over the protocol is entered*
-*the Machines tab watches the machine only while it is visible*
+# Not moved: the case in machine_test.cpp is in engine-0, the one in supervisor_test.cpp in engine-1.
 *the Show lock refuses restart and safe mode*
+# Not moved: supervisor_test.cpp is in engine-1.
 *the audio input picked at runtime is open again*
+# Not moved: supervisor_test.cpp is in engine-1.
 *the recording settings set at runtime are kept*
+# A GPU timing report of every built-in ISF shader, not a check.
 *GPU time per built-in ISF shader at 1080p*
+# A GPU timing report of every generator, not a check.
 *GPU time per generator at 1080p*
-*displays per machine: the gig show's screen stays on the Dell*
-*djlink: the receiver hears a loopback feed*
+# Two live engines must agree on the beat within 1 ms.
 *two live engines over loopback agree on the beat*
+# Not moved: preview_test.cpp is in engine-1.
 *without counter sampling the preview timer falls back*
-*map arrangement: a hidden screen's output keeps presenting*
+# Live render: skipped frames and misses must not change during a recompile.
 *an effect edit on the selected clip recompiles its preview off the render thread*
+# Not moved: preview_test.cpp is in engine-1.
 *clip previews turn on and off live*
 # A GPU timing report of three outputs under overload (issue #17), not a check: for the show machine.
 *under GPU overload: frames in flight on the GPU*
