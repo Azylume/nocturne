@@ -4,6 +4,8 @@
 
 #include <chrono>
 #include <cstdio>
+#include <set>
+#include <vector>
 #include <functional>
 
 namespace {
@@ -248,4 +250,60 @@ TEST_CASE("menu: Undo and Redo name the step, and Settings is in the application
     CHECK(main.transport().settings() != nullptr);
 
     dump(window);
+}
+
+TEST_CASE("menu: a File item picked as the system menu does it runs its command and nothing else")
+{
+    using namespace azl::ui;
+    azl::EngineHarness harness{{.width = 320, .height = 180}};
+    azl::WebSocketServer server(harness.document(), 0);
+    Session session("127.0.0.1", server.port());
+    MainWindow window(session, {}, false);
+    auto& main = *static_cast<MainComponent*>(window.getContentComponent());
+    REQUIRE(runUntil(harness, [&] { return session.client().connected(); }));
+    std::vector<juce::String> links;
+    window.menu().openLink = [&](const juce::URL& url) { links.push_back(url.toString(false)); };
+
+    // The system runs the item's command, then tells the model the item's id.
+    const auto pick = [&](const juce::String& menu, int id) {
+        const juce::StringArray names = window.menu().getMenuBarNames();
+        const int index = names.indexOf(menu);
+        REQUIRE(menuItem(window, menu, id).isEnabled);
+        window.commands().invokeDirectly(Command(id), true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        window.menu().menuItemSelected(id, index);
+    };
+
+    pick("File", CmdOpen);
+    CHECK(main.transport().browser() != nullptr);
+    pick("File", CmdSaveAs);
+    CHECK(main.transport().browser() != nullptr);
+    pick("File", CmdSave);
+    CHECK(main.transport().browser() != nullptr);
+    CHECK(menuItem(window, "File", CmdClose).isEnabled);
+    CHECK(links.empty());
+
+    pick("View", CmdViewMap);
+    CHECK(main.map().isVisible());
+    CHECK(links.empty());
+
+    window.menu().menuItemSelected(1002, 4);
+    CHECK(links.size() == 1);
+}
+
+TEST_CASE("menu: no two items of the menu bar share an id")
+{
+    using namespace azl::ui;
+    azl::EngineHarness harness{{.width = 320, .height = 180}};
+    azl::WebSocketServer server(harness.document(), 0);
+    Session session("127.0.0.1", server.port());
+    MainWindow window(session, {}, false);
+    std::set<int> ids;
+    const juce::StringArray names = window.menu().getMenuBarNames();
+    for (int i = 0; i < names.size(); ++i) {
+        juce::PopupMenu popup = window.menu().getMenuForIndex(i, names[i]);
+        for (juce::PopupMenu::MenuItemIterator it(popup); it.next();)
+            if (!it.getItem().isSeparator)
+                CHECK(ids.insert(it.getItem().itemID).second);
+    }
 }

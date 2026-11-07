@@ -6,9 +6,10 @@ namespace azl::ui {
 
 namespace {
 
-constexpr int kShowWindow = 1;
-constexpr int kHelpDocs = 2;
-constexpr int kReportIssue = 3;
+// JUCE also calls menuItemSelected for a command item with the command id, so these stay clear of the Command values.
+constexpr int kShowWindow = 1001;
+constexpr int kHelpDocs = 1002;
+constexpr int kReportIssue = 1003;
 const char* const kDocsUrl = "https://github.com/Azylume/nocturne/tree/main/docs";
 const char* const kIssuesUrl = "https://github.com/Azylume/nocturne/issues/new";
 
@@ -132,9 +133,9 @@ void MenuBar::menuItemSelected(int itemId, int)
     if (itemId == kShowWindow)
         window_.toFront(true);
     else if (itemId == kHelpDocs)
-        juce::URL(kDocsUrl).launchInDefaultBrowser();
+        openLink(juce::URL(kDocsUrl));
     else if (itemId == kReportIssue)
-        juce::URL(kIssuesUrl).launchInDefaultBrowser();
+        openLink(juce::URL(kIssuesUrl));
 }
 
 } // namespace azl::ui

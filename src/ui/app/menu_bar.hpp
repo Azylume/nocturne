@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+
 namespace azl::ui {
 
 enum Command : juce::CommandID {
@@ -37,6 +39,9 @@ class MenuBar : public juce::MenuBarModel {
 public:
     MenuBar(juce::ApplicationCommandManager& commands, juce::TopLevelWindow& window);
     ~MenuBar() override;
+
+    // What the Help items open; the default browser unless a test replaces it.
+    std::function<void(const juce::URL&)> openLink = [](const juce::URL& url) { url.launchInDefaultBrowser(); };
 
     // The extra items of the application menu (Settings), after the system's About.
     juce::PopupMenu appMenu() const;
