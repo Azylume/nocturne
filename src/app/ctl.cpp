@@ -131,8 +131,8 @@ commands:
   node status|promote|demote|adopt
                          Node Sync status; promote makes a node the main engine, demote makes a main engine a node,
                          adopt makes a node that kept its show take the main engine's empty composition after all
-  machine                the engine machine's health, as the UI's Machines tab shows it: render fps, GPU ms, frame
-                         guard, CPU speed limit and temperature, version, next Cue, every output's state, audio, clock
+  machine                the engine machine's health, as the UI's Machines tab shows it: render fps, GPU ms, GPU errors,
+                         frame guard, CPU speed limit and temperature, version, next Cue, every output's state, audio, clock
   machine testcard on|off           the test card on every screen
   machine identify [SECONDS]        every output shows its screen's name and display large (default 3 s)
   machine unmirror                  end mirroring between displays that carry different screens now
