@@ -280,6 +280,17 @@ TransitionSet& transitionSet()
     return set;
 }
 
+void applyNativeIdentity(const json& meta, IsfShader& shader)
+{
+    const auto it = meta.find("NOCTURNE");
+    if (shader.user || shader.kind == IsfKind::Transition || it == meta.end() || !it->is_object())
+        return;
+    if (const std::string type = text(*it, "TYPE"); !type.empty())
+        shader.type = type;
+    if (it->contains("CATEGORY"))
+        shader.category = text(*it, "CATEGORY");
+}
+
 void checkSupported(const json& meta)
 {
     if (meta.contains("PASSES") && meta["PASSES"].is_array() &&
@@ -332,6 +343,7 @@ std::variant<IsfShader, std::string> parse(const IsfSource& source)
                                                                                            : json::array();
     IsfShader shader{.name = source.name, .user = source.user, .kind = kindOf(inputs), .glsl = std::move(header.glsl)};
     shader.type = typeOf(shader);
+    applyNativeIdentity(header.meta, shader);
     if (shader.type.empty())
         return std::string("the file name has no letters or digits");
     try {
@@ -369,7 +381,7 @@ EffectDef isfEffect(const IsfShader& shader)
 {
     const bool pointwise = shader.pointwise || shader.kind == IsfKind::Generator;
     EffectDef def{shader.type, pointwise ? StageKind::Pointwise : StageKind::Neighbourhood, shader.params, false, ""};
-    def.category = shader.user ? "User" : "ISF";
+    def.category = shader.category.value_or(shader.user ? "User" : "ISF");
     def.label = shader.name;
     def.generator = shader.kind == IsfKind::Generator;
     return def;
