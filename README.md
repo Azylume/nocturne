@@ -100,13 +100,16 @@ build/nocturne --windowed        # the engine
 open "build/Nocturne UI.app"     # the UI
 ```
 
-The repo ships no footage. To load the example show, save these free clips into `examples/first-show/` under the
-names shown. Then run `build/nocturne --windowed --composition examples/first-show/show.json`.
+The repo ships no footage. `tools/fetch-example-media.sh` downloads the free clips of the example show into
+`examples/first-show/` (needs `curl` and `ffmpeg`), then run
+`build/nocturne --windowed --composition examples/first-show/show.json`.
 
-- `serpentine.mp4`, `diagonale.mp4`, `opus3.mp4`: [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter),
-  [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale), [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (public domain).
+- `serpentine.mp4`, `diagonale.mp4`: [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter),
+  [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (no licence stated on the item).
+- `opus3.mp4`: [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (Public Domain Mark).
 - `moon.mp4`: [NASA SVS 14992](https://commons.wikimedia.org/wiki/File:Lunar_Near_and_Far_Side_Phases_(SVS14992_-_Waxing_4K).webm) (public domain).
-- `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4`: [Beeple VJ loops](https://www.beeple-crap.com/vjloops) (CC BY, credit "Beeple").
+- `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4`: [Beeple VJ loops](https://www.beeple-crap.com/vjloops)
+  (CC BY, credit "Beeple"). Download these by hand; see [`docs/getting-started.md`](docs/getting-started.md).
 
 First time? [`docs/getting-started.md`](docs/getting-started.md) walks from a fresh clone to a show playing on
 Autopilot. Coming from Resolume: [`docs/resolume-import.md`](docs/resolume-import.md). To run a Mac mini on its own
