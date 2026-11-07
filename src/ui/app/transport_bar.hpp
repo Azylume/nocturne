@@ -10,9 +10,12 @@
 
 namespace azl::ui {
 
-// The top bar: the venue it shows, mode tabs, Live or Prepare (with Send and Discard in Prepare), undo and redo, the composition file (name, unsaved dot, Save, Open),
-// tempo with nudge (held), halve, double, tap and resync, the beat, the Sections, quantisation, recording, Settings,
-// and the engine's status.
+// The top bar, in groups with a wider gap between them: the venue, the Perform, Map and Machines tabs and Live or
+// Prepare (with Send and Discard in Prepare); the tempo with nudge (held), halve, double, tap and resync, the beat and
+// quantisation; the Sections; recording, Previews and Settings; then the composition's name (with an unsaved dot) and the
+// engine's status. Save, Open, Undo and Redo are in the menus. The tempo, Sections and recording groups can be switched
+// off in Settings (Session::BarGroup) and take no space then; as the window narrows, the recording audio label,
+// Previews, the beat, the Section buttons (into one menu button) and the nudge give way in that order.
 class TransportBar : public juce::Component, private Session::View {
 public:
     explicit TransportBar(Session& session);
@@ -49,6 +52,13 @@ public:
     juce::TextButton& resyncButton() { return resync_; }
 
     juce::TextButton& sectionButton(int section) { return *sections_[size_t(section)]; }
+    // Stands for the five Section buttons when the bar is too narrow for them; a click opens their menu.
+    juce::TextButton& sectionMenuButton() { return sectionMenu_; }
+    Menu sectionMenu();
+    // Where the beat and the BPM are drawn, empty while not shown, and where the engine's status begins.
+    juce::Rectangle<int> beatsArea() const { return beats_; }
+    juce::Rectangle<int> bpmArea() const { return bpm_; }
+    int statusLeft() const { return status_.getX() - (doc_.isEmpty() ? 0 : doc_.getWidth()); }
     juce::TextButton& nudgeButton(bool faster) { return faster ? faster_ : slower_; }
     juce::TextButton& halveButton() { return halve_; }
     juce::TextButton& doubleButton() { return double_; }
@@ -76,19 +86,24 @@ private:
     void sessionChanged(int changes) override;
     void showRecordSpace(const RecordState& record);
     void showRecordAudio(const RecordState& record);
-    juce::Rectangle<int> statusArea() const;
+    struct Slot;
+    struct Plan;
+    int layout(const Plan& plan, bool place);
+    void paintBeats(juce::Graphics& g);
+    void paintStatus(juce::Graphics& g);
+    juce::Rectangle<int> statusArea() const { return status_; }
     void browse(bool saving);
 
     Session& session_;
-    juce::TextButton perform_{"Perform"}, map_{"Map"}, machines_{"Machines"}, undo_{"Undo"}, redo_{"Redo"}, tap_{"TAP"}, resync_{"Resync"};
-    juce::TextButton save_{"Save"}, open_{"Open"}, slower_{juce::String::fromUTF8("\xe2\x88\x92")}, faster_{"+"};
+    juce::TextButton perform_{"Perform"}, map_{"Map"}, machines_{"Machines"}, tap_{"TAP"}, resync_{"Resync"};
+    juce::TextButton sectionMenu_{"Sections"}, slower_{juce::String::fromUTF8("\xe2\x88\x92")}, faster_{"+"};
     juce::TextButton halve_{"/2"}, double_{juce::String::fromUTF8("\xc3\x97" "2")};
     std::array<std::unique_ptr<juce::TextButton>, 5> sections_;
     juce::TextButton record_{"REC"}, previews_{"Previews"}, settingsButton_{"Settings"};
     juce::TextButton prepare_{"Prepare"}, sendNow_{"Send"}, sendAtSwitch_{"At switch"}, discard_{"Discard"};
     juce::Label recordAudio_;
     juce::ComboBox quantise_;
-    juce::Rectangle<int> doc_, bpm_, beats_;
+    juce::Rectangle<int> doc_, bpm_, beats_, status_;
     std::unique_ptr<ShowBrowser> browser_;
     std::unique_ptr<SettingsModal> settings_;
     VenueButton venue_;

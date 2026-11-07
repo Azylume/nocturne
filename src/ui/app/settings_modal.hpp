@@ -17,13 +17,13 @@ namespace azl::ui {
 // show with a screen of the same name. Performance: the render scale, the frame guard's
 // profile and Protect transitions. Caches: the engine's cache bounds with what each holds now. Sections the engine
 // does not serve are left out (an older engine: Recording only). MIDI is this machine's: its controllers and their
-// mappings. It covers its parent; closing hides it.
+// mappings. Top bar is this machine's too: which of its groups show (Session::BarGroup). It covers its parent; closing hides it.
 class SettingsModal : public juce::Component,
                       private Session::View,
                       private juce::ListBoxModel,
                       private juce::Timer {
 public:
-    enum class Section { Recording, Audio, Displays, Performance, Caches, Midi };
+    enum class Section { Recording, Audio, Displays, Performance, Caches, Midi, TopBar };
 
     explicit SettingsModal(Session& session);
     ~SettingsModal() override;
@@ -76,6 +76,10 @@ public:
     juce::ToggleButton& bakeToggle() { return bake_; }
     juce::TextEditor& frameCacheField() { return frameCache_; }
     juce::TextEditor& preloadField() { return preload_; }
+    juce::ToggleButton& barToggle(Session::BarGroup group)
+    {
+        return group == Session::BarGroup::Transport ? barTransport_ : group == Session::BarGroup::Sections ? barSections_ : barRecording_;
+    }
     juce::TextEditor& previewsField() { return previews_; }
     // What a cache holds now, next to its bound: "frameCacheMB", "preloadMB" or "clipPreviews".
     juce::String useText(const std::string& field) const;
@@ -101,6 +105,8 @@ private:
     void refreshAudio();
     void refreshDisplays();
     void refreshSettings();
+    void refreshBar();
+    void paintTopBar(juce::Graphics& g);
     void updateVisibility();
     void send(const Message& fields);
     void sendNumbers();
@@ -124,7 +130,8 @@ private:
     juce::Label title_;
     MidiSettings midi_{session_};
     juce::TextButton recordingTab_{"Recording"}, audioTab_{"Audio input"}, displaysTab_{"Displays"},
-        performanceTab_{"Performance"}, cachesTab_{"Caches"}, midiTab_{"MIDI"};
+        performanceTab_{"Performance"}, cachesTab_{"Caches"}, midiTab_{"MIDI"}, topBarTab_{"Top bar"};
+    juce::ToggleButton barTransport_{"Tempo and beat"}, barSections_{"Sections"}, barRecording_{"Recording"};
     juce::TextButton choose_{juce::String::fromUTF8("Choose\xe2\x80\xa6")}, close_{"Close"};
     juce::ComboBox codec_, size_;
     juce::ToggleButton audio_{"Audio track"}, precise_{"Precise (10/16-bit)"};

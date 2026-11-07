@@ -13,7 +13,7 @@ const std::pair<uint32_t, uint32_t> kSizes[] = {{0, 0}, {3840, 2160}, {2560, 144
 constexpr int kLabelWidth = 112;
 using Section = SettingsModal::Section;
 constexpr Section kSections[] = {Section::Recording, Section::Audio, Section::Displays, Section::Performance,
-                                 Section::Caches, Section::Midi};
+                                 Section::Caches, Section::Midi, Section::TopBar};
 constexpr int kRow = 24;
 constexpr const char* kDisplaysNote =
     "Kept on this machine, not in the show: a screen of the same name in any show goes to the same display.";
@@ -151,10 +151,16 @@ SettingsModal::SettingsModal(Session& session) : session_(session), native_(sess
     for (juce::Component* c : std::initializer_list<juce::Component*>{
              &recordingTab_, &audioTab_, &displaysTab_, &performanceTab_, &cachesTab_, &choose_, &codec_, &size_,
              &audio_, &precise_, &reserveMB_, &reservePercent_, &maxMB_, &maxSeconds_, &maxTotal_, &gigGrace_, &list_,
-             &up_, &use_, &cancel_, &input_, &renderScale_, &profile_, &protect_, &bake_, &frameCache_, &preload_, &previews_, &midiTab_, &midi_})
+             &up_, &use_, &cancel_, &input_, &renderScale_, &profile_, &protect_, &bake_, &frameCache_, &preload_, &previews_, &midiTab_, &midi_, &topBarTab_, &barTransport_, &barSections_, &barRecording_})
         addChildComponent(c);
+    barTransport_.setTooltip("The BPM, the tempo buttons, the beat and the quantisation");
+    barSections_.setTooltip("The Intro, Build, Drop, Breakdown and Outro buttons");
+    barRecording_.setTooltip("The REC button and its audio label");
+    for (Session::BarGroup group : {Session::BarGroup::Transport, Session::BarGroup::Sections, Session::BarGroup::Recording})
+        barToggle(group).onClick = [this, group] { session_.setBarGroupShown(group, barToggle(group).getToggleState()); };
     session_.addView(this);
     refresh();
+    refreshBar();
     refreshAudio();
     refreshDisplays();
     refreshSettings();
@@ -168,6 +174,8 @@ SettingsModal::~SettingsModal()
 
 void SettingsModal::sessionChanged(int changes)
 {
+    if (changes & Session::Interface)
+        refreshBar();
     if (changes & (Session::Record | Session::Connection))
         refresh();
     if (changes & (Session::Settings | Session::Connection))
@@ -186,6 +194,22 @@ void SettingsModal::sessionChanged(int changes)
         if (section_ == Section::Audio)
             repaint();
     }
+}
+
+void SettingsModal::refreshBar()
+{
+    for (Session::BarGroup group : {Session::BarGroup::Transport, Session::BarGroup::Sections, Session::BarGroup::Recording})
+        barToggle(group).setToggleState(session_.barGroupShown(group), juce::dontSendNotification);
+}
+
+void SettingsModal::paintTopBar(juce::Graphics& g)
+{
+    const Palette& p = Look::palette();
+    g.setColour(p.muted);
+    g.setFont(Look::font());
+    const auto area = content();
+    drawText(g, "A hidden group takes no space. Kept on this machine.",
+             juce::Rectangle<int>(area.getX(), barRecording_.getBottom() + 12, area.getWidth(), kRow), juce::Justification::centredLeft);
 }
 
 void SettingsModal::refresh()
@@ -345,6 +369,7 @@ juce::TextButton& SettingsModal::sectionButton(Section section)
     case Section::Performance: return performanceTab_;
     case Section::Caches: return cachesTab_;
     case Section::Midi: return midiTab_;
+    case Section::TopBar: return topBarTab_;
     case Section::Recording: break;
     }
     return recordingTab_;
@@ -353,8 +378,8 @@ juce::TextButton& SettingsModal::sectionButton(Section section)
 bool SettingsModal::offers(Section section) const
 {
     static const char* const names[] = {"recording", "audio", "displays", "performance", "caches"};
-    // MIDI is this machine's, whatever the engine serves.
-    return section == Section::Recording || section == Section::Midi ||
+    // MIDI and the top bar are this machine's, whatever the engine serves.
+    return section == Section::Recording || section == Section::Midi || section == Section::TopBar ||
            std::find(settings_.sections.begin(), settings_.sections.end(), names[int(section)]) !=
                settings_.sections.end();
 }
@@ -391,6 +416,7 @@ std::vector<juce::Component*> SettingsModal::sectionComponents(Section section)
     case Section::Performance: return {&renderScale_, &profile_, &protect_, &bake_};
     case Section::Caches: return {&frameCache_, &preload_, &previews_};
     case Section::Midi: return {&midi_};
+    case Section::TopBar: return {&barTransport_, &barSections_, &barRecording_};
     }
     return {};
 }
@@ -597,6 +623,7 @@ void SettingsModal::paint(juce::Graphics& g)
     case Section::Performance:
     case Section::Caches: return paintSettings(g);
     case Section::Midi: return;
+    case Section::TopBar: return paintTopBar(g);
     }
 }
 
@@ -770,6 +797,9 @@ void SettingsModal::resized()
     preload_.setBounds(at(1).withTrimmedLeft(kLabelWidth).withWidth(70));
     previews_.setBounds(at(2).withTrimmedLeft(kLabelWidth).withWidth(70));
     midi_.setBounds(area);
+    barTransport_.setBounds(at(0).withWidth(220).withSizeKeepingCentre(220, 16).withX(area.getX()));
+    barSections_.setBounds(at(1).withWidth(220).withSizeKeepingCentre(220, 16).withX(area.getX()));
+    barRecording_.setBounds(at(2).withWidth(220).withSizeKeepingCentre(220, 16).withX(area.getX()));
 
     pathRow_ = area.removeFromTop(kRow);
     up_.setBounds(pathRow_.removeFromRight(48));

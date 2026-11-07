@@ -18,15 +18,22 @@ const std::pair<const char*, int> kQuantise[] = {{"Q: Off", 0}, {"Q: Beat", 1}, 
 const char* const kSections[] = {"Intro", "Build", "Drop", "Breakdown", "Outro"};
 constexpr double kNudgePercent = 5.0;
 constexpr int kGuardWidth = 190;
-constexpr int kVenueWidth = 150;
-constexpr int kRecordAudioWidth = 130;
+constexpr int kVenueWidth = 104;
+constexpr int kRecordAudioWidth = 170;
+constexpr int kSectionWidths[] = {44, 44, 44, 72, 48};
+constexpr int kMinorGap = 6;
+constexpr int kGroupGap = 12;
+constexpr int kStatusFull = 236;
+constexpr int kStatusDot = 120;
+constexpr int kDocWidth = 140;
+constexpr int kDocMinStatus = 360;
 
 } // namespace
 
 TransportBar::TransportBar(Session& session) : session_(session), venue_(session)
 {
-    for (juce::TextButton* button : {&perform_, &map_, &machines_, &undo_, &redo_, &save_, &open_, &slower_, &faster_, &halve_,
-                                     &double_, &tap_, &resync_, &record_, &previews_, &settingsButton_, &prepare_})
+    for (juce::TextButton* button : {&perform_, &map_, &machines_, &slower_, &faster_, &halve_, &double_, &tap_, &resync_,
+                                     &record_, &previews_, &settingsButton_, &prepare_})
         addAndMakeVisible(button);
     for (juce::TextButton* button : {&sendNow_, &sendAtSwitch_, &discard_})
         addChildComponent(button);
@@ -47,11 +54,6 @@ TransportBar::TransportBar(Session& session) : session_(session), venue_(session
     sendNow_.onClick = [this] { session_.client().sendPrepared(false); };
     sendAtSwitch_.onClick = [this] { session_.client().sendPrepared(true); };
     discard_.onClick = [this] { session_.client().discardPrepared(); };
-    save_.setTooltip(juce::String::fromUTF8("Save the composition on the engine machine (\xe2\x8c\x98S; Save as: "
-                                            "\xe2\x87\xa7\xe2\x8c\x98S)"));
-    open_.setTooltip(juce::String::fromUTF8("Open a show on the engine machine (\xe2\x8c\x98O)"));
-    save_.onClick = [this] { save(); };
-    open_.onClick = [this] { open(); };
     slower_.setTooltip("Hold to run the beat clock slower");
     faster_.setTooltip("Hold to run the beat clock faster");
     perform_.setTooltip("Perform: the clip grid, the monitors and the effect panes");
@@ -80,6 +82,10 @@ TransportBar::TransportBar(Session& session) : session_(session), venue_(session
         button.onClick = [this, i] { session_.client().markSection(juce::String(kSections[i]).toLowerCase().toStdString()); };
         addAndMakeVisible(button);
     }
+    sectionMenu_.getProperties().set("accent", true);
+    sectionMenu_.setTooltip("The Sections: start one on the next bar and fire its Cues");
+    sectionMenu_.onClick = [this] { showMenu(sectionMenu_, sectionMenu()); };
+    addChildComponent(sectionMenu_);
     perform_.setToggleState(true, juce::dontSendNotification);
     for (Tab tab : {Tab::Perform, Tab::Map, Tab::Machines})
         tabButton(tab).onClick = [this, tab] {
@@ -87,8 +93,6 @@ TransportBar::TransportBar(Session& session) : session_(session), venue_(session
             if (onTab)
                 onTab(tab);
         };
-    undo_.onClick = [this] { session_.client().undo(); };
-    redo_.onClick = [this] { session_.client().redo(); };
     // A right-click opens their MIDI menu instead.
     tap_.onClick = [this] {
         if (!juce::ModifierKeys::currentModifiers.isPopupMenu())
@@ -248,14 +252,27 @@ void TransportBar::openVenues()
     venues_->setBounds(window->getLocalBounds());
 }
 
+Menu TransportBar::sectionMenu()
+{
+    Menu menu;
+    const int current = currentSection();
+    for (int i = 0; i < 5; ++i) {
+        const std::string name = juce::String(kSections[i]).toLowerCase().toStdString();
+        menu.push_back({.label = kSections[i], .run = [this, name] { session_.client().markSection(name); }, .ticked = i == current});
+    }
+    return menu;
+}
+
 void TransportBar::sessionChanged(int changes)
 {
     const int section = currentSection();
     for (int i = 0; i < 5; ++i)
         sections_[size_t(i)]->setToggleState(i == section, juce::dontSendNotification);
+    sectionMenu_.setButtonText(section < 0 ? juce::String("Sections") : juce::String(kSections[section]));
+    if (changes & Session::Interface)
+        resized();
     if (changes & (Session::Document | Session::Connection)) {
         quantise_.setSelectedId(session_.composition().quantise + 1, juce::dontSendNotification);
-        const History history = session_.client().history();
         const bool connected = session_.client().connected();
         const bool preparing = session_.client().preparing();
         prepare_.setToggleState(preparing, juce::dontSendNotification);
@@ -265,12 +282,6 @@ void TransportBar::sessionChanged(int changes)
                 button->setVisible(preparing);
             resized();
         }
-        undo_.setEnabled(connected && history.undo > 0);
-        redo_.setEnabled(connected && history.redo > 0);
-        undo_.setTooltip(history.undo ? "Undo " + utf8(history.undoOp) + juce::String::fromUTF8(" (\xe2\x8c\x98Z)")
-                                      : juce::String("Nothing to undo"));
-        redo_.setTooltip(history.redo ? "Redo " + utf8(history.redoOp) + juce::String::fromUTF8(" (\xe2\x87\xa7\xe2\x8c\x98Z)")
-                                      : juce::String("Nothing to redo"));
     }
     if (changes & (Session::Record | Session::Connection)) {
         const RecordState record = session_.client().record();
@@ -281,7 +292,8 @@ void TransportBar::sessionChanged(int changes)
     }
     if (changes & Session::Previews)
         previews_.setToggleState(session_.previewsOn(), juce::dontSendNotification);
-    repaint();
+    if (changes != Session::Clock || !beats_.isEmpty())
+        repaint();
 }
 
 Menu TransportBar::midiMenu(bool tap)
@@ -297,45 +309,117 @@ void TransportBar::mouseDown(const juce::MouseEvent& e)
         showMenu(*e.eventComponent, midiMenu(e.eventComponent == &tap_));
 }
 
+struct TransportBar::Slot {
+    juce::Component* component;
+    juce::Rectangle<int>* rect;
+    int width;
+    int gapBefore;
+};
+
+// What the bar shows at a width: the recording audio label, Previews, the beat, the Section buttons and the nudge.
+struct TransportBar::Plan {
+    bool audio = true, previews = true, beats = true, sections = true, nudge = true;
+};
+
+int TransportBar::layout(const Plan& plan, bool place)
+{
+    const bool transport = session_.barGroupShown(Session::BarGroup::Transport);
+    const bool sectionsOn = session_.barGroupShown(Session::BarGroup::Sections);
+    const bool recording = session_.barGroupShown(Session::BarGroup::Recording);
+    const bool preparing = sendNow_.isVisible();
+
+    std::vector<std::vector<Slot>> groups;
+    groups.push_back({{&venue_, nullptr, kVenueWidth, 0},
+                      {&perform_, nullptr, 62, kMinorGap},
+                      {&map_, nullptr, 42, 1},
+                      {&machines_, nullptr, 66, 1},
+                      {&prepare_, nullptr, 58, kMinorGap}});
+    if (preparing)
+        for (Slot slot : {Slot{&sendNow_, nullptr, 44, 1}, Slot{&sendAtSwitch_, nullptr, 64, 1}, Slot{&discard_, nullptr, 56, 1}})
+            groups.back().push_back(slot);
+    if (transport) {
+        groups.push_back({{nullptr, &bpm_, 84, 0}});
+        auto& g = groups.back();
+        if (plan.nudge)
+            g.insert(g.end(), {{&slower_, nullptr, 22, 1}, {&faster_, nullptr, 22, 1}});
+        g.insert(g.end(), {{&halve_, nullptr, 36, 1}, {&double_, nullptr, 36, 1}, {&tap_, nullptr, 38, 1}, {&resync_, nullptr, 52, 1}});
+        if (plan.beats)
+            g.push_back({nullptr, &beats_, 60, 1});
+        g.push_back({&quantise_, nullptr, 84, 1});
+    }
+    if (sectionsOn) {
+        groups.emplace_back();
+        if (plan.sections)
+            for (int i = 0; i < 5; ++i)
+                groups.back().push_back({sections_[size_t(i)].get(), nullptr, kSectionWidths[i], i == 0 ? 0 : 1});
+        else
+            groups.back().push_back({&sectionMenu_, nullptr, 84, 0});
+    }
+    groups.emplace_back();
+    if (recording) {
+        groups.back().push_back({&record_, nullptr, 46, 0});
+        if (plan.audio)
+            groups.back().push_back({&recordAudio_, nullptr, kRecordAudioWidth, 1});
+    }
+    if (plan.previews)
+        groups.back().push_back({&previews_, nullptr, 60, recording ? kMinorGap : 0});
+    groups.back().push_back({&settingsButton_, nullptr, 66, groups.back().empty() ? 0 : 1});
+
+    int x = 0;
+    const int height = getHeight();
+    bool first = true;
+    for (const auto& group : groups) {
+        bool inGroup = false;
+        for (const Slot& slot : group) {
+            x += first ? 0 : inGroup ? slot.gapBefore : kGroupGap;
+            first = false;
+            inGroup = true;
+            if (place) {
+                const juce::Rectangle<int> r(x, 0, slot.width, height);
+                if (slot.component == &recordAudio_)
+                    recordAudio_.setBounds(r.withSizeKeepingCentre(r.getWidth(), 18));
+                else if (slot.component)
+                    slot.component->setBounds(r);
+                if (slot.rect)
+                    *slot.rect = r;
+            }
+            x += slot.width;
+        }
+    }
+    return x;
+}
+
 void TransportBar::resized()
 {
-    auto area = getLocalBounds();
-    const int gap = 1;
-    auto take = [&](int width) {
-        auto r = area.removeFromLeft(width);
-        area.removeFromLeft(gap);
-        return r;
-    };
-    venue_.setBounds(take(kVenueWidth));
-    perform_.setBounds(take(70));
-    map_.setBounds(take(48));
-    machines_.setBounds(take(72));
-    prepare_.setBounds(take(64));
-    if (sendNow_.isVisible()) {
-        sendNow_.setBounds(take(44));
-        sendAtSwitch_.setBounds(take(64));
-        discard_.setBounds(take(56));
-    }
-    undo_.setBounds(take(48));
-    redo_.setBounds(take(48));
-    doc_ = take(110);
-    save_.setBounds(take(44));
-    open_.setBounds(take(46));
-    bpm_ = take(110);
-    slower_.setBounds(take(22));
-    faster_.setBounds(take(22));
-    halve_.setBounds(take(28));
-    double_.setBounds(take(28));
-    tap_.setBounds(take(40));
-    resync_.setBounds(take(54));
-    beats_ = take(60);
-    for (int i = 0; i < 5; ++i)
-        sections_[size_t(i)]->setBounds(take(i == 3 ? 72 : 48));
-    quantise_.setBounds(take(100));
-    record_.setBounds(take(48));
-    recordAudio_.setBounds(take(kRecordAudioWidth));
-    previews_.setBounds(take(64));
-    settingsButton_.setBounds(take(62));
+    static const Plan kPlans[] = {{true, true, true, true, true},   {false, true, true, true, true},
+                                  {false, false, true, true, true}, {false, false, false, true, true},
+                                  {false, false, false, false, true}, {false, false, false, false, false}};
+    const Plan* chosen = &kPlans[std::size(kPlans) - 1];
+    for (const Plan& plan : kPlans)
+        if (layout(plan, false) + kGroupGap + kStatusFull <= getWidth()) {
+            chosen = &plan;
+            break;
+        }
+    const bool recording = session_.barGroupShown(Session::BarGroup::Recording);
+    const bool sections = session_.barGroupShown(Session::BarGroup::Sections);
+    const bool transport = session_.barGroupShown(Session::BarGroup::Transport);
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&record_, &recordAudio_})
+        c->setVisible(recording && (c == &record_ || chosen->audio));
+    for (auto& button : sections_)
+        button->setVisible(sections && chosen->sections);
+    sectionMenu_.setVisible(sections && !chosen->sections);
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&halve_, &double_, &tap_, &resync_, &quantise_})
+        c->setVisible(transport);
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&slower_, &faster_})
+        c->setVisible(transport && chosen->nudge);
+    previews_.setVisible(chosen->previews);
+    bpm_ = beats_ = {};
+    const int right = layout(*chosen, true);
+    status_ = getLocalBounds().withLeft(std::min(getWidth(), right + kGroupGap));
+    doc_ = {};
+    if (status_.getWidth() >= kDocMinStatus)
+        doc_ = status_.removeFromLeft(kDocWidth);
+    repaint();
 }
 
 namespace {
@@ -395,31 +479,41 @@ void TransportBar::showRecordAudio(const RecordState& record)
     recordAudio_.setColour(juce::Label::textColourId, missing ? p.accent : p.muted);
 }
 
-juce::Rectangle<int> TransportBar::statusArea() const
-{
-    return getLocalBounds().withLeft(settingsButton_.getRight() + 1);
-}
-
 void TransportBar::paint(juce::Graphics& g)
 {
     const Palette& p = Look::palette();
     g.fillAll(p.line);
     g.setFont(Look::font());
-    fillWithText(g, doc_, p.bar, p.white, documentName(), juce::Justification::centredLeft, 8);
-    if (session_.client().unsaved()) {
-        g.setColour(p.accent);
-        g.fillEllipse(juce::Rectangle<float>(7.0f, 7.0f).withCentre({float(doc_.getRight() - 10), float(doc_.getCentreY())}));
+    if (!doc_.isEmpty()) {
+        const bool unsaved = session_.client().unsaved();
+        g.setColour(p.muted);
+        drawText(g, documentName(), doc_.withTrimmedLeft(8).withTrimmedRight(unsaved ? 20 : 8), juce::Justification::centredLeft);
+        if (unsaved) {
+            g.setColour(p.accent);
+            g.fillEllipse(juce::Rectangle<float>(7.0f, 7.0f).withCentre({float(doc_.getRight() - 10), float(doc_.getCentreY())}));
+        }
     }
 
-    g.setColour(juce::Colour(0xff1d1d1d));
-    g.fillRect(bpm_);
-    g.setColour(p.muted);
-    g.setFont(Look::font());
-    drawText(g, "BPM", bpm_.withTrimmedLeft(9), juce::Justification::centredLeft);
-    g.setColour(p.white);
-    g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
-    drawText(g, juce::String(session_.composition().bpm, 2), bpm_.withTrimmedRight(9), juce::Justification::centredRight);
+    if (!bpm_.isEmpty()) {
+        g.setColour(juce::Colour(0xff1d1d1d));
+        g.fillRect(bpm_);
+        g.setColour(p.muted);
+        g.setFont(Look::font());
+        drawText(g, "BPM", bpm_.withTrimmedLeft(9), juce::Justification::centredLeft);
+        g.setColour(p.white);
+        g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
+        drawText(g, juce::String(session_.composition().bpm, 2), bpm_.withTrimmedRight(9), juce::Justification::centredRight);
+    }
 
+    if (!beats_.isEmpty())
+        paintBeats(g);
+
+    paintStatus(g);
+}
+
+void TransportBar::paintBeats(juce::Graphics& g)
+{
+    const Palette& p = Look::palette();
     g.setColour(juce::Colour(0xff1d1d1d));
     g.fillRect(beats_);
     const bool clocked = session_.client().connected();
@@ -430,11 +524,20 @@ void TransportBar::paint(juce::Graphics& g)
         g.setColour(on ? (i == 0 ? p.fault : p.accent) : juce::Colour(0xff333333));
         g.fillRect(square);
     }
+}
 
+void TransportBar::paintStatus(juce::Graphics& g)
+{
+    const Palette& p = Look::palette();
     const auto status = statusArea();
     g.setColour(p.bar);
     g.fillRect(status);
     const auto [text, ink] = statusText();
+    if (status.getWidth() < kStatusDot) {
+        g.setColour(ink);
+        g.fillEllipse(juce::Rectangle<float>(8.0f, 8.0f).withCentre(status.getCentre().toFloat()));
+        return;
+    }
     g.setFont(Look::font());
     auto textArea = status.reduced(9, 0);
     if (const juce::String guard = guardText(); guard.isNotEmpty()) {
