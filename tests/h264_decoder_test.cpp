@@ -2,6 +2,10 @@
 
 #include "return_video_packets.hpp"
 
+#ifdef __APPLE__
+#include <CoreVideo/CoreVideo.h>
+#endif
+
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
