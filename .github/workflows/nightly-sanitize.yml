@@ -1,0 +1,109 @@
+# Nightly only, never on a pull request: the engine suite under AddressSanitizer + UndefinedBehaviorSanitizer, and each
+# libFuzzer harness (fuzz/README.md) for a bounded time. A finding fails the run and leaves its logs or crash inputs as
+# artifacts; nothing is opened automatically.
+name: Nightly sanitizer and fuzz
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FUZZ_SECONDS: 90
+
+jobs:
+  sanitize:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja, ccache and ffmpeg
+        run: brew install ninja ccache ffmpeg
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-arm64-sanitize
+          max-size: 2G
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64 -DNOCTURNE_SANITIZE=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build build --target nocturne_tests
+      - name: Engine suite, all shards
+        timeout-minutes: 75
+        run: |
+          status=0
+          for shard in 0 1 2; do
+            tools/ci-tests.sh engine "$shard" 3 || status=1
+          done
+          exit $status
+      - name: Test report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: build/test-reports/*.xml
+          annotate_only: true
+          detailed_summary: true
+          include_passed: false
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitize-logs
+          path: build/test-reports/
+          retention-days: 7
+
+  fuzz:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ninja and LLVM
+        run: brew install ninja llvm
+      - name: Cache the fetched dependencies (glslang, SPIRV-Cross, JUCE)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/*-src
+          key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64
+      - name: Build the harnesses
+        run: NOCTURNE_FUZZ_JOBS=4 fuzz/build.sh build
+      - name: Seed the corpora
+        # hap, snappy, protocol and websocket have no fixtures and start empty.
+        run: |
+          corpus=build/fuzz/corpus
+          mkdir -p "$corpus"/{xml,djlink,isf,composition,hap,snappy,protocol,websocket}
+          cp tests/golden/import/*.xml tests/golden/import/*.avc "$corpus/xml/"
+          cp tests/djlink/*.bin "$corpus/djlink/"
+          cp third_party/isf/*/*.fs "$corpus/isf/"
+          cp examples/first-show/show.json "$corpus/composition/"
+      - name: Fuzz each harness
+        run: |
+          mkdir -p build/fuzz/crashes
+          status=0
+          for harness in build/fuzz/*_fuzz; do
+            name=$(basename "$harness" _fuzz)
+            echo "== $name"
+            "$harness" "build/fuzz/corpus/$name" -max_total_time="$FUZZ_SECONDS" \
+              -artifact_prefix="$PWD/build/fuzz/crashes/$name-" || status=1
+          done
+          exit $status
+      - name: Crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: build/fuzz/crashes/
+          if-no-files-found: ignore
+          retention-days: 14

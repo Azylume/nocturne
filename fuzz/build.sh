@@ -23,7 +23,8 @@ flags=(-std=c++20 -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,addre
 # harnesses need.
 protocol=$(awk '/^add_library\(nocturne_protocol STATIC/ {on=1; next} on && /^\)/ {exit} on {print $1}' "$root/CMakeLists.txt" |
     sed -e "s|\${CMAKE_CURRENT_BINARY_DIR}|$build|" -e "s|^src/|$root/src/|")
-sources=($protocol "$root/src/media/hap.cpp" "$root/src/media/snappy.cpp" "$root/src/djlink/djlink_packets.cpp"
+sources=($protocol "$root/src/document/composition_file_posix.cpp" "$root/src/platform/work_queue_apple.cpp"
+         "$root/src/media/hap.cpp" "$root/src/media/snappy.cpp" "$root/src/djlink/djlink_packets.cpp"
          "$root/src/net/websocket_frames.cpp")
 
 rm -rf "$out/obj"
