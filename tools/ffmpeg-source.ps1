@@ -47,7 +47,7 @@ if ((Get-FileHash $tarball -Algorithm SHA512).Hash -ne $sha512) { throw "$tarbal
 "downloaded $repo $ref (SHA512 matches the port)"
 
 $portArchive = Join-Path $out "vcpkg-port-ffmpeg-$($port.version)-$($port.'port-version').tar.gz"
-& tar.exe -czf $portArchive -C $root --transform 's,^,nocturne-port/,' vcpkg-overlay-ports/ffmpeg vcpkg-configuration.json
+& tar.exe -czf $portArchive -C $root vcpkg-overlay-ports/ffmpeg vcpkg-configuration.json
 if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Invoke-VcpkgGit @('archive', '--format=tar.gz', "--prefix=vcpkg-$baseline/", '-o', (Join-Path $out "vcpkg-triplets-$baseline.tar.gz"),
     $baseline, 'triplets/x64-windows.cmake') | Out-Null
