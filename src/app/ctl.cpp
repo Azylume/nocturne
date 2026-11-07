@@ -354,9 +354,8 @@ settings (machine-local, live; with --state kept across restarts, engine flags o
   settings bake on|off              draw a chain's static leading passes once and reuse them (same picture)
   settings render-scale 100|83|67   render the composition at that percent of the output size, scaled up once; text
                                     layers and what is above them stay at the output size
-  settings in-flight ring|1|2       rendered frames on the GPU at once: as many as the frame ring holds, or 1 or 2,
-                                    which under GPU overload lets the outputs' presents through sooner at some render
-                                    rate
+  settings in-flight ring|1|2       rendered frames on the GPU at once: 1 (default), 2, or as many as the frame
+                                    ring holds, which lets the outputs' presents through sooner at some render rate
   settings clip-cache MB            the frames each playing clip holds (64..65536)
   settings preload MB               the frames of clips preloaded for the next trigger (0..65536)
   settings kept-previews N          clip previews kept besides the watched ones (0..64)
