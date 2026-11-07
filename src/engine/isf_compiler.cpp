@@ -275,14 +275,23 @@ std::string inputArguments(const IsfShader& shader, const std::string& values)
     return out;
 }
 
+// A shader that never names the clock gets none, so its stage counts as static for the bake.
+bool readsClock(const std::string& glsl)
+{
+    static const std::regex clock(R"(\b(TIME|TIMEDELTA|FRAMEINDEX)\b)");
+    return std::regex_search(glsl, clock);
+}
+
 std::string callBody(const IsfShader& shader)
 {
     const bool transition = shader.kind == IsfKind::Transition;
     std::string out = "\n";
     if (transition)
         out += "    vec2 px = vec2(p) + 0.5;\n";
-    out += "    return " + prefix(shader) + "isf_run(vec4(px.x, h.size.y - px.y, h.time, h.dt), vec4(h.size, " +
-           "floor(h.time * 60.0), " + (transition ? "progress" : "0.0") + ")";
+    const bool clock = readsClock(shader.glsl);
+    const std::string time = clock ? "h.time" : "0.0";
+    out += "    return " + prefix(shader) + "isf_run(vec4(px.x, h.size.y - px.y, " + time + ", " + (clock ? "h.dt" : "0.0") +
+           "), vec4(h.size, floor(" + time + " * 60.0), " + (transition ? "progress" : "0.0") + ")";
     if (shader.kind == IsfKind::Effect && shader.pointwise)
         out += ", c";
     if (transition)
