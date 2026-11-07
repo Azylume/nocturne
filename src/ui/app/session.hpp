@@ -10,6 +10,7 @@
 #include "ui/client/return_audio_player.hpp"
 #include "venues/venue_monitor.hpp"
 
+#include <array>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <atomic>
@@ -58,7 +59,13 @@ public:
         ReturnVideo = 1048576,
         // The night's deck switches.
         Switches = 2097152,
+        // Which top bar groups are shown.
+        Interface = 4194304,
     };
+
+    // The top bar's groups that can be switched off.
+    enum class BarGroup { Transport, Sections, Recording };
+    static constexpr int kBarGroups = 3;
 
     struct View {
         virtual ~View() = default;
@@ -269,6 +276,9 @@ public:
     void setStepsOpen(uint64_t effect, bool open);
     // Whether a preset group of the browser and the cards' Presets menus is open ("section/Classic", "effect/trails",
     // "group/trails/mine"); kept per machine in the settings once given, so it survives a restart.
+    // Shown by default; kept in this machine's UI settings.
+    bool barGroupShown(BarGroup group) const { return barGroups_[size_t(group)]; }
+    void setBarGroupShown(BarGroup group, bool shown);
     bool groupOpen(const std::string& key, bool byDefault) const;
     void setGroupOpen(const std::string& key, bool open);
     void useSettings(juce::PropertiesFile* settings);
@@ -368,6 +378,7 @@ private:
     uint64_t mapScreen_ = 0;
     std::set<std::string> mapPreviews_;
     bool previewsOn_ = true;
+    std::array<bool, kBarGroups> barGroups_{true, true, true};
     std::set<std::string> watched_;
     std::set<std::string> watchedClips_;
     // The sources of both that the local follower renders.
