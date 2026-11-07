@@ -1,6 +1,8 @@
 #include "audio/audio_analysis.hpp"
 #include "engine/chain_compiler.hpp"
+#include "effects/isf.hpp"
 #include "engine/frame_ring.hpp"
+#include "engine/isf_compiler.hpp"
 #include "engine/shader_cross.hpp"
 #include "golden.hpp"
 #include "gpu/glsl.hpp"
@@ -14,6 +16,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -655,6 +658,68 @@ TEST_CASE("the ported Grain, Classic Auto Mask and Blank keep their ids and fuse
     CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"transform", "colorize", "classicAutoMask", "grain"})).size() == 1);
 }
 
+namespace {
+
+struct Spec {
+    const char* name;
+    double min, max, def;
+    const char* suffix;
+    double scale;
+    int decimals;
+    bool wraps;
+};
+
+constexpr Spec kPercent{"", 0.0, 1.0, 0.0, "%", 100.0, 0, false};
+
+Spec percentSpec(const char* name, double def)
+{
+    Spec s = kPercent;
+    s.name = name;
+    s.def = def;
+    return s;
+}
+
+void checkParams(const char* type, const std::vector<Spec>& expected)
+{
+    CAPTURE(type);
+    const azl::EffectDef* def = azl::findEffect(type);
+    REQUIRE(def);
+    REQUIRE(def->params.size() == expected.size() + 1);
+    CHECK(def->params.back().name == "mix");
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const azl::ParamDef& p = def->params[i];
+        const Spec& e = expected[i];
+        CAPTURE(e.name);
+        CHECK(p.name == e.name);
+        CHECK(p.min == e.min);
+        CHECK(p.max == e.max);
+        CHECK(p.defaultValue == e.def);
+        CHECK(p.unit.suffix == e.suffix);
+        CHECK(p.unit.scale == e.scale);
+        CHECK(p.unit.decimals == e.decimals);
+        CHECK(p.wraps == e.wraps);
+        CHECK(p.label.empty());
+        CHECK(p.group.empty());
+        CHECK_FALSE(p.choice);
+    }
+}
+
+} // namespace
+
+TEST_CASE("the ported Colorize, Edge Detection and Solid keep the native parameter units and wrapping")
+{
+    checkParams("colorize", {{"hue", 0.0, 1.0, 0.0, "\xc2\xb0", 360.0, 0, true}, percentSpec("saturation", 1.0),
+                             percentSpec("brightness", 1.0), percentSpec("invert", 0.0), percentSpec("alpha", 1.0)});
+    checkParams("edgeDetection", {{"multiplier", 0.0, 2.0, 0.25, "x", 1.0, 2, false}});
+    checkParams("solid", {percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    CHECK(azl::isGenerator("solid"));
+    for (const char* type : {"colorize", "edgeDetection", "solid"})
+        CHECK(azl::findEffect(type)->category.empty());
+    CHECK(azl::findEffect("colorize")->kind == azl::StageKind::Pointwise);
+    CHECK(azl::findEffect("edgeDetection")->kind == azl::StageKind::Neighbourhood);
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"colorize", "colorize", "grain"})).size() == 1);
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
@@ -816,6 +881,32 @@ namespace {
 
 using Edits = std::vector<std::pair<std::string, std::string>>;
 
+// The built-in ISF shader that is the effect of this type, if it is a ported one.
+std::optional<azl::IsfShader> portedShader(const std::string& type)
+{
+    for (const azl::IsfSource& source : azl::isfSources()) {
+        auto parsed = azl::parseIsf(source);
+        if (const auto* shader = std::get_if<azl::IsfShader>(&parsed); shader && shader->type == type)
+            return *shader;
+    }
+    return std::nullopt;
+}
+
+// A ported effect's shader is its ISF file: the edits apply to that text, which is translated again under `full`.
+void useEditedIsf(azl::EffectDef& def, azl::IsfShader shader, const std::string& full, const Edits& edits)
+{
+    for (const auto& [from, to] : edits) {
+        const size_t at = shader.glsl.find(from);
+        REQUIRE(at != std::string::npos);
+        shader.glsl.replace(at, from.size(), to);
+    }
+    shader.type = full;
+    const azl::IsfGlsl glsl = azl::translateIsf(shader, {});
+    REQUIRE_MESSAGE(glsl.error.empty(), glsl.error);
+    def.globals = glsl.globals;
+    def.glsl = glsl.body;
+}
+
 // The effect copied as `full` with each edit's text replaced in its shaders, every one of which must be found: its
 // no-op skips taken out. The copy is a variant, so no list of effect or generator types shows it; a generator's copy
 // is a plain effect, which on a layer draws the same picture as it ignores its input.
@@ -829,6 +920,7 @@ void registerFull(const std::string& type, const std::string& full, const Edits&
     def.variants.clear();
     def.variant = true;
     def.generator = false;
+    const std::optional<azl::IsfShader> ported = portedShader(type);
     for (const auto& [from, to] : edits) {
         CAPTURE(from);
         size_t found = 0;
@@ -838,11 +930,15 @@ void registerFull(const std::string& type, const std::string& full, const Edits&
                 ++found;
             }
         };
-        edit(def.glsl);
-        for (azl::SidePass& side : def.sidePasses)
-            edit(side.glsl);
-        REQUIRE(found > 0);
+        if (!ported) {
+            edit(def.glsl);
+            for (azl::SidePass& side : def.sidePasses)
+                edit(side.glsl);
+            REQUIRE(found > 0);
+        }
     }
+    if (ported)
+        useEditedIsf(def, *ported, full, edits);
     azl::registerEffect(std::move(def));
 }
 
@@ -870,7 +966,7 @@ TEST_CASE("a parameter at its no-op value skips the work it would do for nothing
         bool clip = false;
     };
     const Case cases[] = {
-        {"edgeDetection", {{"if (pb[p + 0] == 0.0)", "if (false)"}}, "multiplier", 0.0, 0.3},
+        {"edgeDetection", {{"if (multiplier == 0.0)", "if (false)"}}, "multiplier", 0.0, 0.3},
         {"classicEdgeDetection", {{"if (pb[p + 1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3},
         {"classicEdgeDetection", {{"if (pb[p + 1] != 0.0)", "if (true)"}}, "multiplier", 0.0, 0.3, {{"mode", 0.0}}},
         {"trails", {{"if (pb[p + 0] == 0.0)", "if (false)"}}, "feedback", 0.0, 0.8, {}, true},
@@ -881,7 +977,7 @@ TEST_CASE("a parameter at its no-op value skips the work it would do for nothing
          {{"number", 0.4}, {"mode", 0.5}, {"globalWidth", 0.5}}},
         {"reveal", {{"blend > 0.0 ? 2 : 1", "2"}}, "evolve", 0.0, 0.3},
         {"transform", {{"if (pb[p + 3] != 0.0)", "if (true)"}}, "rotation", 0.0, 3.0, {{"scale", 0.9}}},
-        {"colorize", {{"if (pb[p + 4] == 0.0)", "if (false)"}}, "alpha", 0.0, 0.5},
+        {"colorize", {{"if (alpha == 0.0)", "if (false)"}}, "alpha", 0.0, 0.5},
         {"classicColorize", {{"if (pb[p + 3] != 0.0)", "if (true)"}}, "colorAlpha", 0.0, 0.5},
         {"classicColorize",
          {{"float keep = 0.0;\n        if (pb[p + 6] > 0.5)\n            keep = exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], "
