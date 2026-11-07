@@ -2,7 +2,7 @@
 
 #include "document/composition.hpp"
 #include "engine/frame_ring.hpp"
-#include "gpu/gpu.hpp"
+#include "gpu/constants_ring.hpp"
 #include "platform/profile.hpp"
 
 #include <array>
@@ -81,6 +81,7 @@ private:
     void bindSliceBuffers(gpu::RenderPass& pass) const;
 
     gpu::Device device_;
+    mutable gpu::ConstantsRing constants_;
     const profile::GpuTimeline* gpu_ = nullptr;
     std::array<uint32_t, 2> composition_;
     struct SlicePipelines {

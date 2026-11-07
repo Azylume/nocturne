@@ -215,7 +215,7 @@ std::unique_ptr<State> outgoing(State& state)
 } // namespace
 
 Engine::Engine(const gpu::Device& gpuDevice, EngineConfig config, MediaLibrary* library)
-    : device_(gpuDevice), config_(config), queue_(gpuDevice.makeQueue()),
+    : device_(gpuDevice), constants_(gpuDevice), config_(config), queue_(gpuDevice.makeQueue()),
       gpu_(device(), "render", ""),
       compiler_(gpuDevice, config.pipelineCache ? config.pipelineCache : ""),
       decoders_(device_, library, config.clipCacheBytes, config.preloadBytes, config.decodeFrameCost),
@@ -1477,7 +1477,7 @@ void Engine::encodeLast(gpu::RenderPass& enc, const Draw& draw, BlendVariant var
         enc.setTexture(kFromLumaSlot, from.picture->luma);
         enc.setTexture(kFromChromaSlot, from.picture->chroma);
         enc.setBytes(3, &header, sizeof(header));
-        enc.setBytes(4, fromParams_.data(), fromParams_.size() * sizeof(float));
+        constants_.set(enc, 4, fromParams_.data(), fromParams_.size() * sizeof(float));
         return encodePass(enc, draw.passes->back(), kFadeSinglePipelines + size_t(variant), draw, draw.input, below,
                           seconds, opacity, &mix, nullptr);
     }
@@ -1631,7 +1631,7 @@ void Engine::encodePass(gpu::RenderPass& enc, const CompiledPass& pass, size_t p
         params_.push_back(0.0f);
     enc.setPipeline(pass.pipelines[pipeline]);
     enc.setBytes(0, &header, sizeof(header));
-    enc.setBytes(1, params_.data(), params_.size() * sizeof(float));
+    constants_.set(enc, 1, params_.data(), params_.size() * sizeof(float));
     if (mix) {
         if (from)
             enc.setTexture(kFromSlot, from);
