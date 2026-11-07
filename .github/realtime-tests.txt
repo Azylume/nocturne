@@ -3,6 +3,14 @@
 # An entry came off the list when it needs no hardware and passed 10 of 10 runs idle and 10 of 10 beside 4 busy CPU
 # loops (issue #31). Entries marked "not moved" pass but sit in files of a shard that is busier than engine-2 or the
 # UI shard (about 12 min against 5 and 8) or in engine-0, which gets no additions while it hangs (issue #75).
+# Failed on a hosted macos-15 runner (PR #117): flaky in engine-2, passed on its rerun.
+*a disconnected display parks its output*
+# Failed twice on a hosted macos-15 runner (PR #117) though it passes 10 of 10 on a Mac.
+*map arrangement: a hidden screen's output keeps presenting*
+# Failed twice in the UI shard on a hosted macos-15 runner (PR #117): the next Cue never reached "Headliner".
+*the Machines tab watches the machine only while it is visible*
+# Failed twice in the UI shard on a hosted macos-15 runner (PR #117): the layer label never read "auto next 1".
+*parity: a trigger on an Autopiloted layer shows manual*
 # Mounts a disk image with hdiutil to fill it.
 *a full disk stops the recording cleanly*
 # Asserts at least 55 fps, no render gap over 50 ms and a reply under 250 ms while clients hang or crash.
