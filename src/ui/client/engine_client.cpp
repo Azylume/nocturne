@@ -101,7 +101,7 @@ void EngineClient::attached(Send send, bool local, const std::string& token)
         sendLocked({{"type", "preset"}, {"op", "list"}});
         sendLocked({{"type", "isf"}, {"op", "list"}, {"text", true}});
         sendLocked({{"type", "modulation"}, {"op", "list"}});
-        sendLocked({{"type", "audio"}, {"op", "subscribe"}, {"rate", 20}});
+        sendLocked({{"type", "audio"}, {"op", "subscribe"}, {"rate", kAudioRate}});
         sendLocked({{"type", "audio"}, {"op", "devices"}});
         sendLocked({{"type", "audio"}, {"op", "input"}});
         sendLocked({{"type", "audio"}, {"op", "settings"}});
@@ -461,6 +461,21 @@ void EngineClient::receiveModulation(const Message& message)
     }
 }
 
+// The engine reports each onset as a running count; the button stays lit for a few messages after the count grows.
+bool EngineClient::onsetLit(const std::string& name, const Message& count)
+{
+    if (!count.is_number())
+        return false;
+    const double now = count.get<double>();
+    auto& state = onsets_[name];
+    if (now > state.count && state.count >= 0.0)
+        state.hold = kOnsetHold;
+    else if (state.hold > 0)
+        --state.hold;
+    state.count = now;
+    return state.hold > 0;
+}
+
 void EngineClient::receiveAudio(const Message& message)
 {
     AudioLevels levels;
@@ -472,10 +487,12 @@ void EngineClient::receiveAudio(const Message& message)
     levels.live = message.value("live", false);
     const Message onsets = message.value("onsets", Message::object());
     for (const auto& [name, value] : onsets.items())
-        levels.onsets[name] = value.is_boolean() ? value.get<bool>() : value.is_number() && value.get<double>() > 0.0;
+        levels.onsets[name] = onsetLit(name, value);
     for (const auto& value : message.value("spectrum", Message::array()))
         if (value.is_number())
             levels.spectrum.push_back(value.get<double>());
+    for (size_t i = 0; i < levels.spectrum.size() && i < audio_.spectrum.size(); ++i)
+        levels.spectrum[i] = std::max(levels.spectrum[i], audio_.spectrum[i] * kSpectrumRelease);
     for (const auto& c : message.value("channels", Message::array()))
         levels.channels.push_back({c.value("levelDb", -120.0), c.value("noise", 0.0)});
     audio_ = std::move(levels);
