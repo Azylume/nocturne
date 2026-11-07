@@ -55,7 +55,7 @@ bool ClipEffectsPreview::draw(const gpu::Queue& queue, const std::shared_ptr<con
     dt_ = lastSeconds_ < 0.0 ? 1.0 / 60.0 : std::clamp(seconds - lastSeconds_, 0.0, 0.25);
     lastSeconds_ = seconds;
     plan_->evaluate(seconds, beat, plan_->usesAudio() && audio ? audio->at(seconds) : AudioFrame{});
-    std::set<uint64_t> ids;
+    IdSet ids;
     for (const Effect* effect : effects)
         ids.insert(effect->id);
     sides_->keep({0}, ids);
