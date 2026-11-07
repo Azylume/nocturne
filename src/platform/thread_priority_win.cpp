@@ -77,6 +77,11 @@ void setThreadRole(ThreadRole role)
         joinMultimediaScheduler();
 }
 
+std::chrono::microseconds paceFrameThread(std::chrono::nanoseconds)
+{
+    return std::chrono::microseconds(1500);
+}
+
 void sleepUntil(std::chrono::steady_clock::time_point deadline)
 {
     thread_local const WaitTimer timer;
