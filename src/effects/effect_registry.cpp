@@ -1441,6 +1441,30 @@ EffectDef classicPolarKaleido()
             "Classic"};
 }
 
+// The Classic Twitch's derived values, worked out once a frame with the shader's formulas: the move (picture sizes), the
+// zoom, the red and blue pull (fractions of the width), the blur spread in pixels, and the brightness and opacity gains.
+constexpr size_t kTwitchValues = 7;
+
+void classicTwitchValues(const float* p, const float*, float time, float, float* out)
+{
+    const auto tick = uint32_t(std::max(time, 0.0f) * 60.0f);
+    auto random = [&](uint32_t n) { return float(pcg(tick * 16u + n) & 0xffffu) / 65535.0f; };
+    float amount[6];
+    for (uint32_t k = 0; k < 6; ++k) {
+        const float f = p[3 + 2 * k];
+        amount[k] = random(k) < std::min(1.0f, 8.0f * f * f * f * f) ? random(k + 8u) : -1.0f;
+    }
+    const float g = p[0];
+    const bool moves = amount[0] >= 0.0f;
+    out[0] = moves ? (amount[0] * 2.0f - 1.0f) * p[1] * g : 0.0f;
+    out[1] = moves ? (random(7u) * 2.0f - 1.0f) * p[2] * g : 0.0f;
+    out[2] = amount[1] < 0.0f ? 1.0f : std::exp2((amount[1] * 2.0f - 1.0f) * p[4] * g);
+    out[3] = amount[4] < 0.0f ? 0.0f : (amount[4] * 2.0f - 1.0f) * p[10] * g * 0.05f;
+    out[4] = amount[5] < 0.0f ? 0.0f : amount[5] * p[12] * g * 40.0f;
+    out[5] = amount[3] < 0.0f ? 1.0f : 1.0f + 4.0f * amount[3] * p[8] * g;
+    out[6] = amount[2] < 0.0f ? 1.0f : 1.0f - p[6] * g * (0.3f + 0.35f * amount[2]);
+}
+
 // Each frame (at 60 per second) every kind of twitch fires on its own with a chance of 8 x frequency^4 and then takes
 // a random amount up to its maximum, times globalTwitch: a move of up to maxPos picture sizes, a zoom between
 // 1 / 2^maxScale and 2^maxScale, an opacity drop, a brightness gain of up to 1 + 4 x maxLight, red and blue pulled
@@ -1471,27 +1495,15 @@ EffectDef classicTwitch()
             false,
             R"(
     vec4 c = samplePixel(t, px);
-    uint tick = uint(max(h.time, 0.0) * 60.0);
-    float amount[6];
-    for (uint k = 0; k < 6; ++k) {
-        float f = pb[p + 3 + 2 * k];
-        bool on = float(pcg(tick * 16u + k) & 0xffffu) / 65535.0 < min(1.0, 8.0 * f * f * f * f);
-        amount[k] = on ? float(pcg(tick * 16u + k + 8u) & 0xffffu) / 65535.0 : -1.0;
-    }
-    float g = pb[p + 0];
-    vec2 shift = amount[0] < 0.0 ? vec2(0.0)
-                                 : (vec2(amount[0], float(pcg(tick * 16u + 7u) & 0xffffu) / 65535.0) * 2.0 - 1.0) *
-                                       vec2(pb[p + 1], pb[p + 2]) * g;
-    float zoom = amount[1] < 0.0 ? 1.0 : exp2((amount[1] * 2.0 - 1.0) * pb[p + 4] * g);
-    vec2 q = h.size * 0.5 + (px - h.size * 0.5) / zoom - shift * h.size;
-    float split = amount[4] < 0.0 ? 0.0 : (amount[4] * 2.0 - 1.0) * pb[p + 10] * g * 0.05 * h.size.x;
-    float blur = amount[5] < 0.0 ? 0.0 : amount[5] * pb[p + 12] * g * 40.0;
+    vec2 at0 = h.size * 0.5 + (px - h.size * 0.5) / pb[q + 2] - vec2(pb[q], pb[q + 1]) * h.size;
+    float split = pb[q + 3] * h.size.x;
+    float blur = pb[q + 4];
     vec4 o = vec4(0.0);
     float taps = 0.0;
     int reach = blur > 0.0 ? 1 : 0;
     for (int j = -reach; j <= reach; ++j)
         for (int i = -reach; i <= reach; ++i) {
-            vec2 at = q + vec2(i, j) * blur;
+            vec2 at = at0 + vec2(i, j) * blur;
             vec4 m = inPicture(at, h.size) ? samplePixel(t, at) : vec4(0.0);
             if (split != 0.0) {
                 vec2 ar = at + vec2(split, 0.0), ab = at - vec2(split, 0.0);
@@ -1503,14 +1515,14 @@ EffectDef classicTwitch()
             taps += 1.0;
         }
     o /= taps;
-    if (amount[3] >= 0.0)
-        o.rgb *= 1.0 + 4.0 * amount[3] * pb[p + 8] * g;
-    if (amount[2] >= 0.0)
-        o.a *= 1.0 - pb[p + 6] * g * (0.3 + 0.35 * amount[2]);
+    o.rgb *= pb[q + 5];
+    o.a *= pb[q + 6];
 )" + blackBackground(14) + addMixer(15, 16),
             {},
             {},
             "Classic"};
+    def.derive = classicTwitchValues;
+    def.derived = kTwitchValues;
     def.globals = "\nbool inPicture(vec2 q, vec2 size)\n"
                   "{\n    return all(greaterThanEqual(q, vec2(0.0))) && all(lessThanEqual(q, size));\n}\n";
     return def;
