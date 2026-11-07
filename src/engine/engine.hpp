@@ -15,6 +15,7 @@
 #include "engine/fsr_upscaler.hpp"
 #include "engine/modulation_plan.hpp"
 #include "engine/gpu_profile.hpp"
+#include "engine/id_set.hpp"
 #include "engine/playhead.hpp"
 #include "engine/side_targets.hpp"
 #include "engine/static_bake.hpp"
@@ -462,7 +463,7 @@ private:
         std::string label{};
         // Layers published only for preview watches, whether the pass being encoded is drawn only for them, those
         // passes and their timestamps.
-        std::set<uint64_t> previewOnly{};
+        const IdSet* previewOnly = nullptr;
         bool preview = false;
         uint64_t previewPasses = 0;
         std::shared_ptr<GpuProfile::Frame> previewTimes{};
@@ -503,7 +504,7 @@ private:
                              std::vector<std::shared_ptr<const CompiledChain>>& chains, float master);
     // `pictures` are the layers some slice reads.
     std::vector<Draw> collect(const std::vector<Layer>& layers, const Layer* group, bool solos,
-                              const std::set<uint64_t>& pictures, const std::shared_ptr<const Composition>& document,
+                              const IdSet& pictures, const std::shared_ptr<const Composition>& document,
                               std::vector<std::shared_ptr<const CompiledChain>>& chains);
     void encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::ClearColor clear,
                      std::vector<Draw>& draws);
@@ -634,6 +635,13 @@ private:
     mutable std::mutex compositionMutex_;
     std::shared_ptr<const Composition> composition_ = std::make_shared<const Composition>();
     std::set<uint64_t> previewPictures_;
+    // Render thread only: rebuilt every frame in place, so they stop allocating once warm.
+    IdSet ids_;
+    IdSet sided_;
+    IdSet chainEffects_;
+    IdSet published_;
+    IdSet previewOnly_;
+    std::vector<Preload> preloadScratch_;
     std::shared_ptr<FrameTap> tap_;
     std::shared_ptr<ModulationPlan> modulationShared_ = std::make_shared<ModulationPlan>(Composition{});
     // Render thread only: the plan of the frame being rendered and the parameter values of the pass being encoded.

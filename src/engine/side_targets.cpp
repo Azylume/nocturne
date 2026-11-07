@@ -55,7 +55,7 @@ size_t SideTargets::bytes() const
     return n;
 }
 
-void SideTargets::keep(const std::set<uint64_t>& layers, const std::set<uint64_t>& effects)
+void SideTargets::keep(const IdSet& layers, const IdSet& effects)
 {
     ++frame_;
     std::erase_if(layers_, [&](const auto& entry) { return !layers.contains(entry.first); });

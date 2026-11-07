@@ -89,14 +89,12 @@ const ClipRef* clipAt(const Layer& layer, const std::optional<Play>& play)
 }
 
 // The layers and groups whose pictures some slice takes as input.
-std::set<uint64_t> slicedPictures(const Composition& composition)
+void slicedPictures(const Composition& composition, IdSet& pictures)
 {
-    std::set<uint64_t> pictures;
     for (const Screen& screen : composition.screens)
         for (const Slice& slice : screen.slices)
             if (slice.input != 0)
                 pictures.insert(slice.input);
-    return pictures;
 }
 
 uint64_t effectId(const EffectList& effects, const PlannedStage& stage)
@@ -330,17 +328,17 @@ void Engine::drawFrame(double seconds)
     autopilots_.fireColumnCues(*current, beat);
     if (!starting)
         autopilots_.stepColumns(*current, beat);
-    std::set<uint64_t> ids;
+    ids_.clear();
     forEachLayer(current->layers, [&](const Layer& layer) {
-        ids.insert(layer.id);
+        ids_.insert(layer.id);
         if (layer.group || starting)
             return;
         switchIfDue(layer, *current, autopilots_.steer(layer, *current, beat), seconds, beat);
         endFade(layers_[layer.id], beat);
     });
     mark.stepped = traceNow();
-    std::erase_if(layers_, [&](const auto& state) { return !ids.contains(state.first); });
-    autopilots_.keepLayers(ids);
+    std::erase_if(layers_, [&](const auto& state) { return !ids_.contains(state.first); });
+    autopilots_.keepLayers(ids_);
     updateWants(*current, beat);
     bool onTime = true;
     forEachLayer(current->layers, [&](const Layer& layer) {
@@ -355,19 +353,19 @@ void Engine::drawFrame(double seconds)
     });
     mark.updated = traceNow();
     const bool held = starting || (resuming_ && holding(seconds, onTime && decoders_.preloaded() && settled));
-    std::set<uint64_t> sided = ids;
-    sided.insert(0);
+    sided_ = ids_;
+    sided_.insert(0);
     for (const auto& [id, state] : layers_)
         if (state.from)
-            sided.insert({fadeId(id), clipSlot(id), fadeId(clipSlot(id)), mixSlot(id)});
-    std::erase_if(chains_, [&](const auto& state) { return !sided.contains(state.first); });
-    std::set<uint64_t> effects;
+            sided_.insert({fadeId(id), clipSlot(id), fadeId(clipSlot(id)), mixSlot(id)});
+    std::erase_if(chains_, [&](const auto& state) { return !sided_.contains(state.first); });
+    chainEffects_.clear();
     forEachChain(*current, [&](const std::vector<Effect>& chain, uint64_t, std::optional<uint64_t>) {
         for (const Effect& effect : chain)
-            effects.insert(effect.id);
+            chainEffects_.insert(effect.id);
     });
-    sides_.keep(sided, effects);
-    std::erase_if(bakes_, [&](const auto& bake) { return !bakeStatic_ || !sided.contains(bake.first); });
+    sides_.keep(sided_, chainEffects_);
+    std::erase_if(bakes_, [&](const auto& bake) { return !bakeStatic_ || !sided_.contains(bake.first); });
 
     // The GPU reads these frames' textures and these pipelines until the command buffer completes.
     std::vector<VideoFrameRef> pictures;
@@ -378,17 +376,20 @@ void Engine::drawFrame(double seconds)
             pictures.push_back(state.from->shown);
     }
     std::vector<std::shared_ptr<const CompiledChain>> chains;
-    std::set<uint64_t> published = slicedPictures(*current);
-    std::set<uint64_t> previewOnly;
+    published_.clear();
+    slicedPictures(*current, published_);
+    previewOnly_.clear();
     {
         std::lock_guard lock(compositionMutex_);
-        previewOnly = previewPictures_;
+        for (const uint64_t id : previewPictures_)
+            if (!published_.contains(id))
+                previewOnly_.insert(id);
     }
-    std::erase_if(previewOnly, [&](uint64_t id) { return published.contains(id); });
-    published.insert(previewOnly.begin(), previewOnly.end());
+    for (const uint64_t id : previewOnly_)
+        published_.insert(id);
     std::vector<Draw> draws;
     if (!held) {
-        draws = collect(current->layers, nullptr, anySolo(*current), published, current, chains);
+        draws = collect(current->layers, nullptr, anySolo(*current), published_, current, chains);
         addCompositionChain(draws, current, chains,
                             std::clamp(modulation_->opacity(0, float(current->opacity)), 0.0f, 1.0f));
         guardBudget(draws, chains, current->frameGuard);
@@ -399,9 +400,9 @@ void Engine::drawFrame(double seconds)
     FrameEncoding encoding{queue_.commandBuffer(), *frame, float(seconds)};
     if (profile_)
         encoding.profile = profile_->begin();
-    if (previewTimer_ && !previewOnly.empty())
+    if (previewTimer_ && !previewOnly_.empty())
         encoding.previewTimes = previewTimer_->begin();
-    encoding.previewOnly = std::move(previewOnly);
+    encoding.previewOnly = &previewOnly_;
     encodeStack(encoding, &frame->texture, gpu::ClearColor{0, 0, 0, 1}, draws);
     stats_.passes = encoding.passes;
     stats_.previewPasses = encoding.previewPasses;
@@ -458,7 +459,7 @@ void Engine::drawFrame(double seconds)
 // A slice's picture of a layer ignores the layer's opacity, blend mode and solo, but not its bypass. An output-only
 // group never reaches the composition.
 std::vector<Engine::Draw> Engine::collect(const std::vector<Layer>& layers, const Layer* group, bool solos,
-                                          const std::set<uint64_t>& pictures,
+                                          const IdSet& pictures,
                                           const std::shared_ptr<const Composition>& document,
                                           std::vector<std::shared_ptr<const CompiledChain>>& chains)
 {
@@ -768,7 +769,8 @@ void Engine::updateWants(const Composition& composition, double beat)
             shownText(layer, it->second.from.get());
         }
     });
-    std::vector<Preload> preloads;
+    std::vector<Preload>& preloads = preloadScratch_;
+    preloads.clear();
     auto preload = [&](const Layer& layer, uint64_t column) {
         auto it = layer.clips.find(column);
         if (it == layer.clips.end())
@@ -1099,7 +1101,7 @@ void Engine::encodeStack(FrameEncoding& frame, const gpu::Texture* target, gpu::
     AZL_ZONE("encode stack");
     for (Draw& draw : draws) {
         const bool outer = frame.preview;
-        const bool previewOnly = draw.publish && frame.previewOnly.contains(draw.publish);
+        const bool previewOnly = draw.publish && frame.previewOnly->contains(draw.publish);
         frame.preview = outer || (previewOnly && !draw.composite);
         encodeInputs(frame, draw);
         if (!draw.from.empty())
