@@ -110,7 +110,9 @@ public:
     using Failure = std::function<void(const std::vector<std::string>& chain, const std::string& error)>;
 
     // With `cache`, compiled pipelines persist in that file, so a later compiler on the same file compiles none of
-    // them again.
+    // them again. When the file is missing or does not load, the compile thread also compiles every registered
+    // effect's layer chain in the background, only while no chain is wanted, and saves the file; a failure is
+    // counted and ignored.
     explicit ChainCompiler(const gpu::Device& device, std::filesystem::path cache = {});
     ~ChainCompiler();
 
@@ -132,6 +134,8 @@ public:
 
     // For tests: a held compiler starts no compile until released.
     void hold(bool held);
+    // Blocks until the background pre-warm is done, or at once when there is none.
+    void waitPrewarmed();
     void waitIdle();
     // Nothing is queued or compiling. Never blocks.
     bool idle() const;
@@ -150,11 +154,16 @@ private:
     // Under mutex_.
     void wantLocked(const Composition& composition, ChainKind kind, const EffectList& effects, bool text);
     void run();
-    std::shared_ptr<const CompiledChain> compile(const Job& job);
+    // `quiet`: a failure is not reported.
+    std::shared_ptr<const CompiledChain> compile(const Job& job, bool quiet = false);
     void fail(const std::vector<std::string>& types, const std::string& error);
     std::vector<CompiledPass> compilePasses(SourceKind source, const std::vector<const EffectDef*>& chain);
     std::vector<gpu::RenderPipeline> pipelines(const PlannedPass& pass);
     void openArchive();
+    std::filesystem::path isfCacheDir() const;
+    void startPrewarm();
+    void prewarmOne();
+    void finishPrewarm();
     void saveArchive();
     void reportFirstIdle();
 
@@ -168,12 +177,16 @@ private:
     bool reported_ = false;
     uint64_t compiled_ = 0;
     uint64_t cached_ = 0;
+    uint64_t prewarmFailed_ = 0;
     // Compile thread only, by generated source and target.
     std::map<std::string, std::vector<gpu::RenderPipeline>> pipelines_;
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;
     std::deque<Job> queue_;
+    // Chains to compile when queue_ is empty.
+    std::deque<Job> prewarm_;
+    bool prewarmed_ = false;
     std::set<std::string> wanted_;
     std::map<std::string, std::shared_ptr<const CompiledChain>> ready_;
     std::set<std::string> failed_;

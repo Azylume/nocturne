@@ -240,6 +240,35 @@ TEST_CASE("a second start on the same pipeline cache compiles nothing; a Paravir
     std::filesystem::remove(cache);
 }
 
+TEST_CASE("a start on an empty pipeline cache pre-warms every effect in the background, so a show compiles none")
+{
+    const auto device = gpu::Device::systemDefault();
+    if (!azl::archivesWork(device.name()))
+        return;
+    const std::filesystem::path cache = std::filesystem::temp_directory_path() /
+                                        ("nocturne-prewarm-" + std::to_string(azl::currentProcessId()) +
+                                         gpu::kPipelineCacheExtension);
+    std::filesystem::remove(cache);
+    {
+        azl::ChainCompiler compiler(device, cache);
+        compiler.waitPrewarmed();
+        CHECK(compiler.stats().pipelines > 0);
+    }
+    REQUIRE(std::filesystem::exists(cache));
+
+    azl::ChainCompiler compiler(device, cache);
+    const azl::Composition composition = azl::defaultComposition();
+    for (const std::string type : {"transform", "colorize", "edgeDetection"}) {
+        CAPTURE(type);
+        const std::vector<azl::Effect> effects{{1, type, {}}};
+        compiler.prepare(composition, azl::ChainKind::Layer, azl::effectList(effects));
+        compiler.waitIdle();
+    }
+    CHECK(compiler.stats().pipelines == 0);
+    CHECK(compiler.stats().archived > 0);
+    std::filesystem::remove(cache);
+}
+
 TEST_CASE("effect edits are undoable and seen by every client")
 {
     azl::EngineHarness harness({.width = 960, .height = 540});
