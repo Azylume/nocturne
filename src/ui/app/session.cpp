@@ -84,6 +84,37 @@ std::optional<std::pair<uint64_t, uint64_t>> cellOf(const std::set<std::string>&
 
 } // namespace
 
+namespace {
+
+void pickFilesInDialog(const juce::String& title, const juce::File& start, const juce::String& pattern, bool several,
+                       std::function<void(std::vector<juce::File>)> done)
+{
+    static std::unique_ptr<juce::FileChooser> chooser;
+    chooser = std::make_unique<juce::FileChooser>(title, start, pattern);
+    const int mode = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
+                     (several ? juce::FileBrowserComponent::canSelectMultipleItems : 0);
+    chooser->launchAsync(mode, [done = std::move(done)](const juce::FileChooser& c) {
+        std::vector<juce::File> files;
+        for (const juce::File& file : c.getResults())
+            files.push_back(file);
+        if (!files.empty())
+            done(std::move(files));
+    });
+}
+
+void confirmInDialog(const juce::String& question, const juce::String& action, std::function<void()> then)
+{
+    juce::AlertWindow::showAsync(
+        juce::MessageBoxOptions::makeOptionsOkCancel(juce::MessageBoxIconType::WarningIcon, "Nocturne", question, action,
+                                                     "Cancel"),
+        [then = std::move(then)](int result) {
+            if (result == 1)
+                then();
+        });
+}
+
+} // namespace
+
 Session::Session(std::string host, uint16_t port, bool surfaces, LocalRender localRender,
                  LocalPreviews::Options localOptions, DirectorMedia::Options media)
     : host_(std::move(host)), port_(port), surfaces_(surfaces), localRender_(localRender), localOptions_(localOptions),
@@ -95,6 +126,8 @@ Session::Session(std::string host, uint16_t port, bool surfaces, LocalRender loc
                                              [this](const std::string& hash) { mediaChanged(hash); });
     client_.setListenSink([this](const Message& message) { returnAudio_.receive(message); });
     midi_ = std::make_unique<MidiControl>(*this);
+    pickFiles = pickFilesInDialog;
+    confirm = confirmInDialog;
     connect();
     startTimerHz(30);
 }
@@ -724,6 +757,7 @@ void Session::useSettings(juce::PropertiesFile* settings)
         settings_ = settings;
     }
     midi_->useSettings(settings);
+    recentShows_.use(settings, host_);
     if (!settings_)
         return;
     if (tokenFor(host_) != token_)
@@ -968,6 +1002,7 @@ void Session::connectTo(const std::string& host, uint16_t port)
     returnAudio_.stop();
     host_ = host;
     port_ = port;
+    recentShows_.use(settings_, host_);
     composition_ = client_.composition();
     stills_.clear();
     previews_.clear();
@@ -990,6 +1025,12 @@ void Session::connectTo(const std::string& host, uint16_t port)
         settings_->saveIfNeeded();
     }
     notify(Venues * 2 - 1);
+}
+
+void Session::showFile(const std::string&, const std::string& path)
+{
+    recentShows_.add(path);
+    post(Shows);
 }
 
 void Session::startVenues(VenueSources sources)

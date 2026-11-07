@@ -146,17 +146,7 @@ BrowserPane::BrowserPane(Session& session)
             onCollapse();
     };
     addAndMakeVisible(collapse_);
-    addFiles_.onClick = [this] {
-        chooser_ = std::make_unique<juce::FileChooser>("Add media to the engine's library", juce::File(), "*.mp4;*.mov;*.m4v");
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectMultipleItems,
-                              [this](const juce::FileChooser& chooser) {
-                                  std::vector<std::string> paths;
-                                  for (const juce::File& file : chooser.getResults())
-                                      paths.push_back(file.getFullPathName().toStdString());
-                                  if (!paths.empty())
-                                      session_.client().addMedia(paths, [](const LibraryItem&) {});
-                              });
-    };
+    addFiles_.onClick = [this] { addMedia(); };
     addAndMakeVisible(addFiles_);
     addFiles_.setTooltip("Copy movie files into the engine machine's Media Library");
     keepShow_.setClickingTogglesState(true);
@@ -278,6 +268,17 @@ void BrowserPane::tabChanged()
     keepShow_.setVisible(tab_ == 0);
     effects_.setVisible(tab_ == 1);
     resized();
+}
+
+void BrowserPane::addMedia()
+{
+    session_.pickFiles("Add media to the engine's library", juce::File(), "*.mp4;*.mov;*.m4v", true,
+                       [this](std::vector<juce::File> files) {
+                           std::vector<std::string> paths;
+                           for (const juce::File& file : files)
+                               paths.push_back(file.getFullPathName().toStdString());
+                           session_.client().addMedia(paths, [](const LibraryItem&) {});
+                       });
 }
 
 void BrowserPane::sessionChanged(int changes)
