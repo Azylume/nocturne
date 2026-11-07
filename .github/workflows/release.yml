@@ -1,7 +1,11 @@
-# Builds the unsigned preview DMG on a v* tag and attaches it to a DRAFT GitHub Release. Nothing here runs on pull
-# requests, so it is never a required check; CI (ci.yml) stays the gate. A human reviews the draft and publishes it.
-# This build carries no Apple Developer ID; it is ad-hoc signed so Apple Silicon will run it, and Gatekeeper still
-# refuses it (#32 is the signed, notarised one).
+# Builds the universal DMG on a v* tag and attaches it to a DRAFT GitHub Release. Nothing here runs on pull requests, so
+# it is never a required check and no PR can read a secret; CI (ci.yml) stays the gate. A human reviews the draft and
+# publishes it.
+#
+# With the five Apple secrets of the `release` environment set, the app is signed with Developer ID, notarised and
+# stapled, and so is the DMG (tools/import-signing-cert.sh, tools/make-bundle.sh, tools/notarize.sh, tools/make-dmg.sh).
+# With none set (a fork), it falls back to the ad-hoc signed unsigned preview. Some but not all set fails at once.
+# The secrets and how to create them: docs/release.md.
 name: Release
 
 on:
@@ -20,9 +24,35 @@ permissions:
 jobs:
   dmg:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 90
+    environment: release
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+      - name: Signing secrets
+        id: signing
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          names=(APPLE_CERT_P12_BASE64 APPLE_CERT_PASSWORD APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER)
+          missing=()
+          for name in "${names[@]}"; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -eq "${#names[@]}" ]; then
+            echo "::warning::No Apple secrets in the release environment: building the UNSIGNED preview (docs/release.md)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#missing[@]}" -eq 0 ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Release secrets missing: ${missing[*]}. Set all five or none (docs/release.md)."
+            exit 1
+          fi
       - name: Install ninja, ccache and ffmpeg
         run: brew install ninja ccache ffmpeg
       - name: ccache
@@ -38,34 +68,87 @@ jobs:
           key: deps-${{ hashFiles('CMakeLists.txt', 'src/ui/CMakeLists.txt') }}
       - name: Version from the tag
         id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
       - name: Configure (universal, arm64 + x86_64, Release)
         # CMakeLists defaults to RelWithDebInfo; a release DMG is an explicit Release build.
         run: >
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
       - name: Build the UI and engine bundles
         run: cmake --build build --target nocturne-ui app
+      - name: Every binary in both bundles holds both slices
+        run: tools/check-universal.sh build/Nocturne.app "build/Nocturne UI.app"
+      - name: Import the Developer ID certificate
+        if: steps.signing.outputs.signed == 'true'
+        id: cert
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: echo "identity=$(tools/import-signing-cert.sh "$RUNNER_TEMP/nocturne-signing.keychain-db")" >> "$GITHUB_OUTPUT"
       - name: Assemble the standalone bundle
-        run: tools/make-bundle.sh --version "${{ steps.version.outputs.version }}" --build "${{ github.run_number }}"
+        env:
+          IDENTITY: ${{ steps.cert.outputs.identity }}
+        run: |
+          sign=()
+          [ -z "$IDENTITY" ] || sign=(--identity "$IDENTITY")
+          tools/make-bundle.sh --version "${{ steps.version.outputs.version }}" --build "${{ github.run_number }}" "${sign[@]}"
+      - name: Notarise and staple the app
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: tools/notarize.sh build/release/Nocturne.app
       - name: Build the DMG and checksum
-        run: tools/make-dmg.sh --version "${{ steps.version.outputs.version }}"
-      - name: Draft release with the DMG and checksum
-        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          IDENTITY: ${{ steps.cert.outputs.identity }}
+        run: |
+          sign=()
+          [ -z "$IDENTITY" ] || sign=(--identity "$IDENTITY")
+          tools/make-dmg.sh --version "${{ steps.version.outputs.version }}" "${sign[@]}"
+      - name: Notarise and staple the DMG
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          dmg="Nocturne-${{ steps.version.outputs.version }}.dmg"
+          tools/notarize.sh "build/release/$dmg"
+          (cd build/release && shasum -a 256 "$dmg" > "$dmg.sha256")
+      - name: Gatekeeper accepts the app and the DMG
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          codesign --verify --deep --strict --verbose=2 build/release/Nocturne.app
+          spctl -a -vv -t exec build/release/Nocturne.app
+          spctl -a -vv -t open --context context:primary-signature "build/release/Nocturne-${{ steps.version.outputs.version }}.dmg"
+      - name: Remove the signing keychain
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/nocturne-signing.keychain-db" || true
+      - name: Draft release with the signed DMG and checksum
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.signed == 'true'
         # Pinned to a commit SHA: this job has contents: write, so a moved tag must not change what runs.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          draft: true
+          name: Nocturne ${{ steps.version.outputs.version }}
+          body: |
+            Developer ID signed, notarised and stapled universal build (Apple silicon and Intel).
+
+            Verify the download: `shasum -a 256 -c Nocturne-${{ steps.version.outputs.version }}.dmg.sha256`
+          files: |
+            build/release/Nocturne-${{ steps.version.outputs.version }}.dmg
+            build/release/Nocturne-${{ steps.version.outputs.version }}.dmg.sha256
+      - name: Draft release with the unsigned DMG and checksum
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.signed != 'true'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: true
           name: Nocturne ${{ steps.version.outputs.version }} (unsigned preview)
           body: |
             Unsigned preview build. macOS cannot verify the developer; see docs/install.md to open it.
-            A signed, notarised DMG comes later (#32).
+            The signing secrets were not set for this run (docs/release.md).
 
             Verify the download: `shasum -a 256 -c Nocturne-${{ steps.version.outputs.version }}-unsigned.dmg.sha256`
           files: |
@@ -76,4 +159,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nocturne-dmg-${{ steps.version.outputs.version }}
-          path: build/release/Nocturne-*-unsigned.dmg*
+          path: build/release/Nocturne-*.dmg*
