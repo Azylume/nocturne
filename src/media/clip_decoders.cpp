@@ -3,6 +3,7 @@
 #include "platform/thread_priority.hpp"
 #include "media/media_library.hpp"
 #include "media/video_source.hpp"
+#include "platform/atomic_max.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 
@@ -30,8 +31,7 @@ void raiseMax(std::atomic<uint64_t>& max, std::chrono::steady_clock::time_point 
 {
     const auto took = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - since).count());
-    for (uint64_t m = max; took > m;)
-        max.compare_exchange_weak(m, took);
+    atomicMax(max, took);
 }
 
 // The frame at `position` (0..1) of the clip: forward frame i covers [i, i + 1), backward (i, i + 1].

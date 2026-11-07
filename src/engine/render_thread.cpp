@@ -1,5 +1,6 @@
 #include "engine/render_thread.hpp"
 
+#include "platform/atomic_max.hpp"
 #include "platform/thread_priority.hpp"
 #include "platform/profile.hpp"
 
@@ -125,8 +126,7 @@ void RenderThread::run(double fps, const VsyncPhase* vsync)
         const Clock::time_point start = clock.wait();
         if (last) {
             const auto gap = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(start - *last).count());
-            auto& longest = engine_.stats().maxGapMicros;
-            longest = std::max(longest.load(), gap);
+            atomicMax(engine_.stats().maxGapMicros, gap);
         }
         last = start;
         engine_.renderFrame(secondsSinceEpoch(start));

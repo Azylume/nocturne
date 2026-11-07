@@ -1,6 +1,7 @@
 #include "output/display_output.hpp"
 
 #include "platform/thread_priority.hpp"
+#include "platform/atomic_max.hpp"
 #include "platform/profile.hpp"
 
 #include <algorithm>
@@ -18,7 +19,7 @@ void recordShown(OutputStats& stats, double presentedTime, double started)
     stats.shown++;
     if (stats.lastShown > 0.0) {
         const auto micros = uint64_t((presentedTime - stats.lastShown) * 1e6);
-        stats.maxIntervalMicros = std::max(stats.maxIntervalMicros.load(), micros);
+        atomicMax(stats.maxIntervalMicros, micros);
     }
     stats.lastShown = presentedTime;
     if (started < 0.0)
@@ -183,7 +184,7 @@ void DisplayOutput::presentFrame(Surface& surface, std::chrono::steady_clock::ti
     stats_->presents++;
     const auto took = uint64_t(
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - begun).count());
-    stats_->maxPresentMicros = std::max(stats_->maxPresentMicros.load(), took);
+    atomicMax(stats_->maxPresentMicros, took);
     AZL_FRAME_MARK_NAMED("present " + display_);
     if (const int delay = delayMs_)
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
