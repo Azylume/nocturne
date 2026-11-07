@@ -86,12 +86,15 @@ MainComponent::MainComponent(Session& session, std::unique_ptr<juce::PropertiesF
     };
     setBrowserHidden(browserHidden_);
     session_.addView(this);
+    juce::Desktop::getInstance().addFocusChangeListener(this);
     setWantsKeyboardFocus(true);
     setSize(1600, 950);
 }
 
 MainComponent::~MainComponent()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener(this);
+    onCommandsChanged = nullptr;
     session_.useSettings(nullptr);
     session_.removeView(this);
     setLookAndFeel(nullptr);
@@ -99,6 +102,7 @@ MainComponent::~MainComponent()
 
 void MainComponent::sessionChanged(int changes)
 {
+    refreshCommands();
     if (changes & Session::Panels)
         repaint();
 }
@@ -114,6 +118,7 @@ void MainComponent::setTab(TransportBar::Tab tab)
     strip_.setVisible(perform && browserHidden_);
     map_.setVisible(tab == TransportBar::Tab::Map);
     machines_.setVisible(tab == TransportBar::Tab::Machines);
+    refreshCommands();
 }
 
 void MainComponent::setBrowserHidden(bool hidden)
@@ -298,6 +303,21 @@ bool MainComponent::commandEnabled(Command id) const
     }
 }
 
+void MainComponent::refreshCommands()
+{
+    const History history = session_.client().history();
+    const std::string state = std::to_string(session_.client().connected()) + std::to_string(focusedEditor() != nullptr) +
+                              std::to_string(grid_.isVisible()) + std::to_string(map_.isVisible()) +
+                              std::to_string(machines_.isVisible()) + std::to_string(browserHidden_) +
+                              std::to_string(session_.previewsOn()) + "|" + std::to_string(history.undo) + history.undoOp +
+                              "|" + std::to_string(history.redo) + history.redoOp;
+    if (state == commandState_)
+        return;
+    commandState_ = state;
+    if (onCommandsChanged)
+        onCommandsChanged();
+}
+
 void MainComponent::getAllCommands(juce::Array<juce::CommandID>& commands)
 {
     commands.addArray({CmdOpen, CmdSave, CmdSaveAs, CmdUndo, CmdRedo, CmdCut, CmdCopy, CmdPaste, CmdSelectAll,
@@ -311,7 +331,11 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
                         (command == CmdViewMachines && machines_.isVisible()) ||
                         (command == CmdToggleBrowser && grid_.isVisible() && !browserHidden_) ||
                         (command == CmdTogglePreviews && session_.previewsOn());
-    describeCommand(command, info, commandEnabled(command), ticked);
+    const History history = session_.client().history();
+    const juce::String name = command == CmdUndo && history.undo ? "Undo " + utf8(history.undoOp)
+                              : command == CmdRedo && history.redo ? "Redo " + utf8(history.redoOp)
+                                                                   : juce::String();
+    describeCommand(command, info, commandEnabled(command), ticked, name);
 }
 
 bool MainComponent::perform(const InvocationInfo& info)
@@ -365,10 +389,27 @@ MainWindow::MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> s
     commands_.registerAllCommandsForTarget(this);
     commands_.registerAllCommandsForTarget(main);
     commands_.setFirstCommandTarget(this);
+    main->onCommandsChanged = [this] { commands_.commandStatusChanged(); };
+    menu_ = std::make_unique<MenuBar>(commands_, *this);
     setResizable(true, false);
     setResizeLimits(1100, 700, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
     setVisible(visible);
+}
+
+MainWindow::~MainWindow()
+{
+    if (auto* main = dynamic_cast<MainComponent*>(getContentComponent()))
+        main->onCommandsChanged = nullptr;
+}
+
+void MainWindow::resized()
+{
+    DocumentWindow::resized();
+    if (fullScreen_ != inFullScreen()) {
+        fullScreen_ = inFullScreen();
+        commands_.commandStatusChanged();
+    }
 }
 
 juce::ApplicationCommandTarget* MainWindow::getNextCommandTarget()
@@ -384,16 +425,15 @@ void MainWindow::getAllCommands(juce::Array<juce::CommandID>& commands)
 void MainWindow::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info)
 {
     const auto command = Command(id);
-    describeCommand(command, info, true, command == CmdFullScreen && isFullScreen());
-    if (command == CmdFullScreen && isFullScreen())
-        info.shortName = "Exit Full Screen";
+    describeCommand(command, info, true, false,
+                    command == CmdFullScreen && inFullScreen() ? "Exit Full Screen" : juce::String());
 }
 
 bool MainWindow::perform(const InvocationInfo& info)
 {
     switch (Command(info.commandID)) {
     case CmdClose: closeButtonPressed(); break;
-    case CmdFullScreen: setFullScreen(!isFullScreen()); break;
+    case CmdFullScreen: setFullScreen(!inFullScreen()); break;
     case CmdMinimise: setMinimised(true); break;
     case CmdZoom:
         if (juce::ComponentPeer* peer = getPeer())

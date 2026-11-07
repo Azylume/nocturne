@@ -26,9 +26,10 @@ enum Command : juce::CommandID {
     CmdZoom,
 };
 
-// Fills `info` for the commands of the app's menus and shortcuts: the name, the shortcut and, when `enabled` is false, the
-// disabled flag.
-void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enabled, bool ticked = false);
+// Fills `info` for the commands of the app's menus and shortcuts: the name (`name` when given), the shortcut and, when
+// `enabled` is false, the disabled flag.
+void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enabled, bool ticked = false,
+                     const juce::String& name = {});
 
 // The menu bar of the window: File, Edit, View, Window and Help, every item a command of `commands`, so a menu pick and
 // its shortcut run the same code as the buttons. On macOS it is the system menu bar; elsewhere it only owns the model.
@@ -37,6 +38,8 @@ public:
     MenuBar(juce::ApplicationCommandManager& commands, juce::TopLevelWindow& window);
     ~MenuBar() override;
 
+    // The extra items of the application menu (Settings), after the system's About.
+    juce::PopupMenu appMenu() const;
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int index, const juce::String& name) override;
     void menuItemSelected(int itemId, int index) override;

@@ -1,5 +1,7 @@
 #include "ui/app/menu_bar.hpp"
 
+#include "ui/app/window_display.hpp"
+
 namespace azl::ui {
 
 namespace {
@@ -49,10 +51,10 @@ Description describe(Command id)
 
 } // namespace
 
-void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enabled, bool ticked)
+void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enabled, bool ticked, const juce::String& name)
 {
     const Description d = describe(id);
-    info.setInfo(d.name, {}, d.category, 0);
+    info.setInfo(name.isEmpty() ? juce::String(d.name) : name, {}, d.category, 0);
     if (d.key.isValid())
         info.addDefaultKeypress(d.key.getKeyCode(), d.key.getModifiers());
     if (id == CmdRedo)
@@ -66,9 +68,10 @@ void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enable
 MenuBar::MenuBar(juce::ApplicationCommandManager& commands, juce::TopLevelWindow& window)
     : commands_(commands), window_(window)
 {
+    setApplicationCommandManagerToWatch(&commands_);
 #if JUCE_MAC
-    juce::PopupMenu apple;
-    apple.addCommandItem(&commands_, CmdSettings);
+    useOwnFullScreenMenuItem();
+    const juce::PopupMenu apple = appMenu();
     setMacMainMenu(this, &apple);
 #endif
 }
@@ -78,6 +81,13 @@ MenuBar::~MenuBar()
 #if JUCE_MAC
     setMacMainMenu(nullptr);
 #endif
+}
+
+juce::PopupMenu MenuBar::appMenu() const
+{
+    juce::PopupMenu menu;
+    menu.addCommandItem(&commands_, CmdSettings);
+    return menu;
 }
 
 juce::StringArray MenuBar::getMenuBarNames()

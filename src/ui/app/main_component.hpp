@@ -38,6 +38,7 @@ public:
 class MainComponent : public juce::Component,
                       public juce::DragAndDropContainer,
                       public juce::ApplicationCommandTarget,
+                      private juce::FocusChangeListener,
                       private Session::View {
 public:
     // Without a settings file nothing is remembered.
@@ -67,6 +68,8 @@ public:
 
     static std::unique_ptr<juce::PropertiesFile> defaultSettings();
 
+    // Called when what a command's name, enabled or ticked state shows has changed.
+    std::function<void()> onCommandsChanged;
     // The File, Edit and View menu commands and their shortcuts; the buttons' own handlers do the work.
     juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
     void getAllCommands(juce::Array<juce::CommandID>& commands) override;
@@ -75,6 +78,8 @@ public:
 
 private:
     bool commandEnabled(Command id) const;
+    void refreshCommands();
+    void globalFocusChanged(juce::Component*) override { refreshCommands(); }
     void sessionChanged(int changes) override;
     bool clipKey(const juce::KeyPress& key);
 
@@ -95,6 +100,7 @@ private:
     Splitter splitter_;
     MapView map_;
     MachinesView machines_;
+    std::string commandState_;
     bool browserHidden_ = false;
     int bottomHeight_ = 0;
     int dragStartHeight_ = 0;
@@ -105,8 +111,10 @@ private:
 class MainWindow : public juce::DocumentWindow, public juce::ApplicationCommandTarget {
 public:
     MainWindow(Session& session, std::unique_ptr<juce::PropertiesFile> settings, bool visible);
+    ~MainWindow() override;
     void focusGained(FocusChangeType cause) override;
     void closeButtonPressed() override;
+    void resized() override;
 
     // The Close, Full Screen, Minimize and Zoom commands; the rest go on to the MainComponent.
     juce::ApplicationCommandTarget* getNextCommandTarget() override;
@@ -114,10 +122,14 @@ public:
     void getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) override;
     bool perform(const InvocationInfo& info) override;
     juce::ApplicationCommandManager& commands() { return commands_; }
+    MenuBar& menu() { return *menu_; }
 
 private:
+    virtual bool inFullScreen() const { return isFullScreen(); }
+
     juce::ApplicationCommandManager commands_;
-    MenuBar menu_{commands_, *this};
+    std::unique_ptr<MenuBar> menu_;
+    bool fullScreen_ = false;
 };
 
 } // namespace azl::ui

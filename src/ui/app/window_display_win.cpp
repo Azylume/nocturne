@@ -17,6 +17,8 @@ std::string displayOfWindow(void* nativeWindow)
     return {};
 }
 
+void useOwnFullScreenMenuItem() {}
+
 void zoomWindow(void* nativeWindow)
 {
     const HWND window = static_cast<HWND>(nativeWindow);

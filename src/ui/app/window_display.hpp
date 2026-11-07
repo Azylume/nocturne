@@ -8,6 +8,9 @@ namespace azl::ui {
 // (an NSView on macOS, an HWND on Windows). Empty when there is no window or no such display. Message thread.
 std::string displayOfWindow(void* nativeWindow);
 
+// Stops the system adding its own Enter Full Screen item to the View menu, which has the app's own. Before the menu is set.
+void useOwnFullScreenMenuItem();
+
 // Zooms the window to fit the screen, or back to its size. Message thread.
 void zoomWindow(void* nativeWindow);
 
