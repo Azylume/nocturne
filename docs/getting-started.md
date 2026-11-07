@@ -22,21 +22,24 @@ it, macOS asks again after every build.
 
 ## 2. Get the example show's clips
 
-The repo ships no footage. Save these free clips into `examples/first-show/` under exactly these names:
+The repo ships no footage. One command downloads the free clips, checks their SHA-1 and converts the NASA `.webm`
+(needs `curl` and `ffmpeg`). It skips files that are already there:
+
+```sh
+tools/fetch-example-media.sh
+```
 
 | file | source |
 |---|---|
-| `serpentine.mp4` | [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter) (public domain) |
-| `diagonale.mp4` | [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (public domain) |
-| `opus3.mp4` | [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (public domain) |
+| `serpentine.mp4` | [Danse serpentine](https://archive.org/details/danse-serpentine-par-mme-bob-walter) (no licence stated on the item) |
+| `diagonale.mp4` | [Symphonie Diagonale](https://archive.org/details/SymphonieDiagonale) (no licence stated on the item) |
+| `opus3.mp4` | [Lichtspiel Opus III](https://archive.org/details/LichtspielOpusIII) (Public Domain Mark) |
 | `moon.mp4` | [NASA SVS 14992](https://commons.wikimedia.org/wiki/File:Lunar_Near_and_Far_Side_Phases_(SVS14992_-_Waxing_4K).webm) (public domain) |
 | `beeple_scream.mp4`, `beeple_jahara.mp4`, `beeple_narrow_gultch.mp4` | [Beeple VJ loops](https://www.beeple-crap.com/vjloops) (CC BY, credit "Beeple") |
 
-Nocturne plays H.264, HEVC, ProRes and HAP. The NASA clip is a `.webm`; convert it first:
-
-```sh
-ffmpeg -i Lunar_Near_and_Far_Side_Phases*.webm -c:v libx264 -pix_fmt yuv420p -an examples/first-show/moon.mp4
-```
+The script does not fetch the Beeple clips: their downloads are MediaFire zips. Open the
+[Beeple VJ loops](https://www.beeple-crap.com/vjloops) page, download the loops named in the table, and save each
+under exactly the name shown, as H.264, HEVC, ProRes or HAP (convert with `ffmpeg` if a loop is something else).
 
 A show finds its media by path, then by name, then by content, so another clip saved under one of these names
 plays in its place. A missing one leaves its cell empty.
