@@ -651,6 +651,7 @@ add_dependencies(nocturne_tests app)
 target_link_libraries(nocturne_tests PRIVATE "-framework CoreGraphics" "-framework ImageIO" "-framework CoreFoundation"
   "-framework WebKit")
 add_test(NAME mini_host_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mini_host_test.sh")
+add_test(NAME setup_machine_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/setup_machine_test.sh")
 
 # The protocol, pairing and clock cases again, against the plain-socket WebSocket and UDP clock other platforms use
 # instead of Network.framework. The product keeps nocturne_net and nocturne_udp_clock.

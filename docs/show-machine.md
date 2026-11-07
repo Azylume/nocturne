@@ -13,6 +13,18 @@ Setting up a Mac mini as an unattended show machine, reaching it remotely, and t
 
 The Mini plays from power-on with no keyboard. In its desktop session (Screen Sharing or a keyboard):
 
+The shortcut: `tools/setup-machine.sh` run in that desktop session does steps 4 (with `--sudo`), 5 (except the Focus, desktop picture and Spotlight) and 6 below in one command:
+
+```sh
+~/Nocturne/tools/setup-machine.sh --dry-run --sudo --audio-input Focusrite   # lists every change and command, changes nothing
+~/Nocturne/tools/setup-machine.sh --sudo --audio-input Focusrite             # lists them again, asks, applies
+~/Nocturne/tools/setup-machine.sh --undo --sudo                              # puts the first values back, removes the LaunchAgent
+```
+
+It needs the bundle already installed (step 1, or the DMG's `Nocturne.app` in `/Applications`; `--bin DIR` names another folder), downloads nothing and stores no secret. Without `--sudo` it changes only the show user's settings: the LaunchAgent (through `tools/autostart.sh`, with `--audio-input` and any engine options after `--`), the screen saver and crash dialogs off, hot corners off and the `~/Nocturne/shows` and `media` folders. `--sudo` adds `pmset` (sleep, displaysleep, disksleep, powernap off, autorestart on), restart after a freeze, and automatic macOS updates off; `sudo` asks for the password itself. `--yes` skips the question. A second run changes nothing already set (an installed LaunchAgent is kept, because rewriting it restarts the engine: `--reinstall-autostart` forces it). The values it replaces are saved on the first run in `~/Library/Application Support/Nocturne/setup-machine-undo.txt`, and `--undo` restores exactly those. It ends with the list of what stays manual: the microphone and Local Network prompts, pairing, outputs (`nocturne-ctl screendisplay`), automatic login, a Focus and Spotlight. `tools/mini-setup-check.sh` then checks the result. Tested with stub system commands (`tests/setup_machine_test.sh`); a real run on a Mac has not been tried yet. Windows has no equivalent yet (`installer/autostart.ps1` covers the autostart only).
+
+The steps by hand:
+
 1. From the laptop: `tools/deploy-mini.sh` installs `~/Nocturne/Nocturne.app`, `~/Nocturne/tools` and `~/Nocturne/tests`.
 2. Microphone, once: `~/Nocturne/Nocturne.app/Contents/MacOS/nocturne --mic-check` in Terminal (or `open -W ~/Nocturne/Nocturne.app --args --mic-check` over SSH) and click Allow. Later builds keep the grant. The engine is still its own responsible process when the supervisor starts it, so the permission carries over; check that the `audio` lines in `engine.log` show a live level and not `digital silence`.
 3. Automatic login: System Settings > Users & Groups > Automatically log in as: this user (needs FileVault off; `fdesetup status`).
