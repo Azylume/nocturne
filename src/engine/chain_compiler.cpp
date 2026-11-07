@@ -5,6 +5,7 @@
 #include "engine/shader_cross.hpp"
 #include "gpu/glsl.hpp"
 #include "platform/thread_priority.hpp"
+#include "platform/atomic_max.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 
@@ -496,7 +497,7 @@ std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pas
     compiled_ += states.size() - archived;
     cached_ += archived;
     archiveChanged_ = archiveChanged_ || archived < states.size();
-    stats_.maxMicros = std::max(stats_.maxMicros.load(), micros);
+    atomicMax(stats_.maxMicros, micros);
     pipelines_[key] = states;
     return states;
 }
