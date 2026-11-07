@@ -6,7 +6,7 @@
 # usage: run.sh BIN_DIR MEDIA_DIR OUT_DIR [typical] [heavy] [stress]   (default typical stress)
 #   BIN_DIR holds nocturne and nocturne-ctl; on the Mini ~/Nocturne/Nocturne.app/Contents/MacOS (tools/deploy-mini.sh)
 # environment (defaults in brackets):
-#   DISPLAYS       the output displays, three or one ["window-1 window-2 window-3"]
+#   DISPLAYS       the output displays, three, two or one ["window-1 window-2 window-3"]
 #   ENGINE_ARGS    extra engine options ["--virtual 3", plus --offscreen unless BIN_DIR is under ~/Nocturne, as on the
 #                  Mini, so a local run shows no window]; use "" with real display ids in DISPLAYS, or add debug options.
 #                  Off the Mini --audio-input off is added unless ENGINE_ARGS has --audio-input, so a laptop run never
@@ -91,6 +91,7 @@ stop_engine() {
 }
 
 # The three mappings: screen 1 one keystoned slice, screen 2 two tilted halves, screen 3 the four quadrants as cube faces.
+# Two outputs use the first two; three the whole set.
 # One output shows all three mappings side by side: keystone, two tilted halves, four cube faces.
 setup_one_output() {
     ctl corners 1 0.03 0.15 0.30 0.05 0.31 0.95 0.02 0.85
@@ -116,6 +117,7 @@ setup_outputs() {
     ctl corners 2 0 0.05 0.5 0 0.5 1 0 0.95
     ctl addslice 2 0 0.5 0 0.5 1
     ctl corners 3 0.5 0 1 0.05 1 0.95 0.5 1
+    [ ${#OUTPUTS[@]} -eq 2 ] && return
     ctl addscreen "${OUTPUTS[2]}"
     ctl sliceinput 4 0 0 0 0.5 0.5
     ctl corners 4 0.02 0.1 0.48 0.02 0.48 0.48 0.02 0.42
