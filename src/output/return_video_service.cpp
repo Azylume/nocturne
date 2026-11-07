@@ -201,7 +201,7 @@ bool ReturnVideoService::follow(const Composition& composition, double fps)
 #endif
     std::vector<Output> next;
     for (const auto& [display, screen] : outputs) {
-        Output output{.display = display, .screen = screen};
+        Output output{.display = display, .screen = screen, .guard = return_video::RateGuard(plan.kbps)};
         try {
             output.encoder = std::make_unique<H264Encoder>(plan.width, plan.height, plan.fps, plan.kbps);
         } catch (const std::exception&) {
@@ -310,13 +310,14 @@ std::optional<return_video::Packet> ReturnVideoService::encode(const Painted& pa
 std::set<ClientId> ReturnVideoService::serve(const FrameRef& frame, const Composition& composition, bool key,
                                              const std::vector<ClientId>& watchers)
 {
+    const double seconds = std::chrono::duration<double>(Clock::now() - started_).count();
     std::vector<Painted> painted;
     {
         gpu::Scope scope;
         gpu::CommandBuffer cmd = queue_.commandBuffer();
         for (Output& output : outputs_) {
             const Screen* screen = screenOf(composition, output.screen);
-            if (!screen || !output.encoder)
+            if (!screen || !output.encoder || !output.guard.admit(seconds))
                 continue;
             if (std::optional<Painted> p = paint(cmd, output, frame.get(), composition, *screen))
                 painted.push_back(*p);
@@ -330,13 +331,13 @@ std::set<ClientId> ReturnVideoService::serve(const FrameRef& frame, const Compos
     }
 
     std::set<ClientId> gone;
-    const double seconds = std::chrono::duration<double>(Clock::now() - started_).count();
     for (const Painted& p : painted) {
         const Clock::time_point start = Clock::now();
-        const std::optional<return_video::Packet> packet = encode(p, seconds, key);
+        const std::optional<return_video::Packet> packet = encode(p, seconds, key || p.output->guard.keyWanted());
         stats_.encodeMicros += microsSince(start);
         if (!packet)
             continue;
+        p.output->guard.sent(*packet);
         ++stats_.pictures;
         const Message message = return_video::frameMessage(p.output->display, p.output->screen, p.output->frame++,
                                                            plan_, *packet);
