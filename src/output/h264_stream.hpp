@@ -3,7 +3,7 @@
 #include "output/return_video.hpp"
 
 #ifdef __APPLE__
-#include <CoreVideo/CoreVideo.h>
+typedef struct __CVBuffer* CVPixelBufferRef;
 #else
 #include "output/ycbcr_picture.hpp"
 #endif

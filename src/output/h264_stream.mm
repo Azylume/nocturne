@@ -1,5 +1,6 @@
 #include "output/h264_stream.hpp"
 
+#import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
 #import <VideoToolbox/VideoToolbox.h>
 
