@@ -2199,7 +2199,7 @@ bool copyDecodedPlanes(const Device& device, const DecodedImage& image, const Te
     const auto copyPlane = [&](VkImageAspectFlagBits plane, vk::TextureObject* to, uint32_t width, uint32_t height) {
         vk::barrier(rec.cmd, to, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
         VkImageCopy region{};
-        region.srcSubresource = {plane, 0, 0, 1};
+        region.srcSubresource = {VkImageAspectFlags(plane), 0, 0, 1};
         region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         region.extent = {width, height, 1};
         vkCmdCopyImage(rec.cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to->image,
