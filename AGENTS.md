@@ -160,6 +160,7 @@ Prose here is the weakest guard; a check that fails is stronger. Know which rule
 | Builds, engine and UI suites pass on arm64 | CI (`.github/workflows/ci.yml`); skipped for docs-only changes |
 | Builds and the engine suite pass on Windows; the installer builds | CI `windows` job; skipped for docs-only changes |
 | Both slices in every binary | CI `universal` job, on `main` and nightly only, not on PRs |
+| No ASan/UBSan finding in the engine suite; no fuzz crash in the parsers | `nightly-sanitize.yml`, nightly only, not on PRs |
 | A curated ISF effect or generator has a test entry | "every built-in ISF shader loads" (`tests/isf_engine_test.cpp`) |
 | An ISF effect's golden is not the plain card | the same file's golden test (2% of pixels must differ) |
 | Test file added to CMake, no secrets, render thread never waits | **nothing in CI**: you and the reviewer |
