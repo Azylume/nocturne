@@ -124,10 +124,25 @@ const ClipRef* clipOf(const Layer& layer, const State& state)
 }
 
 // Where a preload of the clip starts: its in point forward, its out point backward.
-Preload preloadOf(const ClipKey& key, const Transport& transport)
+PreloadView preloadOf(const ClipView& key, const Transport& transport)
 {
     const bool forward = !playsBackward(transport.playMode, 0.0);
     return {key, forward ? transport.in : transport.out, forward};
+}
+
+bool sameClip(const ClipKey& key, const ClipView& view)
+{
+    return key.first == view.first && key.second == view.second;
+}
+
+bool sameWants(const std::set<ClipKey>& playing, const std::vector<Preload>& preloads,
+               const std::vector<ClipView>& nextPlaying, const std::vector<PreloadView>& nextPreloads)
+{
+    auto samePreload = [](const Preload& a, const PreloadView& b) {
+        return sameClip(a.clip, b.clip) && a.position == b.position && a.forward == b.forward;
+    };
+    return std::equal(playing.begin(), playing.end(), nextPlaying.begin(), nextPlaying.end(), sameClip) &&
+           std::equal(preloads.begin(), preloads.end(), nextPreloads.begin(), nextPreloads.end(), samePreload);
 }
 
 bool anySolo(const std::vector<Layer>& layers)
@@ -477,7 +492,7 @@ std::vector<Engine::Draw> Engine::collect(const std::vector<Layer>& layers, cons
         const std::vector<Effect>& layerChain = deckEffects(layer, deck);
         const LayerChain* chain = layer.group
                                       ? pickChain(layer.id, ChainKind::Group, effectList(layer.effects), document)
-                                      : pickChain(layer.id, chainKind(clip), clipChain(layerChain, clip), document,
+                                      : pickChain(layer.id, chainKind(clip), clipChainOf(layerChain, clip), document,
                                                   holdsText(layer));
         if (!chain || !state.visible)
             continue;
@@ -529,7 +544,7 @@ std::vector<Engine::Draw> Engine::collect(const std::vector<Layer>& layers, cons
                 draws.push_back(std::move(draw));
                 continue;
             }
-            const LayerChain* own = pickChain(fadeId(layer.id), chainKind(fromClip), clipChain(fromLayerChain, fromClip),
+            const LayerChain* own = pickChain(fadeId(layer.id), chainKind(fromClip), clipChainOf(fromLayerChain, fromClip),
                                               document, holdsText(layer));
             const LayerChain* outgoing = own && !passesOf(*own->chain, shown)->empty() ? own : chain;
             chains.push_back(outgoing->chain);
@@ -566,9 +581,9 @@ bool Engine::mixClipsFirst(Draw& draw, const Layer& layer, const LayerState& fro
     static const std::vector<Effect> none;
     const bool text = holdsText(layer);
     const LayerChain* own = readyChain(mixSlot(layer.id), ChainKind::Group, effectList(layerChain), document);
-    const LayerChain* in = readyChain(clipSlot(layer.id), chainKind(clip), clipChain(none, clip), document, text);
+    const LayerChain* in = readyChain(clipSlot(layer.id), chainKind(clip), clipChainOf(none, clip), document, text);
     const LayerChain* out =
-        readyChain(fadeId(clipSlot(layer.id)), chainKind(fromClip), clipChain(none, fromClip), document, text);
+        readyChain(fadeId(clipSlot(layer.id)), chainKind(fromClip), clipChainOf(none, fromClip), document, text);
     if (!own || !in || !out || own->chain->group.empty() || passesOf(*in->chain, draw.picture)->empty())
         return false;
     Draw clips{passesOf(*in->chain, draw.picture), &in->effects, draw.picture, 1.0f, BlendMode::Normal, layer.id, {}};
@@ -751,13 +766,16 @@ void Engine::endFade(LayerState& state, double beat)
 // deck change usually starts. Each preload starts where its play mode starts.
 void Engine::updateWants(const Composition& composition, double beat)
 {
-    std::set<ClipKey> playing;
+    std::vector<ClipView>& playing = playingScratch_;
+    playing.clear();
     for (const auto& [id, state] : layers_) {
         if (hasMedia(state.hash))
-            playing.insert({id, state.hash});
+            playing.emplace_back(id, state.hash);
         if (state.from && hasMedia(state.from->hash))
-            playing.insert({id, state.from->hash});
+            playing.emplace_back(id, state.from->hash);
     }
+    std::sort(playing.begin(), playing.end());
+    playing.erase(std::unique(playing.begin(), playing.end()), playing.end());
     std::set<TextLayout> texts;
     auto shownText = [&](const Layer& layer, const LayerState* state) {
         if (const ClipRef* clip = state ? clipAt(layer, state->play) : nullptr; clip && clip->text)
@@ -769,7 +787,7 @@ void Engine::updateWants(const Composition& composition, double beat)
             shownText(layer, it->second.from.get());
         }
     });
-    std::vector<Preload>& preloads = preloadScratch_;
+    std::vector<PreloadView>& preloads = preloadScratch_;
     preloads.clear();
     auto preload = [&](const Layer& layer, uint64_t column) {
         auto it = layer.clips.find(column);
@@ -781,10 +799,10 @@ void Engine::updateWants(const Composition& composition, double beat)
         }
         if (isGeneratorClip(it->second))
             return;
-        const ClipKey key{layer.id, it->second.hash};
-        auto same = [&](const Preload& p) { return p.clip == key; };
+        const ClipView key{layer.id, it->second.hash};
+        auto same = [&](const PreloadView& p) { return p.clip == key; };
         const bool listed = std::any_of(preloads.begin(), preloads.end(), same);
-        if (playing.contains(key) || listed)
+        if (std::binary_search(playing.begin(), playing.end(), key) || listed)
             return;
         preloads.push_back(preloadOf(key, it->second.transport));
     };
@@ -813,11 +831,13 @@ void Engine::updateWants(const Composition& composition, double beat)
         textWants_ = texts;
         texts_.want(std::move(texts));
     }
-    if (playing == playing_ && preloads == preloads_)
+    if (sameWants(playing_, preloads_, playing, preloads))
         return;
-    playing_ = playing;
-    preloads_ = preloads;
-    decoders_.want(std::move(playing), std::move(preloads));
+    playing_ = {playing.begin(), playing.end()};
+    preloads_.clear();
+    for (const PreloadView& p : preloads)
+        preloads_.push_back({{p.clip.first, std::string(p.clip.second)}, p.position, p.forward});
+    decoders_.want(playing_, preloads_);
 }
 
 // A clip that cannot be played holds the layer's picture without counting misses, as does a layer during the hold.
@@ -1053,26 +1073,40 @@ TransportState Engine::transport() const
     return transport_;
 }
 
-const Engine::LayerChain* Engine::pickChain(uint64_t slot, ChainKind kind, EffectList effects,
+const Engine::LayerChain* Engine::pickChain(uint64_t slot, ChainKind kind, const EffectList& effects,
                                             const std::shared_ptr<const Composition>& document, bool text)
 {
     LayerChain& state = chains_[slot];
-    const std::string key = chainKey(*document, kind, effects, text);
-    if (auto chain = compiler_.find(key))
-        state = {std::move(chain), document, std::move(effects)};
-    else if (!state.chain && compiler_.failed(key))
+    chainKey(keyScratch_, *document, kind, effects, text);
+    const std::string& key = keyScratch_;
+    if (auto chain = compiler_.find(key)) {
+        state.chain = std::move(chain);
+        state.document = document;
+        state.effects = effects;
+    } else if (!state.chain && compiler_.failed(key))
         state = {compiler_.find(kind == ChainKind::Group ? "group:" : chainKey(*document, ChainKind::Layer, {}, true)),
                  document, {}};
     return state.chain ? &state : nullptr;
 }
 
-const Engine::LayerChain* Engine::readyChain(uint64_t slot, ChainKind kind, EffectList effects,
+const Engine::LayerChain* Engine::readyChain(uint64_t slot, ChainKind kind, const EffectList& effects,
                                              const std::shared_ptr<const Composition>& document, bool text)
 {
-    std::shared_ptr<const CompiledChain> chain = compiler_.find(chainKey(*document, kind, effects, text));
+    chainKey(keyScratch_, *document, kind, effects, text);
+    std::shared_ptr<const CompiledChain> chain = compiler_.find(keyScratch_);
     if (!chain)
         return nullptr;
-    return &(chains_[slot] = {std::move(chain), document, std::move(effects)});
+    LayerChain& state = chains_[slot];
+    state.chain = std::move(chain);
+    state.document = document;
+    state.effects = effects;
+    return &state;
+}
+
+const EffectList& Engine::clipChainOf(const std::vector<Effect>& layerEffects, const ClipRef* clip)
+{
+    clipChain(effectsScratch_, layerEffects, clip);
+    return effectsScratch_;
 }
 
 // The composition chain reads the whole stack as a group reads its layers and draws into the frame, over black at the
@@ -1771,7 +1805,8 @@ void Engine::guardBudget(std::vector<Draw>& draws, std::vector<std::shared_ptr<c
     }
     if (!upscaleReady())
         return;
-    std::vector<std::pair<double, Draw*>> layers;
+    std::vector<std::pair<double, Draw*>>& layers = guardScratch_;
+    layers.clear();
     auto texts = [](const Draw& draw) {
         return (draw.picture && draw.picture->text) ||
                (!draw.from.empty() && draw.from.front().picture && draw.from.front().picture->text);
@@ -1779,20 +1814,20 @@ void Engine::guardBudget(std::vector<Draw>& draws, std::vector<std::shared_ptr<c
     auto costOf = [](const Draw& draw) {
         return cost(*draw.passes) + (draw.from.empty() ? 0.0 : 1.0 + cost(*draw.from.front().passes));
     };
-    const std::function<void(std::vector<Draw>&)> gather = [&](std::vector<Draw>& list) {
+    auto gather = [&](auto& self, std::vector<Draw>& list) -> void {
         for (Draw& draw : list) {
             if (draw.clipMix) {
                 if (draw.composite && !texts(draw.layers.front()))
                     layers.emplace_back(1.0 + cost(*draw.passes) + costOf(draw.layers.front()), &draw);
                 continue;
             }
-            gather(draw.layers);
+            self(self, draw.layers);
             if (draw.layer == 0 || !draw.layers.empty() || !draw.composite || texts(draw))
                 continue;
             layers.emplace_back(costOf(draw), &draw);
         }
     };
-    gather(draws);
+    gather(gather, draws);
     std::stable_sort(layers.begin(), layers.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
 
     const double gpu = double(recentGpu_) / 1e6;

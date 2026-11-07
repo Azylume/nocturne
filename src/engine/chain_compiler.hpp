@@ -51,6 +51,8 @@ enum class ChainKind { Layer, Clip, Group };
 // A clip's chain followed by its layer's chain in the clip's deck, which the planner fuses as one; without a clip the
 // layer's chain alone.
 EffectList clipChain(const std::vector<Effect>& layerEffects, const ClipRef* clip);
+// The same into `list`, reusing its storage.
+void clipChain(EffectList& list, const std::vector<Effect>& layerEffects, const ClipRef* clip);
 ChainKind chainKind(const ClipRef* clip);
 EffectList effectList(const std::vector<Effect>& effects);
 // A layer holding a text clip compiles its chains for text pictures too.
@@ -101,6 +103,8 @@ std::string shaderType(const Composition& composition, const Effect& effect);
 // Identifies a chain by its kind, its effects' shader types in order and whether it draws text; parameter values are
 // uniforms and change it only by switching a variant.
 std::string chainKey(const Composition& composition, ChainKind kind, const EffectList& effects, bool text = false);
+// The same into `key`, reusing its storage.
+void chainKey(std::string& key, const Composition& composition, ChainKind kind, const EffectList& effects, bool text);
 
 // Compiles effect chains on its own thread. The render thread only looks finished chains up, so it never waits for a
 // compile, even a slow or failing one.
