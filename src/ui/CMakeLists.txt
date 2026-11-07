@@ -54,6 +54,7 @@ set(NOCTURNE_UI_SOURCES
   app/monitors.cpp
   app/params.cpp
   app/preset_tree.cpp
+  app/recent_shows.cpp
   app/session.cpp
   app/settings_modal.cpp
   app/show_browser.cpp

@@ -301,9 +301,12 @@ void EngineClient::receiveLocked(const std::string& type, const Message& message
         savedHistory_ = history_;
         unsavedAtSnapshot_ = false;
         // The loadComposition change follows the reply.
-        if (message.value("op", "") == "load")
+        const std::string op = message.value("op", "");
+        if (op == "load")
             savedHistory_ = {history_.undo + 1, 0, "loadComposition", ""};
         notify.push_back([this] { listener_.documentChanged(); });
+        if (op == "load" || op == "save")
+            notify.push_back([this, op, path = savedPath_] { listener_.showFile(op, path); });
         if (const std::string notice = message.value("notice", ""); !notice.empty())
             notify.push_back([this, notice] { listener_.compositionNotice(notice); });
     } else if (type == "audio" && message.value("op", "") == "devices") {
@@ -883,6 +886,15 @@ void EngineClient::loadComposition(const std::string& path)
 {
     std::lock_guard lock(mutex_);
     sendLocked({{"type", "composition"}, {"op", "load"}, {"path", path}});
+}
+
+void EngineClient::newComposition(const Composition& empty)
+{
+    std::lock_guard lock(mutex_);
+    sendLocked(msg::command(Edit{LoadComposition{empty}}));
+    savedPath_.clear();
+    savedHistory_ = {history_.undo + 1, 0, "loadComposition", ""};
+    unsavedAtSnapshot_ = false;
 }
 
 void EngineClient::requestShows(const std::string& folder)
