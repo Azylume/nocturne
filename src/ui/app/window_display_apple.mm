@@ -14,4 +14,14 @@ std::string displayOfWindow(void* nativeWindow)
     return displayIdentity([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue]);
 }
 
+void useOwnFullScreenMenuItem()
+{
+    [NSUserDefaults.standardUserDefaults registerDefaults:@{@"NSFullScreenMenuItemEverywhere": @NO}];
+}
+
+void zoomWindow(void* nativeWindow)
+{
+    [static_cast<NSView*>(nativeWindow).window performZoom:nil];
+}
+
 } // namespace azl::ui
