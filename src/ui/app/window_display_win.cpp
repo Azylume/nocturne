@@ -17,4 +17,11 @@ std::string displayOfWindow(void* nativeWindow)
     return {};
 }
 
+void zoomWindow(void* nativeWindow)
+{
+    const HWND window = static_cast<HWND>(nativeWindow);
+    if (window)
+        ShowWindow(window, IsZoomed(window) ? SW_RESTORE : SW_MAXIMIZE);
+}
+
 } // namespace azl::ui

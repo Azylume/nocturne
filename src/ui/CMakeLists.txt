@@ -47,6 +47,7 @@ set(NOCTURNE_UI_SOURCES
   app/map_geometry.cpp
   app/map_inspector.cpp
   app/map_view.cpp
+  app/menu_bar.cpp
   app/mid_tabs.cpp
   app/midi.cpp
   app/midi_settings.cpp
@@ -115,7 +116,8 @@ add_executable(nocturne_ui_tests ${CMAKE_SOURCE_DIR}/tests/ui/main.cpp ${CMAKE_S
   ${CMAKE_SOURCE_DIR}/tests/ui/cues_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/preview_noise_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/venue_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/machines_test.cpp
   ${CMAKE_SOURCE_DIR}/tests/ui/prepare_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/keys_test.cpp
-  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp)
+  ${CMAKE_SOURCE_DIR}/tests/ui/listen_test.cpp ${CMAKE_SOURCE_DIR}/tests/ui/midi_test.cpp
+  ${CMAKE_SOURCE_DIR}/tests/ui/menu_test.cpp)
 target_include_directories(nocturne_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_SOURCE_DIR}/third_party/doctest)
 target_compile_definitions(nocturne_ui_tests PRIVATE NOCTURNE_MEDIA_DIR="${CMAKE_SOURCE_DIR}/tests/media"
   NOCTURNE_UI_SHOTS="${CMAKE_BINARY_DIR}/ui-shots" NOCTURNE_FAKE_ENGINE="$<TARGET_FILE:nocturne_fake_engine>")

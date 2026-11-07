@@ -8,4 +8,7 @@ namespace azl::ui {
 // (an NSView on macOS, an HWND on Windows). Empty when there is no window or no such display. Message thread.
 std::string displayOfWindow(void* nativeWindow);
 
+// Zooms the window to fit the screen, or back to its size. Message thread.
+void zoomWindow(void* nativeWindow);
+
 } // namespace azl::ui

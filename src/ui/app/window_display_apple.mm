@@ -14,4 +14,9 @@ std::string displayOfWindow(void* nativeWindow)
     return displayIdentity([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue]);
 }
 
+void zoomWindow(void* nativeWindow)
+{
+    [static_cast<NSView*>(nativeWindow).window performZoom:nil];
+}
+
 } // namespace azl::ui
