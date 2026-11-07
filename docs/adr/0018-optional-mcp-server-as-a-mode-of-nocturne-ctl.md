@@ -1,8 +1,8 @@
 # An optional MCP server is a stdio mode of nocturne-ctl, read-only by default, with no new listener and no new dependency
 
-Status: Proposed. Nothing here is implemented; [#38](https://github.com/Azylume/nocturne/issues/38) asks for it. It is a
-new control surface and may add a dependency, both "ask first" in `AGENTS.md`, so a human decides the open questions at
-the end before any code is written.
+Status: Accepted. The decisions on the open questions are recorded at the end; the first slice is implemented by the
+PR that closes this ADR's Proposed state (`nocturne-ctl mcp`, `src/app/mcp.cpp`). It is a new control surface, so the
+owner delegated those decisions explicitly.
 
 [#38](https://github.com/Azylume/nocturne/issues/38) wants AI agents (Claude Desktop, Cursor and other MCP clients) to
 look at and drive a running show through typed tools. The Engine already has one control path, the WebSocket protocol
@@ -309,3 +309,30 @@ connected, outside Nocturne's control.
 8. Does the scope of undo (per client or shared with the UI) match what #38's second acceptance criterion means? It was
    not checked for this ADR.
 9. Is `nocturne-ctl mcp` acceptable as the name, or should the mode be hidden from `--help` until it is stable?
+
+## Decisions
+
+The owner delegated the open questions; they were decided as follows. "Implemented" marks what the first PR does.
+
+1. **Tool set:** the first slice as proposed in section 4. Read-only by default; tier 2 `--allow-write` (`trigger_clip`,
+   `trigger_column`, `set_section`, `set_macro`, `undo`); tier 3 `--allow-machine` (`safe_mode` only). Effect edits, Cue
+   editing and a Prepare copy are follow-ups, not in the first PR. Implemented.
+2. **Show lock:** the Engine is not changed. The MCP server checks `showLock` itself before every write and refuses its
+   own write tools when it is on or cannot be read. Implemented.
+3. **Token:** `NOCTURNE_TOKEN`, `NOCTURNE_TOKEN_FILE` (a path to a file holding the token) and the machine's own token
+   file; no stored per-host token store. The token never appears in tool arguments, results or logs. `mcp` rejects
+   `--token`, as section 3 says, because a command line is visible to every process. Implemented.
+4. **No tokenless loopback:** `mcp` always needs a token, loopback included, and exits with code 2 without one. This
+   narrows the proposal (which allowed loopback as ctl does). Implemented.
+5. **`safe_mode`** is in tier 3. `restart` is never exposed. Implemented.
+6. **Show data reaching the model provider:** a documentation warning is enough, no per-session notice. It is written in
+   `docs/reference.md` and here: names, clip names and the layout of a show reach the provider of the model the operator
+   connected. Implemented.
+7. **Limits:** as proposed (5 writes per second, burst 10; strings 200 characters; results 64 KiB), fixed, not settings.
+   Implemented, except that `set_macro` calls are not coalesced: the server answers one call before it reads the next, so
+   the bucket alone bounds an agent moving a macro in small steps.
+8. **Undo scope:** the Engine keeps one undo history for the show, shared by every client. `undo` steps back its last
+   step whatever client made it, so it can undo a human's edit. Issue #38's criterion, "write tools ... show up in
+   undo", holds for `set_macro` (undoable); Triggers, Sections and `safe_mode` are live actions outside the history, as
+   with ctl. Implemented as described; the tool description says so.
+9. **Name:** `nocturne-ctl mcp`, shown in `--help`. Implemented.

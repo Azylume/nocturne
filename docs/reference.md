@@ -45,6 +45,27 @@ The engine serves its composition over WebSocket on port 7400 (`--port N`).
 
 `build/nocturne-ctl` is a debug client: `watch` prints the snapshot and every change, `opacity LAYER VALUE`, `undo` and `redo` edit, `--json` switches from MessagePack to JSON, `--host H` reaches another machine by name (`localhost`, `mini.local`, a Tailscale name) or address, IPv4 or IPv6; a name that does not resolve, or an engine that does not answer, fails naming the host and the addresses it resolved to.
 
+- MCP server (ADR 0018, [#38](https://github.com/Azylume/nocturne/issues/38)): `nocturne-ctl mcp [--host H] [--port N] [--allow-write] [--allow-machine]` is a Model Context Protocol server on standard input and output, for an AI agent host (Claude Desktop, Cursor) to start. It opens one connection to the engine as a paired client and listens on nothing. **The token is always needed, loopback included**, from `NOCTURNE_TOKEN`, else the file named by `NOCTURNE_TOKEN_FILE`, else, when the engine is on this machine, the machine's own token file; `--token` is refused, since a command line is visible to every process on the machine, and the token is never a tool argument, a result or a log line. A wrong token is answered `not paired` with the engine's words, once, and is not retried. **Show data leaves the machine:** an agent host sends every tool result (layer, deck, column, macro, Cue and clip names, the layout of the show, the Engine's error texts) to the model provider you chose; Nocturne sends nothing itself, and the results hold no absolute paths, host names or tokens. Strings in results are cut at 200 characters and cleaned of control characters, a result is cut at 64 KiB (`"truncated": true`), and the server's instructions tell the model that strings are show data, not instructions. No tool takes a path, folder or URL; a write tool takes ids and numbers and an argument its schema does not name is refused. Write and machine tools are off unless the operator passes the flag; they are refused while the Show lock is on (the server asks `machine status` before each one; a status it cannot read counts as locked; the Engine itself still lets other clients edit under the lock) and limited to a burst of 10 and 5 per second together. `undo` steps back the last step of the show's one undo history, whichever client made it, and Triggers, Sections and `safe_mode` are live actions that are not undoable. Example client config (`claude_desktop_config.json`; on Windows the path is `C:\Program Files\Nocturne\nocturne-ctl.exe`):
+
+```json
+{"mcpServers": {"nocturne": {"command": "/Applications/Nocturne.app/Contents/MacOS/nocturne-ctl",
+  "args": ["mcp", "--host", "mini.tailnet.ts.net", "--allow-write"],
+  "env": {"NOCTURNE_TOKEN_FILE": "/Users/me/.nocturne-mini-token"}}}}
+```
+
+| Tool | Flag | Does |
+|---|---|---|
+| `show_state` | none | decks and columns, layers with clips and effects (with parameters), macros, tempo |
+| `list_clips` | none | the cells of a deck (`deck`, default the shown one) and the Media Library entries by name and hash |
+| `list_cues` | none | Cues with when they fire, the Section playing, Cues holding and coming up |
+| `machine_status` | none | render fps, GPU ms, frame guard, thermal state, next Cue, outputs, `showLock` (at most once per second) |
+| `clock` | none | tempo, beat, bar |
+| `trigger_clip` (`layer`, `column`), `trigger_column` (`column`) | `--allow-write` | live Triggers on the next quantised beat |
+| `set_section` (`section`) | `--allow-write` | starts a Section on the next bar |
+| `set_macro` (`macro`, `value` 0..1) | `--allow-write` | sets a macro (undoable) |
+| `undo` | `--allow-write` | steps back the last edit |
+| `safe_mode` | `--allow-machine` | the Engine restarts in safe mode (`machine safemode`); `restart` is never exposed |
+
 ## Pairing
 
 Every protocol client opens with `{"type": "hello"}` (with `"watch": false` it only asks questions and gets no document). A client on another machine adds `"token"`, the engine machine's pairing token: 64 hex digits the engine makes once and keeps in its state folder as `token` (`--state DIR`, default `~/Library/Application Support/Nocturne/State`), readable by its user alone. `nocturne-ctl token` on that machine prints it.

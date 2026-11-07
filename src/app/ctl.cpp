@@ -1,3 +1,5 @@
+#include "app/ctl_connection.hpp"
+#include "app/mcp.hpp"
 #include "audio/opus_codec.hpp"
 #include "document/composition_file.hpp"
 #include "document/lineup.hpp"
@@ -49,6 +51,8 @@
 #endif
 
 namespace {
+
+using Queue = azl::CtlQueue;
 
 constexpr const char* kUsage = R"(usage: nocturne-ctl [options] [command]
   --host H      engine host name or address, e.g. the Mini's Tailscale name (default 127.0.0.1)
@@ -408,6 +412,10 @@ composition files (paths on the engine machine; MEDIA_ROOT defaults to the file'
                                     display, or with --remap-displays
   showmedia FILE [MEDIA_ROOT]       offline: print each media file the file names, its path on this machine and its
                                     path under the media root, tab-separated (MEDIA_ROOT: the one it was saved with)
+MCP server (an AI agent host starts it; see `nocturne-ctl mcp --help`):
+  mcp [--host H] [--port N] [--allow-write] [--allow-machine]
+                                    a Model Context Protocol server on standard input and output: read-only tools by
+                                    default; the token comes from NOCTURNE_TOKEN or NOCTURNE_TOKEN_FILE, never --token
 )";
 
 [[noreturn]] void usage(int code)
@@ -1875,61 +1883,10 @@ std::optional<azl::Message> cueCommand(const std::vector<std::string>& c)
     return std::nullopt;
 }
 
-class Queue {
-public:
-    void push(azl::Message m)
-    {
-        std::lock_guard lock(mutex_);
-        messages_.push_back(std::move(m));
-        changed_.notify_all();
-    }
-
-    void close()
-    {
-        std::lock_guard lock(mutex_);
-        closed_ = true;
-        changed_.notify_all();
-    }
-
-    bool closed()
-    {
-        std::lock_guard lock(mutex_);
-        return closed_ && messages_.empty();
-    }
-
-    // Null when the connection closed or nothing came within the timeout.
-    std::optional<azl::Message> pop(std::chrono::milliseconds timeout)
-    {
-        std::unique_lock lock(mutex_);
-        if (!changed_.wait_for(lock, timeout, [&] { return !messages_.empty() || closed_; }) || messages_.empty())
-            return std::nullopt;
-        azl::Message m = std::move(messages_.front());
-        messages_.pop_front();
-        return m;
-    }
-
-private:
-    std::mutex mutex_;
-    std::condition_variable changed_;
-    std::deque<azl::Message> messages_;
-    bool closed_ = false;
-};
-
 void print(const azl::Message& m)
 {
     std::printf("%s\n", m.dump().c_str());
     std::fflush(stdout);
-}
-
-// Says hello and waits for the snapshot; none when the engine says nothing in time. Throws with the engine's words when
-// it refuses, e.g. without its pairing token.
-std::optional<azl::Message> greet(azl::WebSocketClient& client, Queue& queue, const Options& opt)
-{
-    client.send(azl::msg::hello(opt.token));
-    std::optional<azl::Message> snapshot = queue.pop(std::chrono::seconds(5));
-    if (snapshot && (*snapshot)["type"] == "error")
-        throw std::runtime_error(snapshot->value("message", "the engine refused the connection"));
-    return snapshot;
 }
 
 int watch(azl::WebSocketClient& client, Queue& queue, const azl::Message& snapshot)
@@ -2458,7 +2415,7 @@ int applyGig(const Options& opt, const azl::Gig& gig)
     Queue queue;
     azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                 [&] { queue.close(); });
-    const auto snapshot = greet(client, queue, opt);
+    const auto snapshot = azl::greet(client, queue, opt.token);
     if (!snapshot) {
         std::fprintf(stderr, "nocturne-ctl: no snapshot\n");
         return 1;
@@ -2513,7 +2470,7 @@ std::optional<azl::Message> awaitUpdate(const Options& opt, const azl::Message& 
             Queue queue;
             azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                         [&] { queue.close(); });
-            if (!greet(client, queue, opt))
+            if (!azl::greet(client, queue, opt.token))
                 continue;
             const std::optional<azl::Message> status = ask(client, queue, {{"type", "machine"}, {"op", "status"}});
             if (status && (*status)["type"] == "machine" && lastUpdate(*status) != before)
@@ -2535,7 +2492,7 @@ int update(const Options& opt, const std::string& bundle)
         Queue queue;
         azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                     [&] { queue.close(); });
-        if (!greet(client, queue, opt)) {
+        if (!azl::greet(client, queue, opt.token)) {
             std::fprintf(stderr, "nocturne-ctl: no snapshot\n");
             return 1;
         }
@@ -2584,7 +2541,7 @@ std::pair<std::string, std::set<std::string>> openShow(const Options& opt)
     Queue queue;
     azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                 [&] { queue.close(); });
-    const auto snapshot = greet(client, queue, opt);
+    const auto snapshot = azl::greet(client, queue, opt.token);
     if (!snapshot)
         throw std::runtime_error("no snapshot from " + opt.host);
     const std::string file = snapshot->value("file", azl::Message::object()).value("path", "");
@@ -2728,7 +2685,7 @@ int listen(const Options& opt, const std::vector<std::string>& c)
     Queue queue;
     azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                 [&] { queue.close(); });
-    if (!greet(client, queue, opt))
+    if (!azl::greet(client, queue, opt.token))
         throw std::runtime_error("no snapshot");
     client.send({{"type", "listen"}, {"op", "start"}});
     std::signal(SIGINT, [](int) { interrupted = 1; });
@@ -2895,7 +2852,7 @@ int run(const Options& opt)
     Queue queue;
     azl::WebSocketClient client(opt.host, opt.port, opt.encoding, [&](const azl::Message& m) { queue.push(m); },
                                 [&] { queue.close(); });
-    auto snapshot = greet(client, queue, opt);
+    auto snapshot = azl::greet(client, queue, opt.token);
     if (!snapshot) {
         std::fprintf(stderr, "nocturne-ctl: no snapshot\n");
         return 1;
@@ -2973,6 +2930,8 @@ int run(const Options& opt)
 
 int main(int argc, char** argv)
 {
+    if (argc >= 2 && std::string(argv[1]) == "mcp")
+        return runMcp(argc - 2, argv + 2);
     try {
         return run(parse(argc, argv));
     } catch (const std::exception& e) {
