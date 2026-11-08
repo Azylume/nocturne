@@ -4,6 +4,7 @@
 #include "supervisor/crash_guard.hpp"
 #include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
+#include "supervisor/safe_retry.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -16,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +36,7 @@ namespace {
 
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
+using azl::SafeRetry;
 
 constexpr const char* kUsage = R"(usage: nocturne-supervisor [options] [-- engine options]
 Runs the engine, restarts it when it crashes or hangs, and switches to safe mode after too many crashes. Runs the
@@ -53,6 +56,9 @@ R"(  --hang-timeout S       seconds without a finished frame that count as hung 
   --startup-timeout S    seconds the engine may take to its first frame (default 30)
   --crash-limit N        crashes within the window that start safe mode (default 3)
   --crash-window S       (default 60)
+  --safe-mode-retry MINUTES
+                         leave safe mode that crashes caused after MINUTES, then 2x and 4x that, at most 3 times in
+                         24 h, and fall back at the first crash within 10 minutes of a retry (default 0: off)
   --fallback-image FILE  the picture safe mode shows instead of black
   --desk PATH|off        the venue desk binary (default: nocturne-desk next to this binary), or none
   --desk-port N          the desk's HTTP port (default 7480; 0 picks a free one)
@@ -68,6 +74,7 @@ struct Options {
     double startupTimeout = 30.0;
     int crashLimit = 3;
     double crashWindow = 60.0;
+    double safeModeRetry = 0.0;
     std::string fallbackImage;
     bool clearSkips = false;
     fs::path desk;
@@ -107,6 +114,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--startup-timeout") o.startupTimeout = std::atof(value());
         else if (arg == "--crash-limit") o.crashLimit = std::atoi(value());
         else if (arg == "--crash-window") o.crashWindow = std::atof(value());
+        else if (arg == "--safe-mode-retry") o.safeModeRetry = std::max(0.0, std::atof(value()));
         else if (arg == "--fallback-image") o.fallbackImage = value();
         else if (arg == "--clear-skips") o.clearSkips = true;
         else if (arg == "--desk") o.desk = std::string(value()) == "off" ? fs::path() : fs::path(argv[i]);
@@ -222,6 +230,8 @@ public:
         : opt_(std::move(options)), log_(opt_.logs / "supervisor.log", uint64_t(16) << 20),
           engineLog_(opt_.logs / "engine.log", uint64_t(32) << 20)
     {
+        if (opt_.safeModeRetry > 0.0)
+            retry_ = SafeRetry(opt_.safeModeRetry * 60.0, savedRetries());
     }
 
     int run()
@@ -267,12 +277,103 @@ private:
                                     {"engine", pid},
                                     {"starts", starts_},
                                     {"crashes", crashes},
+                                    {"retry", retryStatus()},
                                     {"supervisor", azl::currentProcessId()}};
         try {
             azl::writeFileAtomically(statePath("status.json"), status.dump(2) + "\n", false);
         } catch (const std::exception& e) {
             say(std::string("status: ") + e.what());
         }
+    }
+
+    double timeline() const { return seconds(Clock::now() - epoch_); }
+
+    static double wallNow()
+    {
+        return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
+    double toWall(double t) const { return wallNow() - (timeline() - t); }
+
+    double fromWall(double wall) const { return timeline() - (wallNow() - wall); }
+
+    // Start times of the retries the previous supervisor made, which count against the daily cap.
+    std::vector<double> savedRetries() const
+    {
+        std::vector<double> saved;
+        const nlohmann::json status = nlohmann::json::parse(readText(statePath("status.json")), nullptr, false);
+        if (!status.is_object() || !status.contains("retry") || !status["retry"].is_object())
+            return saved;
+        for (const nlohmann::json& at : status["retry"].value("startedAt", nlohmann::json::array()))
+            if (at.is_number())
+                saved.push_back(fromWall(at.get<double>()));
+        return saved;
+    }
+
+    static std::string readText(const fs::path& path)
+    {
+        std::ifstream in(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), {});
+    }
+
+    nlohmann::json retryStatus() const
+    {
+        if (!retry_.enabled())
+            return nullptr;
+        const double t = timeline();
+        nlohmann::json startedAt = nlohmann::json::array();
+        for (const double at : retry_.recent(t))
+            startedAt.push_back(std::llround(toWall(at)));
+        nlohmann::json status{{"attempts", retry_.attempts(t)},
+                              {"limit", SafeRetry::kMaxPerDay},
+                              {"nextAt", nullptr},
+                              {"last", nullptr},
+                              {"startedAt", startedAt}};
+        if (retry_.nextAt())
+            status["nextAt"] = std::llround(toWall(*retry_.nextAt()));
+        if (retry_.last() != SafeRetry::Last::None)
+            status["last"] = retry_.last() == SafeRetry::Last::Survived ? "survived" : "failed";
+        return status;
+    }
+
+    static std::string minutes(double s)
+    {
+        char text[32];
+        std::snprintf(text, sizeof text, "%g", s / 60.0);
+        return text;
+    }
+
+    void enterSafeMode(const std::string& reason)
+    {
+        safeReason_ = reason;
+        say("safe mode: " + safeReason_);
+        const double t = timeline();
+        const bool failed = retry_.onProbation();
+        switch (retry_.enteredSafeMode(t)) {
+        case SafeRetry::Scheduled::Off:
+            return;
+        case SafeRetry::Scheduled::Capped:
+            say("safe mode: retry cap reached, staying in safe mode");
+            return;
+        case SafeRetry::Scheduled::Yes:
+            say(std::string(failed ? "safe mode: retry failed, back in safe mode, next in " : "safe mode: retry in ") +
+                minutes(*retry_.nextAt() - t) + " min (attempt " + std::to_string(retry_.attempts(t) + 1) + " of " +
+                std::to_string(SafeRetry::kMaxPerDay) + ")");
+        }
+    }
+
+    void leaveSafeMode()
+    {
+        safeReason_.clear();
+        crashes_.clear();
+    }
+
+    void checkProbation()
+    {
+        if (!retry_.survived(timeline()))
+            return;
+        say("safe mode: retry held for 10 min, cool-down reset");
+        writeStatus(0);
     }
 
     // An engine or desk left behind by a supervisor that died is killed, so it never holds the displays and the port.
@@ -390,6 +491,7 @@ private:
                     say("engine running, first frame " + tenths(seconds(now - started)) + " s after the start");
                 lastBeat = now;
             }
+            checkProbation();
             if (engine->poll())
                 break;
             if (lastBeat && seconds(now - *lastBeat) > opt_.hangTimeout)
@@ -431,6 +533,7 @@ private:
             return;
         }
         if (code == azl::restart::kSafeMode) {
+            retry_.clientDecided();
             safeReason_ = "asked for from a client";
             say("safe mode: " + safeReason_);
             writeStatus(0);
@@ -474,21 +577,25 @@ private:
             crashLog_.pop_front();
         while (!crashes_.empty() && seconds(now - crashes_.front()) > opt_.crashWindow)
             crashes_.pop_front();
-        if (int(crashes_.size()) >= opt_.crashLimit) {
-            safeReason_ = std::to_string(crashes_.size()) + " crashes within " + std::to_string(int(opt_.crashWindow)) +
-                          " s; last: " + how + cause;
-            say("safe mode: " + safeReason_);
-        } else {
+        checkProbation();
+        if (retry_.onProbation())
+            enterSafeMode("crashed within 10 min of leaving safe mode; last: " + how + cause);
+        else if (int(crashes_.size()) >= opt_.crashLimit)
+            enterSafeMode(std::to_string(crashes_.size()) + " crashes within " +
+                          std::to_string(int(opt_.crashWindow)) + " s; last: " + how + cause);
+        else
             say("restarting the engine");
-        }
         writeStatus(0);
     }
 
-    // Safe mode lasts until the supervisor restarts. It is restarted itself if it quits.
+    // Safe mode lasts until a client leaves it, the supervisor restarts, or the retry timer is due. It is restarted
+    // itself if it quits.
     void runSafeMode()
     {
         std::vector<std::string> args = opt_.engineArgs;
         args.insert(args.end(), {"--safe-mode", safeReason_, "--state", opt_.state.string()});
+        if (retry_.nextAt())
+            args.insert(args.end(), {"--safe-retry-at", std::to_string(std::llround(toWall(*retry_.nextAt())))});
         if (!opt_.fallbackImage.empty())
             args.insert(args.end(), {"--fallback-image", opt_.fallbackImage});
         azl::NativeHandle output{};
@@ -500,9 +607,15 @@ private:
         say("safe mode started (pid " + std::to_string(engine->pid()) + ")");
         writeStatus(engine->pid());
         OutputPump pump(output, engineLog_);
+        bool retrying = false;
         while (true) {
             if (azl::waitForStop(0.2)) {
                 stopping_ = true;
+                stopEngine(*engine);
+                break;
+            }
+            if (retry_.due(timeline())) {
+                retrying = true;
                 stopEngine(*engine);
                 break;
             }
@@ -512,10 +625,17 @@ private:
         std::error_code ec;
         fs::remove(statePath("engine.pid"), ec);
         say("safe mode " + engine->describeExit());
+        if (retrying) {
+            say("safe mode: retrying the engine");
+            leaveSafeMode();
+            retry_.retryStarted(timeline());
+            writeStatus(0);
+            return;
+        }
         if (!stopping_ && engine->poll() == azl::restart::kNormal) {
             say("leaving safe mode, asked for from a client");
-            safeReason_.clear();
-            crashes_.clear();
+            retry_.clientDecided();
+            leaveSafeMode();
             writeStatus(0);
             return;
         }
@@ -574,6 +694,8 @@ private:
     std::deque<Clock::time_point> crashes_;
     std::deque<std::string> crashLog_;
     std::string safeReason_;
+    const Clock::time_point epoch_ = Clock::now();
+    SafeRetry retry_{0.0};
     // The engine's line saying it found no usable GPU, once it has exited for that.
     std::string noGpu_;
     int starts_ = 0;

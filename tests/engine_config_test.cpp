@@ -178,7 +178,7 @@ TEST_CASE("engine config: file and folder flags")
 {
     const EngineConfig c = parsed({"--library", "lib", "--presets", "p.json", "--macro-sets", "m.json", "--state",
                                    "st", "--composition", "show.json", "--media-root", "media", "--safe-mode",
-                                   "crashed", "--fallback-image", "f.png"});
+                                   "crashed", "--safe-retry-at", "1700000000", "--fallback-image", "f.png"});
     CHECK(c.library == "lib");
     CHECK(c.presets == "p.json");
     CHECK(c.macroSets == "m.json");
@@ -186,6 +186,7 @@ TEST_CASE("engine config: file and folder flags")
     CHECK(c.composition == "show.json");
     CHECK(c.mediaRoot == "media");
     CHECK(c.safeMode == "crashed");
+    CHECK(c.safeRetryAt == 1700000000);
     CHECK(c.fallbackImage == "f.png");
 }
 
