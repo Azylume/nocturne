@@ -1973,8 +1973,8 @@ void Engine::finished(std::shared_ptr<Frame> frame, const gpu::Completion& done)
 void Engine::reportGpuError(const gpu::Completion& done)
 {
     stats_.gpuErrors++;
-    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    const int64_t now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     int64_t last = lastGpuErrorLog_.load();
     if (now == last || !lastGpuErrorLog_.compare_exchange_strong(last, now))
         return;
