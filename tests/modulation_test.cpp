@@ -1946,3 +1946,106 @@ TEST_CASE("auto range: nocturne-ctl makes audio modulators with it on, sets it a
     harness.step();
     CHECK(ctl("mod state").find("\"range\"") == std::string::npos);
 }
+
+TEST_CASE("an LFO's cycles repeat its shape within the same span; one cycle is the old behaviour")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, revealComposition());
+    Client client(harness.document());
+    apply(client, azl::SetTempo{120.0});
+    auto add = [&](LfoShape shape, double beats, int cycles) {
+        Modulator m = lfo(shape, beats, {0, revealEvolve()});
+        m.cycles = cycles;
+        return added(apply(client, azl::AddModulator{std::nullopt, m}), "modulator");
+    };
+    const uint64_t one = add(LfoShape::Ramp, 4.0, 1);
+    const uint64_t sameAsOne = add(LfoShape::Ramp, 16.0, 4);
+    const uint64_t ramp = add(LfoShape::Ramp, 4.0, 4);
+    const uint64_t sine = add(LfoShape::Sine, 4.0, 4);
+    const uint64_t square = add(LfoShape::Square, 4.0, 4);
+    const uint64_t saw = add(LfoShape::Saw, 4.0, 4);
+
+    // 120 BPM: a beat every 30 frames. The 4 beat span holds 4 cycles of one beat each.
+    int wraps = 0;
+    double last = 0.0;
+    for (int frame = 0; frame < 120; ++frame) {
+        harness.step();
+        const Message s = state(client);
+        const double beat = double(frame) / kFps * 2.0;
+        const double cycle = std::fmod(beat, 1.0);
+        CAPTURE(frame);
+        CHECK(valueOf(s["modulators"], "id", one) == doctest::Approx(std::fmod(beat / 4.0, 1.0)).epsilon(1e-4));
+        CHECK(valueOf(s["modulators"], "id", sameAsOne) == valueOf(s["modulators"], "id", one));
+        CHECK(valueOf(s["modulators"], "id", ramp) == doctest::Approx(cycle).epsilon(1e-4));
+        CHECK(valueOf(s["modulators"], "id", sine) == doctest::Approx(azl::lfoAt(LfoShape::Sine, cycle)).epsilon(1e-4));
+        CHECK(valueOf(s["modulators"], "id", saw) == doctest::Approx(azl::lfoAt(LfoShape::Saw, cycle)).epsilon(1e-4));
+        if (cycle > 0.02 && cycle < 0.48)
+            CHECK(valueOf(s["modulators"], "id", square) == 1.0);
+        if (cycle > 0.52 && cycle < 0.98)
+            CHECK(valueOf(s["modulators"], "id", square) == 0.0);
+        const double value = valueOf(s["modulators"], "id", ramp);
+        wraps += value < last - 0.5;
+        last = value;
+    }
+    CHECK(wraps == 3);
+    harness.step();
+    CHECK(valueOf(state(client)["modulators"], "id", sine) == doctest::Approx(1.0).epsilon(1e-3));
+}
+
+TEST_CASE("an LFO's cycles are an integer within 1..64, saved only when above 1, and undoable")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, revealComposition());
+    Client client(harness.document());
+    Modulator m = lfo(LfoShape::Square, 4.0, {0, revealEvolve()});
+    CHECK(Message(m).get<Modulator>().cycles == 1);
+    CHECK_FALSE(Message(m).contains("cycles"));
+
+    m.cycles = 16;
+    CHECK(Message(m)["cycles"] == 16);
+    CHECK(Message(m).get<Modulator>() == m);
+    Message newer = Message(m);
+    newer["somethingNew"] = true;
+    CHECK(newer.get<Modulator>() == m);
+    for (const Message& bad : {Message(0), Message(65), Message(-1), Message(2.5), Message("4"), Message(1e12)}) {
+        Message j = Message(m);
+        j["cycles"] = bad;
+        CHECK_THROWS_AS(j.get<Modulator>(), azl::ProtocolError);
+    }
+
+    for (const int cycles : {0, 65, -3, 1 << 30}) {
+        Modulator bad = m;
+        bad.cycles = cycles;
+        CHECK(command(client, azl::AddModulator{std::nullopt, bad})["type"] == "error");
+    }
+    apply(client, azl::AddModulator{std::nullopt, m});
+    Modulator edited = harness.document().document().modulators[0];
+    edited.cycles = 64;
+    apply(client, azl::SetModulator{edited});
+    CHECK(harness.document().document().modulators[0].cycles == 64);
+    client.send(msg::undo());
+    client.next();
+    CHECK(harness.document().document().modulators[0].cycles == 16);
+    client.send(msg::redo());
+    client.next();
+    CHECK(harness.document().document().modulators[0].cycles == 64);
+
+    TempDir dir;
+    const azl::Composition composition = harness.document().document();
+    azl::saveCompositionFile(dir.path / "show.json", {composition});
+    const auto loaded = azl::loadCompositionFile(dir.path / "show.json");
+    REQUIRE(loaded);
+    CHECK(loaded->composition.modulators == composition.modulators);
+}
+
+TEST_CASE("nocturne-ctl sets an LFO's cycles")
+{
+    azl::EngineHarness harness({.width = 320, .height = 180}, kFps, {}, revealComposition());
+    azl::WebSocketServer server(harness.document(), 0);
+    CHECK(runNocturneCtl(server.port(), "mod lfo fx.1.evolve sine 4 cycles=4").code == 0);
+    REQUIRE(harness.document().document().modulators.size() == 1);
+    CHECK(harness.document().document().modulators[0].cycles == 4);
+    const uint64_t id = harness.document().document().modulators[0].id;
+    CHECK(runNocturneCtl(server.port(), "mod set " + std::to_string(id) + " cycles=1").code == 0);
+    CHECK(harness.document().document().modulators[0].cycles == 1);
+    CHECK(runNocturneCtl(server.port(), "mod set " + std::to_string(id) + " cycles=2.5").code != 0);
+    CHECK(harness.document().document().modulators[0].cycles == 1);
+}

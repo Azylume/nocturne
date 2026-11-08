@@ -212,16 +212,15 @@ public:
         const nlohmann::json stats = collect(s);
         const auto& r = stats["render"];
         const auto& d = stats["decode"];
-        std::printf("render %.1f fps, gpu %.2f ms (previews %.2f ms, max %.2f, skipped %llu, video misses %llu, %llu "
-                    "passes, %llu intermediates, %llu at half resolution) | compiled %llu pipelines, %llu cached (max "
-                    "%.1f ms) | cpu %.0f%%\n",
+        std::printf("render %.1f fps, gpu %.2f ms (previews %.2f ms, max %.2f, skipped %llu, gpu errors %llu, "
+                    "video misses %llu, %llu passes, %llu intermediates, %llu at half resolution) | compiled %llu "
+                    "pipelines, %llu cached (max %.1f ms) | cpu %.0f%%\n",
                     r["fps"].get<double>(), r["gpuMs"].get<double>(), r["previews"]["gpuMs"].get<double>(),
-                    r["gpuMaxMs"].get<double>(),
-                    r["skipped"].get<unsigned long long>(), r["videoMisses"].get<unsigned long long>(),
+                    r["gpuMaxMs"].get<double>(), r["skipped"].get<unsigned long long>(),
+                    r["gpuErrors"].get<unsigned long long>(), r["videoMisses"].get<unsigned long long>(),
                     r["passes"].get<unsigned long long>(), r["intermediates"].get<unsigned long long>(),
-                    r["budgetLevel"].get<unsigned long long>(),
-                    r["compiles"].get<unsigned long long>(), r["cachedPipelines"].get<unsigned long long>(),
-                    r["compileMaxMs"].get<double>(),
+                    r["budgetLevel"].get<unsigned long long>(), r["compiles"].get<unsigned long long>(),
+                    r["cachedPipelines"].get<unsigned long long>(), r["compileMaxMs"].get<double>(),
                     stats["cpu"].get<double>());
         std::printf("  decode %.0f fps, busy %.0f%%, %llu seeks, %llu errors, %llu stalls, read max %.1f ms, cache %.0f "
                     "MB | clip previews %.1f/s, busy %.0f%%\n",
@@ -263,42 +262,42 @@ private:
         const uint64_t seeks = d.seeks.load();
         const double cpu = azl::app::processUse().cpuSeconds;
         const uint64_t rendered = r.rendered.exchange(0);
-        nlohmann::json stats{
-            {"t", std::chrono::duration<double>(last_ - start_).count()},
-            {"unix", azl::unixTime()},
-            {"cpu", (cpu - cpu_) / s * 100.0},
-            {"render",
-             {{"fps", rendered / s},
-              {"gpuMs", rendered ? double(r.gpuMicros.exchange(0)) / 1000.0 / double(rendered) : 0.0},
-              {"gpuMaxMs", r.maxGpuMicros.exchange(0) / 1000.0},
-              {"maxGapMs", r.maxGapMicros.exchange(0) / 1000.0},
-              {"cpuMaxMs", r.maxCpuMicros.exchange(0) / 1000.0},
-              {"doneMaxMs", r.maxDoneMicros.exchange(0) / 1000.0},
-              {"skipped", r.skipped.exchange(0)},
-              {"videoMisses", r.videoMisses.exchange(0)},
-              {"passes", r.passes.load()},
-              {"intermediates", r.intermediates.load()},
-              {"bakedPasses", r.bakedPasses.load()},
-              {"budgetLevel", r.budgetLevel.load()},
-              {"budgetChanges", r.budgetChanges.exchange(0)},
-              {"compiles", c.pipelines.exchange(0)},
-              {"cachedPipelines", c.archived.exchange(0)},
-              {"compileMaxMs", c.maxMicros.exchange(0) / 1000.0},
-              {"starting", r.starting.load()}}},
-            {"decode",
-             {{"fps", (decoded - decoded_) / s},
-              {"busy", (busy - busy_) / s / 1e4},
-              {"seeks", seeks - seeks_},
-              {"errors", d.errors.load()},
-              {"stalls", d.stalls.load()},
-              {"readMaxMs", d.maxReadMicros.exchange(0) / 1000.0},
-              {"cacheMB", d.cachedBytes.load() / 1048576.0},
-              {"opens", d.opens.load()},
-              {"closes", d.closes.load()},
-              {"openMaxMs", d.maxOpenMicros.exchange(0) / 1000.0},
-              {"closeMaxMs", d.maxCloseMicros.exchange(0) / 1000.0},
-              {"liveReaders", azl::liveAssetReaders()}}},
-            {"outputs", nlohmann::json::array()}};
+        nlohmann::json stats{{"t", std::chrono::duration<double>(last_ - start_).count()},
+                             {"unix", azl::unixTime()},
+                             {"cpu", (cpu - cpu_) / s * 100.0},
+                             {"render",
+                              {{"fps", rendered / s},
+                               {"gpuMs", rendered ? double(r.gpuMicros.exchange(0)) / 1000.0 / double(rendered) : 0.0},
+                               {"gpuMaxMs", r.maxGpuMicros.exchange(0) / 1000.0},
+                               {"maxGapMs", r.maxGapMicros.exchange(0) / 1000.0},
+                               {"cpuMaxMs", r.maxCpuMicros.exchange(0) / 1000.0},
+                               {"doneMaxMs", r.maxDoneMicros.exchange(0) / 1000.0},
+                               {"skipped", r.skipped.exchange(0)},
+                               {"gpuErrors", r.gpuErrors.exchange(0)},
+                               {"videoMisses", r.videoMisses.exchange(0)},
+                               {"passes", r.passes.load()},
+                               {"intermediates", r.intermediates.load()},
+                               {"bakedPasses", r.bakedPasses.load()},
+                               {"budgetLevel", r.budgetLevel.load()},
+                               {"budgetChanges", r.budgetChanges.exchange(0)},
+                               {"compiles", c.pipelines.exchange(0)},
+                               {"cachedPipelines", c.archived.exchange(0)},
+                               {"compileMaxMs", c.maxMicros.exchange(0) / 1000.0},
+                               {"starting", r.starting.load()}}},
+                             {"decode",
+                              {{"fps", (decoded - decoded_) / s},
+                               {"busy", (busy - busy_) / s / 1e4},
+                               {"seeks", seeks - seeks_},
+                               {"errors", d.errors.load()},
+                               {"stalls", d.stalls.load()},
+                               {"readMaxMs", d.maxReadMicros.exchange(0) / 1000.0},
+                               {"cacheMB", d.cachedBytes.load() / 1048576.0},
+                               {"opens", d.opens.load()},
+                               {"closes", d.closes.load()},
+                               {"openMaxMs", d.maxOpenMicros.exchange(0) / 1000.0},
+                               {"closeMaxMs", d.maxCloseMicros.exchange(0) / 1000.0},
+                               {"liveReaders", azl::liveAssetReaders()}}},
+                             {"outputs", nlohmann::json::array()}};
         const uint64_t clipPictures = clipPreviews_.pictures.load();
         const uint64_t clipBusy = clipPreviews_.busyMicros.load();
         stats["clipPreviews"] = {{"fps", (clipPictures - clipPictures_) / s}, {"busy", (clipBusy - clipBusy_) / s / 1e4}};

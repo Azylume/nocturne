@@ -191,7 +191,7 @@ TEST_CASE("supervisor: safe mode that crashes caused ends after the cool-down an
                                     supervised.engine() > 0; }, 20.0));
     CHECK(contains(supervised.log(), "safe mode: retry in 0.01 min (attempt 1 of 3)"));
     CHECK(contains(supervised.log(), "safe mode: retrying the engine"));
-    CHECK(contains(supervised.engineLog(), "safe retry at "));
+    CHECK(eventually([&] { return contains(supervised.engineLog(), "safe retry at "); }, 5.0));
     CHECK(supervised.starts() == 4);
     CHECK(retryIs(supervised, "limit", 3));
     CHECK(supervised.retry()["nextAt"].is_null());
@@ -207,6 +207,12 @@ TEST_CASE("supervisor: a retry that crashes goes straight back to safe mode, the
     CHECK(contains(supervised.log(), "safe mode: retry failed, back in safe mode, next in 0.02 min (attempt 2 of 3)"));
     CHECK(contains(supervised.log(), "safe mode: retry failed, back in safe mode, next in 0.04 min (attempt 3 of 3)"));
     CHECK(count(supervised.log(), "safe mode: retrying the engine") == 3);
+    REQUIRE(eventually(
+        [&] {
+            return supervised.mode() == "safe" && retryIs(supervised, "last", "failed") &&
+                   retryIs(supervised, "attempts", 3);
+        },
+        5.0));
     CHECK(contains(supervised.status()["reason"].get<std::string>(), "crashed within 10 min of leaving safe mode"));
     CHECK(supervised.mode() == "safe");
     CHECK(supervised.starts() == 6);
@@ -239,7 +245,8 @@ TEST_CASE("supervisor: stopping it during a cool-down exits cleanly, and the sta
     const double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
     REQUIRE(supervised.retry()["nextAt"].is_number());
     CHECK(supervised.retry()["nextAt"].get<double>() == doctest::Approx(now + 600.0).epsilon(0.05));
-    CHECK(contains(supervised.engineLog(), "safe retry at " + std::to_string(supervised.retry()["nextAt"].get<long long>())));
+    const std::string due = "safe retry at " + std::to_string(supervised.retry()["nextAt"].get<long long>());
+    CHECK(eventually([&] { return contains(supervised.engineLog(), due); }, 5.0));
     CHECK(supervised.stop() == 0);
     CHECK(contains(supervised.log(), "supervisor stopped"));
 }

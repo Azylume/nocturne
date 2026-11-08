@@ -114,7 +114,7 @@ into the same edits as a click. A headless engine without a UI is controlled wit
   onto a clip or a layer, or click it on a card's Presets box.
 - Right-click a parameter and pick **Animate** to move it with a beat LFO or the kick, snare, hat or bass.
 
-Every edit is one undo step: Cmd+Z and Cmd+Shift+Z, or Undo and Redo in the transport bar.
+Every edit is one undo step: Cmd+Z and Cmd+Shift+Z, or Edit > Undo and Redo.
 
 ## 8. A screen on a second display
 

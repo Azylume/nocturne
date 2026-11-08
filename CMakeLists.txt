@@ -413,7 +413,7 @@ target_link_libraries(nocturne_fetch PUBLIC nocturne_upload)
 add_library(nocturne_venues STATIC src/venues/venues.cpp src/venues/venue_monitor.cpp src/venues/gig.cpp)
 target_link_libraries(nocturne_venues PUBLIC nocturne_net nocturne_discovery nocturne_http)
 
-add_executable(nocturne-ctl src/app/ctl.cpp)
+add_executable(nocturne-ctl src/app/ctl.cpp src/app/mcp.cpp)
 target_link_libraries(nocturne-ctl PRIVATE nocturne_net nocturne_discovery nocturne_venues nocturne_fetch nocturne_audio)
 
 # The UI's engine launcher: it starts, finds and stops the engine beside the UI.
@@ -547,7 +547,7 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
   tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/machine_control_test.cpp tests/desk_test.cpp tests/palette_steps_test.cpp
   tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
-  tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/remote_files_test.cpp
+  tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/mcp_test.cpp tests/remote_files_test.cpp
   tests/hap_playback_test.cpp
   tests/hap_transcode_test.cpp tests/hap_golden_test.cpp tests/hardening_files_test.cpp tests/keep_local_test.cpp)
 target_compile_definitions(nocturne_tests PRIVATE NOCTURNE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"

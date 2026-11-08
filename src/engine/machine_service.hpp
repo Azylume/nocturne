@@ -57,7 +57,7 @@ struct MachineSources {
 // Serves the venue machine's health as "machine" messages, for the UI's Machines tab and nocturne-ctl machine:
 //
 //   {"op": "status"} -> {"op": "status", "mode": "normal", "showLock", "testCard", "version", "render": {"fps",
-//     "gpuMs", "guard"}, "thermal": {"cpuSpeedLimit", "temperatureC", "state"}, "nextCue": {"cue", "name", "beat", "bar", "seconds"} | null, "outputs": [{"screen",
+//     "gpuMs", "gpuErrors", "guard"}, "thermal": {"cpuSpeedLimit", "temperatureC", "state"}, "nextCue": {"cue", "name", "beat", "bar", "seconds"} | null, "outputs": [{"screen",
 //     "screenName", "display", "displayName", "hz", "presents", "hitches", "state"}], "audio": {"device", "state",
 //     "channels", "gainDb", "level", "live"} | null, "clock": {"bpm", "beat", "bar", "beatInBar", "djlink":
 //     {"enabled", "following", "onAir", "bpm", "players": [{"number", "onAir", "bpm", "pitch", "play", "beatInBar"}],

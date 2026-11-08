@@ -87,6 +87,7 @@ def per_minute(stats):
             "maxGapMs": max(s["render"].get("maxGapMs", 0.0) for s in chunk),
             "videoMisses": sum(s["render"]["videoMisses"] for s in chunk),
             "skipped": sum(s["render"]["skipped"] for s in chunk),
+            "gpuErrors": sum(s["render"].get("gpuErrors", 0) for s in chunk),
             "compiles": sum(s["render"]["compiles"] for s in chunk),
             "newFrames": min((mean(v) for v in by_display.values()), default=None),
             "outputs": {d: {"new": mean(v), "hitches": hitches_by_display.get(d, 0)} for d, v in by_display.items()},
@@ -214,7 +215,7 @@ def summarize(raw, commit, cut=None):
         "windows": {key: windows(measured, key) for key in
                     ("videoMisses", "dropped", "hitches", "maxGapMs", "cacheMB", "mediaAnalysisCpu", "spotlightCpu")},
         "totals": {key: sum(m[key] for m in minutes) for key in
-                   ("videoMisses", "skipped", "dropped", "hitches", "compiles")},
+                   ("videoMisses", "skipped", "gpuErrors", "dropped", "hitches", "compiles")},
         "decodeErrors": minutes[-1]["decodeErrors"] if minutes else None,
         "longestRenderGapMs": max((m["maxGapMs"] for m in minutes), default=None),
         "mediaAnalysisMaxCpu": max(analysis, default=None),

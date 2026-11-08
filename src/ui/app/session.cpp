@@ -750,6 +750,26 @@ void Session::setGroupOpen(const std::string& key, bool open)
     notify(Panels);
 }
 
+namespace {
+
+const char* barGroupKey(Session::BarGroup group)
+{
+    static const char* const keys[] = {"barTransport", "barSections", "barRecording"};
+    return keys[int(group)];
+}
+
+} // namespace
+
+void Session::setBarGroupShown(BarGroup group, bool shown)
+{
+    if (shown == barGroups_[size_t(group)])
+        return;
+    barGroups_[size_t(group)] = shown;
+    if (settings_)
+        settings_->setValue(barGroupKey(group), shown);
+    notify(Interface);
+}
+
 void Session::useSettings(juce::PropertiesFile* settings)
 {
     {
@@ -762,6 +782,9 @@ void Session::useSettings(juce::PropertiesFile* settings)
         return;
     if (tokenFor(host_) != token_)
         reconnect();
+    for (BarGroup group : {BarGroup::Transport, BarGroup::Sections, BarGroup::Recording})
+        barGroups_[size_t(group)] = settings_->getBoolValue(barGroupKey(group), true);
+    notify(Interface);
     const Message saved = Message::parse(settings_->getValue("presetGroups", "{}").toStdString(), nullptr, false);
     if (saved.is_object())
         for (const auto& [key, open] : saved.items())

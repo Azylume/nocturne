@@ -45,6 +45,27 @@ The engine serves its composition over WebSocket on port 7400 (`--port N`).
 
 `build/nocturne-ctl` is a debug client: `watch` prints the snapshot and every change, `opacity LAYER VALUE`, `undo` and `redo` edit, `--json` switches from MessagePack to JSON, `--host H` reaches another machine by name (`localhost`, `mini.local`, a Tailscale name) or address, IPv4 or IPv6; a name that does not resolve, or an engine that does not answer, fails naming the host and the addresses it resolved to.
 
+- MCP server (ADR 0018, [#38](https://github.com/Azylume/nocturne/issues/38)): `nocturne-ctl mcp [--host H] [--port N] [--allow-write] [--allow-machine]` is a Model Context Protocol server on standard input and output, for an AI agent host (Claude Desktop, Cursor) to start. It opens one connection to the engine as a paired client and listens on nothing. **The token is always needed, loopback included**, from `NOCTURNE_TOKEN`, else the file named by `NOCTURNE_TOKEN_FILE`, else, when the engine is on this machine, the machine's own token file; `--token` is refused, since a command line is visible to every process on the machine, and the token is never a tool argument, a result or a log line. A wrong token is answered `not paired` with the engine's words, once, and is not retried. **Show data leaves the machine:** an agent host sends every tool result (layer, deck, column, macro, Cue and clip names, the layout of the show, the Engine's error texts) to the model provider you chose; Nocturne sends nothing itself, and the results hold no absolute paths, host names or tokens. Strings in results are cut at 200 characters and cleaned of control characters, a result is cut at 64 KiB (`"truncated": true`), and the server's instructions tell the model that strings are show data, not instructions. No tool takes a path, folder or URL; a write tool takes ids and numbers and an argument its schema does not name is refused. Write and machine tools are off unless the operator passes the flag; they are refused while the Show lock is on (the server asks `machine status` before each one; a status it cannot read counts as locked; the Engine itself still lets other clients edit under the lock) and limited to a burst of 10 and 5 per second together. `undo` steps back the last step of the show's one undo history, whichever client made it, and Triggers, Sections and `safe_mode` are live actions that are not undoable. Example client config (`claude_desktop_config.json`; on Windows the path is `C:\Program Files\Nocturne\nocturne-ctl.exe`):
+
+```json
+{"mcpServers": {"nocturne": {"command": "/Applications/Nocturne.app/Contents/MacOS/nocturne-ctl",
+  "args": ["mcp", "--host", "mini.tailnet.ts.net", "--allow-write"],
+  "env": {"NOCTURNE_TOKEN_FILE": "/Users/me/.nocturne-mini-token"}}}}
+```
+
+| Tool | Flag | Does |
+|---|---|---|
+| `show_state` | none | decks and columns, layers with clips and effects (with parameters), macros, tempo |
+| `list_clips` | none | the cells of a deck (`deck`, default the shown one) and the Media Library entries by name and hash |
+| `list_cues` | none | Cues with when they fire, the Section playing, Cues holding and coming up |
+| `machine_status` | none | render fps, GPU ms, frame guard, thermal state, next Cue, outputs, `showLock` (at most once per second) |
+| `clock` | none | tempo, beat, bar |
+| `trigger_clip` (`layer`, `column`), `trigger_column` (`column`) | `--allow-write` | live Triggers on the next quantised beat |
+| `set_section` (`section`) | `--allow-write` | starts a Section on the next bar |
+| `set_macro` (`macro`, `value` 0..1) | `--allow-write` | sets a macro (undoable) |
+| `undo` | `--allow-write` | steps back the last edit |
+| `safe_mode` | `--allow-machine` | the Engine restarts in safe mode (`machine safemode`); `restart` is never exposed |
+
 ## Pairing
 
 Every protocol client opens with `{"type": "hello"}` (with `"watch": false` it only asks questions and gets no document). A client on another machine adds `"token"`, the engine machine's pairing token: 64 hex digits the engine makes once and keeps in its state folder as `token` (`--state DIR`, default `~/Library/Application Support/Nocturne/State`), readable by its user alone. `nocturne-ctl token` on that machine prints it.
@@ -170,7 +191,7 @@ Effects live on clips, layers, groups and the composition: `clipfx LAYER COLUMN 
 
 A clip's chain runs before its layer's and travels with the clip, through transitions too; a group's chain runs on the group's picture; the composition's on the final picture, in one more pass, before the outputs. A clip's chain and its layer's are planned as one chain, so they fuse into the same passes, and every chain (each clip's with its layer's) compiles when the composition loads or changes, never on a trigger.
 
-Chains compile off the render thread; the stats line shows the average GPU time per frame, the passes and full-resolution intermediates of the last frame, and the pipelines compiled each second with the slowest compile. Trails history and an effect's integrated phases belong to the effect's id: they survive parameter and chain edits and an effect moved to another chain, and Trails history restarts when the drawing layer's clip or group changes.
+Chains compile off the render thread; the stats line shows the average GPU time per frame, the GPU command buffers that failed in the second (`gpu errors`; the first error is logged once per second, the frame is not shown, and `nocturne-ctl machine` and `--stats-json` carry it as `render.gpuErrors`), the passes and full-resolution intermediates of the last frame, and the pipelines compiled each second with the slowest compile. Trails history and an effect's integrated phases belong to the effect's id: they survive parameter and chain edits and an effect moved to another chain, and Trails history restarts when the drawing layer's clip or group changes.
 
 ## ISF shaders
 
@@ -285,7 +306,7 @@ The microphone permission is the Windows privacy setting (`denied` when micropho
 
 ## Modulators and Macros
 
-A modulator is a beat LFO (`sine`, `saw`, `square`, `ramp`, all peaking on the beat, and `random`, holding one value per period that is the same on every engine for the same beat, and `custom`, a curve of up to 16 points over one period, each segment straight or eased (`points=0:1s,0.5:0`, set in the UI's LFO editor too); over 1/16..64 beats with a phase offset, on the beat clock so they follow tempo, nudge and resync) or an audio feature (`level`, the bands, `kick`, `snare`, `hat`) followed through the modulator's own attack and release in ms (`attack=`, `release=`, 0 by default).
+A modulator is a beat LFO (`sine`, `saw`, `square`, `ramp`, all peaking on the beat, and `random`, holding one value per period that is the same on every engine for the same beat, and `custom`, a curve of up to 16 points over one period, each segment straight or eased (`points=0:1s,0.5:0`, set in the UI's LFO editor too); over a span of 1/16..64 beats with a phase offset, which repeats its shape `cycles` times (`"cycles"`, an integer 1..64, absent means 1; `cycles=4` in `mod lfo|set`, the Cycles field in the UI) so a span of 4 beats at 4 cycles runs one beat per cycle; on the beat clock so they follow tempo, nudge and resync) or an audio feature (`level`, the bands, `kick`, `snare`, `hat`) followed through the modulator's own attack and release in ms (`attack=`, `release=`, 0 by default).
 
 Each source's sensitivity (`sensitivity kick|snare|hat|bass|lfo VALUE`, 0..4, 1 by default) scales its 0..1 value before its curve; it is part of the show (undoable, saved, replicated), since the input gain already evens out each machine's levels.
 
@@ -549,7 +570,7 @@ One window: transport bar, Perform (composition monitor with a view selector for
 
 Clicking a thumbnail triggers, clicking a name selects, clicking a column header triggers the column; media drags from the browser or the Finder (local engine only) onto cells, a clip drags to another cell (Alt copies). A second click on a queued clip takes that layer's trigger back and Esc takes back all of them (`{"type": "trigger", "op": "cancel"[, "layer": L]}`).
 
-Cmd+Z / Cmd+Shift+Z and the Undo and Redo buttons (greyed when empty, the step's op as tooltip) follow the engine's history: every change and snapshot carries `"history": {"undo", "redo", "undoOp", "redoOp"}`, and the commands of one mouse drag or compound action carry the same `"gesture"` number, so the engine makes them one undo step (a drag keeps only its first inverse and its last value; moving a clip is two cells in one step).
+Cmd+Z / Cmd+Shift+Z and Edit > Undo and Redo (greyed when empty) follow the engine's history: every change and snapshot carries `"history": {"undo", "redo", "undoOp", "redoOp"}`, and the commands of one mouse drag or compound action carry the same `"gesture"` number, so the engine makes them one undo step (a drag keeps only its first inverse and its last value; moving a clip is two cells in one step).
 
 An edit that removes a layer or an effect (or replaces it with its clip) takes the macro targets, modulators and Cue steps on it along in the same step, undone together; the change carries a `"notice"` naming them, which the UI shows in the status area.
 
@@ -574,7 +595,13 @@ Menu bar (macOS): File (New Cmd+N: an empty composition in one undo step, the sc
 
 
 
-Each item runs the handler of its button and is greyed when it does not apply (Open and Save while disconnected, Undo and Redo with an empty history, clip commands and Browser off Perform); the menu is built in `src/ui/app/menu_bar.*`. The transport bar also has the composition file (name, an unsaved dot, Save and Open on the engine machine, Cmd+S), nudge held on - and +, /2 and x2, and the Section buttons (`cue mark`, lit while that Section plays).
+Each item runs the handler of its button and is greyed when it does not apply (Open and Save while disconnected, Undo and Redo with an empty history, clip commands and Browser off Perform); the menu is built in `src/ui/app/menu_bar.*`. The top bar has Open, Save and Save As only in the File menu (on the engine machine) and Undo and Redo only in the Edit menu.
+
+It is laid out in groups with a wider gap between them: the venue, the Perform, Map and Machines tabs and Prepare (Live or Prepare stays in the bar because Send, At switch and Discard appear next to it while it is on); the tempo (BPM, nudge held on - and +, /2 and x2, TAP, Resync, the beat, quantisation); the Section buttons (`cue mark`, lit while that Section plays); REC with its audio label, Previews and Settings; then the composition's name, quiet, with an unsaved dot, and the engine's status.
+
+Settings > Top bar switches the tempo, Sections and recording groups off (all on by default, kept per machine in `UI.settings` as `barTransport`, `barSections` and `barRecording`); a hidden group takes no space and the rest use it.
+
+As the window narrows the bar drops, in this order, the recording audio label, Previews (View > Previews has it), the beat and the Section buttons (which become one Sections menu button showing the current Section) and the nudge; the status shrinks to a dot when almost nothing is left.
 
 The middle pane has Macros, Autopilot (buttons per layer), Cues (by Section, add and remove) and History (the steps as this UI saw them).
 
