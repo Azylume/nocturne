@@ -230,11 +230,11 @@ void TargetRow::showCurves()
 
 ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
     : session_(session), id_(modulator),
-      envelope_(session,
-                [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
+      envelope_(session, [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
       cycles_(session, 1, kMaxLfoCycles, 1, "x"), from_(session, 0, 100, 1, "%"), to_(session, 0, 100, 1, "%"),
-      lfo_(session, [this] { return this->modulator(); },
-           [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
+      lfo_(
+          session, [this] { return this->modulator(); },
+          [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
 {
     for (int i = 0; i < kSourceCount; ++i)
         source_.addItem(kSourceNames[i], i + 1);
@@ -278,8 +278,8 @@ ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
     from_.onChange = [this](double percent) { setEnd(0, percent / 100.0); };
     to_.onChange = [this](double percent) { setEnd(1, percent / 100.0); };
     remove_.onClick = [this] { session_.client().edit(RemoveModulator{id_}); };
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &cycles_, &combine_, &envelope_,
-                                                                      &from_, &to_, &remove_, &lfo_})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &cycles_, &combine_,
+                                                                      &envelope_, &from_, &to_, &remove_, &lfo_})
         addAndMakeVisible(c);
     refresh();
 }

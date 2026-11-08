@@ -118,10 +118,22 @@ ModulationPlan::ModulationPlan(const Composition& composition)
             continue;
         const auto feature = audioFeatureFromName(m.feature);
         auto sensitivity = composition.sensitivity.find(m.source == ModulatorSource::Lfo ? std::string("lfo") : m.feature);
-        sources_.push_back({m.id, m.source, m.shape, m.beats / m.cycles, m.phase, feature ? size_t(*feature) : 0,
+        sources_.push_back({m.id,
+                            m.source,
+                            m.shape,
+                            m.beats / m.cycles,
+                            m.phase,
+                            feature ? size_t(*feature) : 0,
                             sensitivity == composition.sensitivity.end() ? 1.0 : sensitivity->second,
-                            m.envelope, {m.attack / 1000.0, m.hold / 1000.0, m.release / 1000.0}, m.combine, lut(m.curve), m.min, m.max, slot,
-                            m.points, m.source == ModulatorSource::Audio && m.autoRange});
+                            m.envelope,
+                            {m.attack / 1000.0, m.hold / 1000.0, m.release / 1000.0},
+                            m.combine,
+                            lut(m.curve),
+                            m.min,
+                            m.max,
+                            slot,
+                            m.points,
+                            m.source == ModulatorSource::Audio && m.autoRange});
         if (sources_.back().autoRange)
             ranged_[sources_.back().feature] = true;
         usesAudio_ = usesAudio_ || m.source == ModulatorSource::Audio;

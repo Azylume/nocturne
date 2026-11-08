@@ -978,13 +978,13 @@ AnimateBox::AnimateBox(Session& session, ParamRef ref)
 
 AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
     : session_(session), ref_(info.ref), scale_(info.unit.scale),
-      envelope_(session,
-                [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
+      envelope_(session, [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
       cycles_(session, 1, kMaxLfoCycles, 1, "x"),
       from_(session, info.min * scale_, info.max * scale_, std::pow(10.0, -info.unit.decimals), utf8(info.unit.suffix)),
       to_(session, info.min * scale_, info.max * scale_, std::pow(10.0, -info.unit.decimals), utf8(info.unit.suffix)),
-      lfo_(session, [this] { return animationOf(session_.composition(), ref_); },
-           [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
+      lfo_(
+          session, [this] { return animationOf(session_.composition(), ref_); },
+          [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
 {
     for (int i = 0; i < kSourceCount; ++i)
         source_.addItem(kSourceNames[i], i + 1);
@@ -992,8 +992,8 @@ AnimateBox::AnimateBox(Session& session, const ParamInfo& info)
         shape_.addItem(kShapeNames[i], int(i) + 1);
     for (int beats : kBeats)
         beats_.addItem(juce::String(beats) + (beats == 1 ? " beat" : " beats"), beats);
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &cycles_,
-                                                                      &stop_, &envelope_, &from_, &to_, &lfo_, &autoRange_, &learned_})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{
+             &source_, &shape_, &beats_, &cycles_, &stop_, &envelope_, &from_, &to_, &lfo_, &autoRange_, &learned_})
         addAndMakeVisible(c);
     autoRange_.setTooltip("Map the range the feature has had over the last 30 s of music, not raw 0..1, so it swings "
                           "the same at any input level");

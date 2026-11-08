@@ -3112,7 +3112,8 @@ TEST_CASE("panels: a macro's LFO modulator row shows its curve editor, an audio 
     }));
 }
 
-TEST_CASE("panels: the Cycles field repeats an LFO's shape across its span, per modulator, in the editor and as one undo step")
+TEST_CASE("panels: the Cycles field repeats an LFO's shape across its span, per modulator, in the editor and as one "
+          "undo step")
 {
     Show show;
     azl::Modulator first;
