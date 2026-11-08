@@ -9,6 +9,7 @@
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <numeric>
 #include <thread>
 
 namespace {
@@ -3109,6 +3110,136 @@ TEST_CASE("panels: a macro's LFO modulator row shows its curve editor, an audio 
     REQUIRE(runUntil(harness, [&] {
         return !lfoRow.lfoEditor().isVisible() && lfoRow.getHeight() == azl::ui::ModulatorRow::kHeight;
     }));
+}
+
+TEST_CASE("panels: the Cycles field repeats an LFO's shape across its span, per modulator, in the editor and as one "
+          "undo step")
+{
+    Show show;
+    azl::Modulator first;
+    first.target.macro = 1;
+    azl::Modulator second;
+    second.shape = azl::LfoShape::Square;
+    second.cycles = 8;
+    second.target.macro = 1;
+    azl::Macro energy{.id = 1, .name = "Energy", .value = 0.0, .targets = {{{0, show.fx, "scale"}, {}, 0.0, 2.0}}};
+    apply(show.client, azl::SetMacros{{energy}, {first, second}});
+
+    azl::WebSocketServer server(show.harness.document(), 0);
+    azl::ui::Session session("127.0.0.1", server.port());
+    azl::ui::MainComponent window(session);
+    window.setSize(1600, 950);
+    azl::EngineHarness& harness = show.harness;
+    REQUIRE(runUntil(harness, [&] { return session.client().synced(); }));
+    window.mid().showMacros();
+    azl::ui::MacrosView& macros = window.mid().macros();
+    REQUIRE(runUntil(harness, [&] { return macros.modulatorRows() == 2; }));
+    azl::ui::ModulatorRow& firstRow = *macros.modulatorRow(0);
+    azl::ui::ModulatorRow& secondRow = *macros.modulatorRow(1);
+    REQUIRE(runUntil(harness, [&] { return secondRow.getHeight() == secondRow.preferredHeight(); }));
+    CHECK(firstRow.cyclesField().isVisible());
+    CHECK(firstRow.cyclesField().value() == 1.0);
+    CHECK(secondRow.cyclesField().value() == 8.0);
+
+    auto plotsRepeated = [&](azl::ui::ModulatorRow& row, size_t index) {
+        const azl::Composition document = session.composition();
+        const azl::Modulator& m = document.modulators[index];
+        for (int i = 0; i < 128; ++i) {
+            const double x = i / 128.0;
+            const double source = std::clamp(azl::lfoAt(m.shape, x * m.cycles, m.points), 0.0, 1.0);
+            if (row.lfoEditor().plotAt(x) != doctest::Approx(azl::ui::modulatedAt(document, m, source)))
+                return false;
+        }
+        return true;
+    };
+    CHECK(plotsRepeated(firstRow, 0));
+    CHECK(plotsRepeated(secondRow, 1));
+
+    const size_t steps = undoSteps(session);
+    firstRow.cyclesField().onChange(4.0);
+    REQUIRE(runUntil(harness, [&] { return show.document().modulators[0].cycles == 4; }));
+    REQUIRE(runUntil(harness, [&] { return undoSteps(session) == steps + 1; }));
+    CHECK(show.document().modulators[0].beats == 1.0);
+    CHECK(show.document().modulators[1].cycles == 8);
+    CHECK(plotsRepeated(firstRow, 0));
+    CHECK(firstRow.cyclesField().value() == 4.0);
+    CHECK(secondRow.cyclesField().value() == 8.0);
+
+    session.client().undo();
+    REQUIRE(runUntil(harness, [&] { return show.document().modulators[0].cycles == 1; }));
+    REQUIRE(runUntil(harness, [&] { return firstRow.cyclesField().value() == 1.0; }));
+    CHECK(plotsRepeated(firstRow, 0));
+    session.client().redo();
+    REQUIRE(runUntil(harness, [&] { return firstRow.cyclesField().value() == 4.0; }));
+
+    // The plotted span is the editor's whole width: N cycles show N periods, from and back to the first cycle's start.
+    for (const azl::LfoShape shape : {azl::LfoShape::Sine, azl::LfoShape::Square})
+        for (const int cycles : {1, 4, 16, 64}) {
+            azl::Modulator m = show.document().modulators[0];
+            m.shape = shape;
+            m.cycles = cycles;
+            apply(show.client, azl::SetModulator{m});
+            REQUIRE(runUntil(harness, [&] { return firstRow.cyclesField().value() == cycles; }));
+            const std::vector<double> plot = firstRow.lfoEditor().curve(4096);
+            CAPTURE(cycles);
+            CHECK(plot.front() == doctest::Approx(1.0));
+            CHECK(plot.back() == doctest::Approx(plot.front()));
+            CHECK(plot[size_t(4096 / cycles)] == doctest::Approx(plot.front()));
+            const double mid = std::accumulate(plot.begin(), plot.end(), 0.0) / double(plot.size()) + 1e-6;
+            int crossings = 0;
+            for (size_t i = 1; i < plot.size(); ++i)
+                crossings += (plot[i - 1] > mid) != (plot[i] > mid);
+            CHECK(crossings == 2 * cycles);
+        }
+
+    const struct {
+        azl::LfoShape shape;
+        const char* name;
+    } shapes[] = {{azl::LfoShape::Sine, "sine"}, {azl::LfoShape::Square, "square"}};
+    for (const auto& [shape, name] : shapes)
+        for (const int cycles : {1, 4, 16}) {
+            azl::Modulator m = show.document().modulators[0];
+            m.shape = shape;
+            m.cycles = cycles;
+            apply(show.client, azl::SetModulator{m});
+            REQUIRE(runUntil(harness, [&] {
+                return firstRow.cyclesField().value() == cycles && firstRow.shapeBox().getText().toLowerCase() == name;
+            }));
+            CHECK(plotsRepeated(firstRow, 0));
+            shoot(firstRow, "cycles-" + std::string(name) + "-" + std::to_string(cycles) + ".png");
+        }
+    shoot(window, "cycles-window.png");
+}
+
+TEST_CASE("panels: a parameter's Animate box has a Cycles field that follows its modulator")
+{
+    Show show;
+    azl::WebSocketServer server(show.harness.document(), 0);
+    azl::ui::Session session("127.0.0.1", server.port());
+    azl::ui::MainComponent window(session);
+    window.setSize(1600, 950);
+    azl::EngineHarness& harness = show.harness;
+    REQUIRE(runUntil(harness, [&] { return session.client().synced(); }));
+    session.selectLayer(show.base);
+    azl::ui::OwnerCard& card = window.chain().content().ownerCard();
+    REQUIRE(runUntil(harness, [&] { return card.opacityRow() != nullptr; }));
+    session.animate({show.base, 0, "opacity"}, "beat");
+    REQUIRE(runUntil(harness, [&] { return show.document().modulators.size() == 1; }));
+    azl::ui::ParamRow* row = card.opacityRow();
+    REQUIRE(runUntil(harness, [&] { return row->animateBox() != nullptr; }));
+    azl::ui::AnimateBox& box = *row->animateBox();
+    REQUIRE(runUntil(harness, [&] { return row->getHeight() == row->preferredHeight(); }));
+    CHECK(box.cyclesField().isVisible());
+    CHECK(box.cyclesField().value() == 1.0);
+    CHECK(box.cyclesField().getRight() <= box.getWidth());
+
+    box.cyclesField().onChange(6.0);
+    REQUIRE(runUntil(harness, [&] { return show.document().modulators[0].cycles == 6; }));
+    CHECK(box.lfoEditor().plotAt(0.25) == doctest::Approx(box.lfoEditor().plotAt(0.25 + 1.0 / 6.0)));
+    shoot(window, "cycles-animate.png");
+
+    box.sourceBox().setSelectedId(3);
+    REQUIRE(runUntil(harness, [&] { return !box.cyclesField().isVisible(); }));
 }
 
 TEST_CASE("panels: Low, Mid and High drive parameters and macros; the spectrum's edge handles move the band edges, "

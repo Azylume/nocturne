@@ -168,6 +168,8 @@ public:
     juce::Rectangle<float> plot() const;
     // The plotted height (0..1 of the target's range) at `x` periods, and where point `index` sits.
     double plotAt(double x) const;
+    // The plotted heights at `steps + 1` even steps from the span's start to its end: what paint draws.
+    std::vector<double> curve(int steps) const;
     juce::Point<float> pointPosition(size_t index) const;
 
     void paint(juce::Graphics&) override;
@@ -236,6 +238,7 @@ public:
     void paint(juce::Graphics&) override;
     juce::ComboBox& sourceBox() { return source_; }
     juce::ComboBox& beatsBox() { return beats_; }
+    NumberField& cyclesField() { return cycles_; }
     EnvelopeControls& envelope() { return envelope_; }
     // The animation's ends in the parameter's unit: from (or an audio source's rest) and to (its peak).
     NumberField& fromField() { return from_; }
@@ -250,6 +253,7 @@ public:
 
     static constexpr int kHeight = 64;
     static constexpr int kAudioLine = 21;
+    static constexpr int kCyclesWidth = 44;
 
 private:
     void send(const std::function<void(Modulator&, const ParamInfo&)>& change);
@@ -260,7 +264,7 @@ private:
     juce::ComboBox source_, shape_, beats_;
     juce::TextButton stop_{juce::String::fromUTF8("\xc3\x97")};
     EnvelopeControls envelope_;
-    NumberField from_, to_;
+    NumberField cycles_, from_, to_;
     LfoEditor lfo_;
     juce::ToggleButton autoRange_{"Auto range"};
     juce::Label learned_;

@@ -52,6 +52,7 @@ public:
     juce::ComboBox& sourceBox() { return source_; }
     juce::ComboBox& shapeBox() { return shape_; }
     juce::ComboBox& beatsBox() { return beats_; }
+    NumberField& cyclesField() { return cycles_; }
     juce::ComboBox& combineBox() { return combine_; }
     EnvelopeControls& envelope() { return envelope_; }
     NumberField& fromField() { return from_; }
@@ -62,6 +63,7 @@ public:
     int preferredHeight() const;
 
     static constexpr int kHeight = 46;
+    static constexpr int kCyclesWidth = 44;
 
 private:
     const Modulator* modulator() const;
@@ -73,7 +75,7 @@ private:
     const uint64_t id_;
     juce::ComboBox source_, shape_, beats_, combine_;
     EnvelopeControls envelope_;
-    NumberField from_, to_;
+    NumberField cycles_, from_, to_;
     juce::TextButton remove_{juce::String::fromUTF8("\xc3\x97")};
     LfoEditor lfo_;
     std::optional<int> dragEnd_;

@@ -306,7 +306,7 @@ The microphone permission is the Windows privacy setting (`denied` when micropho
 
 ## Modulators and Macros
 
-A modulator is a beat LFO (`sine`, `saw`, `square`, `ramp`, all peaking on the beat, and `random`, holding one value per period that is the same on every engine for the same beat, and `custom`, a curve of up to 16 points over one period, each segment straight or eased (`points=0:1s,0.5:0`, set in the UI's LFO editor too); over 1/16..64 beats with a phase offset, on the beat clock so they follow tempo, nudge and resync) or an audio feature (`level`, the bands, `kick`, `snare`, `hat`) followed through the modulator's own attack and release in ms (`attack=`, `release=`, 0 by default).
+A modulator is a beat LFO (`sine`, `saw`, `square`, `ramp`, all peaking on the beat, and `random`, holding one value per period that is the same on every engine for the same beat, and `custom`, a curve of up to 16 points over one period, each segment straight or eased (`points=0:1s,0.5:0`, set in the UI's LFO editor too); over a span of 1/16..64 beats with a phase offset, which repeats its shape `cycles` times (`"cycles"`, an integer 1..64, absent means 1; `cycles=4` in `mod lfo|set`, the Cycles field in the UI) so a span of 4 beats at 4 cycles runs one beat per cycle; on the beat clock so they follow tempo, nudge and resync) or an audio feature (`level`, the bands, `kick`, `snare`, `hat`) followed through the modulator's own attack and release in ms (`attack=`, `release=`, 0 by default).
 
 Each source's sensitivity (`sensitivity kick|snare|hat|bass|lfo VALUE`, 0..4, 1 by default) scales its 0..1 value before its curve; it is part of the show (undoable, saved, replicated), since the input gain already evens out each machine's levels.
 
