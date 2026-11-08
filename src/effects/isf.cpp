@@ -280,15 +280,70 @@ TransitionSet& transitionSet()
     return set;
 }
 
-void applyNativeIdentity(const json& meta, IsfShader& shader)
+const json* nativeHeader(const json& meta, const IsfShader& shader)
 {
     const auto it = meta.find("NOCTURNE");
-    if (shader.user || shader.kind == IsfKind::Transition || it == meta.end() || !it->is_object())
+    const bool builtinEffect = !shader.user && shader.kind != IsfKind::Transition;
+    return builtinEffect && it != meta.end() && it->is_object() ? &*it : nullptr;
+}
+
+void applyNativeIdentity(const json& meta, IsfShader& shader)
+{
+    const json* native = nativeHeader(meta, shader);
+    if (!native)
         return;
-    if (const std::string type = text(*it, "TYPE"); !type.empty())
+    if (const std::string type = text(*native, "TYPE"); !type.empty())
         shader.type = type;
-    if (it->contains("CATEGORY"))
-        shader.category = text(*it, "CATEGORY");
+    if (native->contains("CATEGORY"))
+        shader.category = text(*native, "CATEGORY");
+    shader.stageOpacity = native->value("STAGE_OPACITY", json(false)) == json(true);
+    shader.beatClock = native->value("BEAT_CLOCK", json(false)) == json(true);
+}
+
+ParamUnit nativeUnit(const json& unit)
+{
+    ParamUnit out;
+    out.suffix = text(unit, "SUFFIX");
+    out.scale = number(unit, "SCALE", 1.0);
+    out.decimals = int(number(unit, "DECIMALS", 2.0));
+    return out;
+}
+
+ParamDrive nativeDrive(const std::string& name)
+{
+    if (name == "PHASE")
+        return ParamDrive::Phase;
+    if (name == "BEATS")
+        return ParamDrive::Beats;
+    if (name == "AUDIO")
+        return ParamDrive::Audio;
+    throw std::string("NOCTURNE PARAMS DRIVE is " + name + ", not PHASE, BEATS or AUDIO");
+}
+
+void applyNativeParams(const json& meta, IsfShader& shader)
+{
+    const json* native = nativeHeader(meta, shader);
+    if (!native || !native->contains("PARAMS") || !(*native)["PARAMS"].is_object())
+        return;
+    for (const auto& [name, spec] : (*native)["PARAMS"].items()) {
+        const auto param = std::find_if(shader.params.begin(), shader.params.end(),
+                                        [&](const ParamDef& p) { return p.name == name; });
+        if (param == shader.params.end())
+            throw std::string("NOCTURNE PARAMS names " + name + ", which is not an input");
+        if (spec.contains("UNIT") && spec["UNIT"].is_object())
+            param->unit = nativeUnit(spec["UNIT"]);
+        param->wraps = number(spec, "WRAPS", 0.0) != 0.0;
+        param->group = text(spec, "GROUP");
+        param->fullLabel = text(spec, "FULL_LABEL");
+        if (spec.contains("DRIVE"))
+            param->drive = nativeDrive(text(spec, "DRIVE"));
+        param->scaledBy = text(spec, "SCALED_BY");
+    }
+    for (const ParamDef& param : shader.params) {
+        const auto named = [&](const ParamDef& p) { return p.name == param.scaledBy; };
+        if (!param.scaledBy.empty() && std::none_of(shader.params.begin(), shader.params.end(), named))
+            throw std::string("NOCTURNE PARAMS SCALED_BY names " + param.scaledBy + ", which is not an input");
+    }
 }
 
 void checkSupported(const json& meta)
@@ -350,6 +405,7 @@ std::variant<IsfShader, std::string> parse(const IsfSource& source)
         checkSupported(header.meta);
         for (const json& input : inputs)
             addInput(input, shader);
+        applyNativeParams(header.meta, shader);
         checkNames(shader);
     } catch (const std::string& error) {
         return error;

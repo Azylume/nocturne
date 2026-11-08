@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <string_view>
@@ -20,6 +21,22 @@ inline std::atomic<bool>& realtimeFrames()
 
 // On the calling thread. Never blocks.
 void setThreadRole(ThreadRole role);
+
+// What the OS is told about a frame thread that works `computation` of every `period` and must finish by `constraint`.
+struct TimeConstraint {
+    std::chrono::nanoseconds period, computation, constraint;
+    bool operator==(const TimeConstraint&) const = default;
+};
+
+// The time-constraint request for a thread that works a few milliseconds of every `period`, or half of a short one.
+constexpr TimeConstraint timeConstraintFor(std::chrono::nanoseconds period)
+{
+    return {period, std::min<std::chrono::nanoseconds>(std::chrono::milliseconds(4), period / 2), period};
+}
+
+// On the calling frame thread, which waits `period` between frames. Never blocks. Returns how long before a deadline
+// its timed wait must stop and spin the rest: zero where the wait now wakes on time.
+std::chrono::microseconds paceFrameThread(std::chrono::nanoseconds period);
 
 // Blocks the calling thread until `deadline`. The frame threads' timed wait: on Windows a high-resolution waitable
 // timer, which wakes within a fraction of a millisecond where a plain timed wait wakes up to a scheduler tick late.

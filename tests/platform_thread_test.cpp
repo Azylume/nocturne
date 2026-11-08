@@ -53,3 +53,12 @@ TEST_CASE("platform: each thread role sets the calling thread's priority")
         CHECK_MESSAGE(onThreadWithRole(role, [&, p = priority] { return current() == p; }), "role " << int(role));
     CHECK(onThreadWithRole(ThreadRole::Idle, idle));
 }
+
+TEST_CASE("platform: a frame thread time constraint follows its real period")
+{
+    using namespace std::chrono_literals;
+    CHECK(azl::timeConstraintFor(16'666'667ns) == azl::TimeConstraint{16'666'667ns, 4ms, 16'666'667ns});
+    CHECK(azl::timeConstraintFor(33'333'333ns) == azl::TimeConstraint{33'333'333ns, 4ms, 33'333'333ns});
+    CHECK(azl::timeConstraintFor(8'333'333ns) == azl::TimeConstraint{8'333'333ns, 4ms, 8'333'333ns});
+    CHECK(azl::timeConstraintFor(5ms) == azl::TimeConstraint{5ms, 2500us, 5ms});
+}

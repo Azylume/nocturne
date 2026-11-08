@@ -409,6 +409,8 @@ public:
         // A loaded show dropped what it held of removed effects, or a change took the macro targets, modulators or Cue
         // steps of a removed layer or effect with it; the text is for the user.
         virtual void compositionNotice(const std::string& notice) {}
+        // The engine loaded or saved the show file at `path` ("load" or "save").
+        virtual void showFile(const std::string& op, const std::string& path) {}
         // The night's deck switches changed.
         virtual void switchesChanged() {}
     };
@@ -542,6 +544,9 @@ public:
     // The whole composition as a file at `path` on the engine machine; loading it is one undo step.
     void saveComposition(const std::string& path);
     void loadComposition(const std::string& path);
+    // Replaces the document with `empty` in one undo step and forgets the show file, so Save asks where; the engine
+    // keeps its own record of the old file until the next save or load.
+    void newComposition(const Composition& empty);
     // Asks for the shows in `folder` on the engine machine, or with none its shows folder and recent shows.
     void requestShows(const std::string& folder = {});
     ShowList shows() const;

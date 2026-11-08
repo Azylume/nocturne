@@ -439,14 +439,14 @@ target_link_libraries(nocturne_app_config PUBLIC nocturne_media nocturne_net)
 
 enable_testing()
 # The engine suite. Its portable cases build everywhere; the Apple section below adds the rest.
-add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
+add_executable(nocturne_tests tests/main.cpp tests/atomic_max_test.cpp tests/atomic_write_test.cpp tests/autopilot_stepper_test.cpp
   tests/id_set_test.cpp
   tests/isf_test.cpp tests/machine_actions_test.cpp tests/audio_test.cpp tests/audio_fft_test.cpp
   tests/audio_input_test.cpp tests/opus_codec_test.cpp tests/hap_codec_test.cpp tests/hap_test.cpp
   tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
   tests/picture_upload_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
-  tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
+  tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/safe_retry_test.cpp tests/supervisor_process_test.cpp
   tests/bundle_update_test.cpp tests/h264_decoder_test.cpp tests/vulkan_requirements_test.cpp
   ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)

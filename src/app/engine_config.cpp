@@ -24,7 +24,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(EngineConfig, display, main, win
                                                 macroSets, statsJson, frameTrace, realtimeFrames, debugFrameBits,
                                                 opaqueOutputs, gpuProfile, frameGuard, fsrUpscale, audioInput,
                                                 audioChannels, audioLog, audioGain, audioLatencyMs, micCheck, state, composition,
-                                                mediaRoot, safeMode, fallbackImage, node, follow, name,
+                                                mediaRoot, safeMode, safeRetryAt, fallbackImage, node, follow, name,
                                                 recordPath, uiDisplay)
 
 EngineConfig::EngineConfig()
@@ -112,6 +112,9 @@ const char* const kEngineUsage = R"(usage: nocturne [options]
                   where the composition file's media paths start (default: the file's folder)
   --safe-mode REASON
                   show black (or --fallback-image) with REASON on every display and run nothing else
+  --safe-retry-at UNIX
+                  with --safe-mode: the time in seconds since 1970 at which the supervisor will try the engine again,
+                  reported in the machine status as safeRetryAt (the supervisor passes it)
   --fallback-image FILE
                   the picture safe mode shows
   --node          start as a node: follow the main engine found on the network (Bonjour, _nocturne._tcp), copy its
@@ -270,6 +273,7 @@ bool readFileFlag(const std::string& arg, Args& in, EngineConfig& c)
     else if (arg == "--composition") c.composition = in.value();
     else if (arg == "--media-root") c.mediaRoot = in.value();
     else if (arg == "--safe-mode") c.safeMode = in.value();
+    else if (arg == "--safe-retry-at") c.safeRetryAt = std::atoll(in.value());
     else if (arg == "--fallback-image") c.fallbackImage = in.value();
     else return false;
     return true;

@@ -183,6 +183,80 @@ void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
     CHECK(user.category == "User");
 }
 
+TEST_CASE("a built-in shader's NOCTURNE header gives its parameters a unit, wrapping, group and full label; a user's is ignored")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": "", "PARAMS": {"hue": {
+            "UNIT": {"SUFFIX": "deg", "SCALE": 360, "DECIMALS": 0}, "WRAPS": true, "GROUP": "Tint", "FULL_LABEL": "Hue shift"}}},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "hue", "TYPE": "float", "LABEL": "Hue"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+    const azl::ParamDef builtin = parsed({"Test Native", text, false}).params.at(0);
+    CHECK(builtin.unit.suffix == "deg");
+    CHECK(builtin.unit.scale == 360.0);
+    CHECK(builtin.unit.decimals == 0);
+    CHECK(builtin.wraps);
+    CHECK(builtin.group == "Tint");
+    CHECK(builtin.fullLabel == "Hue shift");
+    CHECK(builtin.label == "Hue");
+    const azl::ParamDef user = parsed({"Test Native", text, true}).params.at(0);
+    CHECK(user.unit.suffix.empty());
+    CHECK(user.unit.scale == 1.0);
+    CHECK_FALSE(user.wraps);
+    CHECK(user.group.empty());
+    CHECK(user.fullLabel.empty());
+
+    const std::string typo = R"(/*{"NOCTURNE": {"PARAMS": {"nope": {"WRAPS": true}}},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+    CHECK(std::holds_alternative<std::string>(azl::parseIsf({"Test Native", typo, false})));
+    CHECK(std::holds_alternative<azl::IsfShader>(azl::parseIsf({"Test Native", typo, true})));
+}
+
+TEST_CASE("only a built-in shader can read the stage's Opacity, which is the argument after its inputs")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": "", "STAGE_OPACITY": true},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "amount", "TYPE": "color"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * STAGE_OPACITY; })";
+    const azl::IsfShader builtin = parsed({"Test Native", text, false});
+    CHECK(builtin.stageOpacity);
+    const azl::IsfGlsl glsl = azl::translateIsf(builtin, {});
+    CHECK_MESSAGE(glsl.error.empty(), glsl.error);
+    CHECK(glsl.body.find("pb[p + 4]);") != std::string::npos);
+    const azl::IsfShader user = parsed({"Test Native", text, true});
+    CHECK_FALSE(user.stageOpacity);
+    CHECK_FALSE(azl::translateIsf(user, {}).error.empty());
+}
+
+TEST_CASE("only a built-in shader can drive a parameter by phase, beats or audio and read the beat clock")
+{
+    const std::string text = R"(/*{"NOCTURNE": {"TYPE": "grain", "CATEGORY": "", "BEAT_CLOCK": true,
+        "PARAMS": {"rate": {"DRIVE": "BEATS"}, "speed": {"DRIVE": "PHASE", "SCALED_BY": "rate"}, "band": {"DRIVE": "AUDIO"}}},
+        "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "rate", "TYPE": "float"},
+                   {"NAME": "speed", "TYPE": "float"}, {"NAME": "band", "TYPE": "float", "MAX": 9}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * (fract(rate) + speed + band + BEAT); })";
+    const azl::IsfShader builtin = parsed({"Test Native", text, false});
+    CHECK(builtin.beatClock);
+    CHECK(builtin.params[0].drive == azl::ParamDrive::Beats);
+    CHECK(builtin.params[1].drive == azl::ParamDrive::Phase);
+    CHECK(builtin.params[1].scaledBy == "rate");
+    CHECK(builtin.params[2].drive == azl::ParamDrive::Audio);
+    const azl::IsfGlsl glsl = azl::translateIsf(builtin, {});
+    CHECK_MESSAGE(glsl.error.empty(), glsl.error);
+    CHECK(glsl.body.find(", h.beat)") != std::string::npos);
+
+    const azl::IsfShader user = parsed({"Test Native", text, true});
+    CHECK_FALSE(user.beatClock);
+    for (const azl::ParamDef& p : user.params)
+        CHECK(p.drive == azl::ParamDrive::Value);
+    CHECK_FALSE(azl::translateIsf(user, {}).error.empty());
+
+    for (const char* bad : {R"("rate": {"DRIVE": "SPIN"})", R"("rate": {"SCALED_BY": "nothing"})"}) {
+        const std::string broken = R"(/*{"NOCTURNE": {"PARAMS": {)" + std::string(bad) + R"(}},
+            "INPUTS": [{"NAME": "inputImage", "TYPE": "image"}, {"NAME": "rate", "TYPE": "float"}]}*/
+void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); })";
+        CHECK(std::holds_alternative<std::string>(azl::parseIsf({"Test Native", broken, false})));
+    }
+}
+
 TEST_CASE("ISF inputs become parameters that colour pickers, macros and modulators work on")
 {
     azl::EffectDef def = azl::isfEffect(parsed(kTint));

@@ -158,6 +158,10 @@ std::vector<std::string> runArguments(const IsfShader& shader)
         types.insert(types.end(), {"vec4", "vec4"});
     for (const IsfInput& input : shader.inputs)
         types.push_back(carrier(input.type));
+    if (shader.stageOpacity)
+        types.push_back("float");
+    if (shader.beatClock)
+        types.push_back("float");
     return types;
 }
 
@@ -186,6 +190,10 @@ std::string runFunction(const IsfShader& shader)
         out += "    isf_p" + std::to_string(i) + " = a" + std::to_string(next++) + ";\n";
     for (size_t i = 0; i < shader.inputs.size(); ++i)
         out += "    " + shader.inputs[i].name + " = " + inputValue(shader.inputs[i], i) + ";\n";
+    if (shader.stageOpacity)
+        out += "    STAGE_OPACITY = a" + std::to_string(next++) + ";\n";
+    if (shader.beatClock)
+        out += "    BEAT = a" + std::to_string(next) + ";\n";
     out += "    isf_main();\n    return isf_out;\n}\n";
 
     std::string call;
@@ -204,6 +212,10 @@ std::string assembled(const IsfShader& shader, const std::string& glsl)
                       "vec2 isf_FragNormCoord; vec4 isf_FragCoord;\n";
     if (shader.kind == IsfKind::Effect && shader.pointwise)
         out += "vec4 isf_colour;\n";
+    if (shader.stageOpacity)
+        out += "float STAGE_OPACITY;\n";
+    if (shader.beatClock)
+        out += "float BEAT;\n";
     if (shader.kind == IsfKind::Transition)
         out += "vec4 isf_startImage; vec4 isf_endImage; float progress;\n";
     for (size_t i = 0; i < shader.inputs.size(); ++i) {
@@ -272,7 +284,18 @@ std::string inputArguments(const IsfShader& shader, const std::string& values)
         out += ", " + value + (n == 1 ? "" : ")");
         offset += n;
     }
+    if (shader.stageOpacity)
+        out += ", " + values + std::to_string(offset) + "]";
+    if (shader.beatClock)
+        out += ", h.beat";
     return out;
+}
+
+// A shader that never names the clock gets none, so its stage counts as static for the bake.
+bool readsClock(const std::string& glsl)
+{
+    static const std::regex clock(R"(\b(TIME|TIMEDELTA|FRAMEINDEX)\b)");
+    return std::regex_search(glsl, clock);
 }
 
 std::string callBody(const IsfShader& shader)
@@ -281,8 +304,10 @@ std::string callBody(const IsfShader& shader)
     std::string out = "\n";
     if (transition)
         out += "    vec2 px = vec2(p) + 0.5;\n";
-    out += "    return " + prefix(shader) + "isf_run(vec4(px.x, h.size.y - px.y, h.time, h.dt), vec4(h.size, " +
-           "floor(h.time * 60.0), " + (transition ? "progress" : "0.0") + ")";
+    const bool clock = readsClock(shader.glsl);
+    const std::string time = clock ? "h.time" : "0.0";
+    out += "    return " + prefix(shader) + "isf_run(vec4(px.x, h.size.y - px.y, " + time + ", " + (clock ? "h.dt" : "0.0") +
+           "), vec4(h.size, floor(" + time + " * 60.0), " + (transition ? "progress" : "0.0") + ")";
     if (shader.kind == IsfKind::Effect && shader.pointwise)
         out += ", c";
     if (transition)

@@ -100,6 +100,8 @@ public:
     juce::Rectangle<int> listArea() const;
     juce::TextEditor& search() { return search_; }
     juce::TextButton& keepShowButton() { return keepShow_; }
+    // Add from disk: pick movie files to copy into the engine machine's Media Library (an engine on this machine only).
+    void addMedia();
     // The corner dot of a clip's tile.
     static juce::Rectangle<int> keepDot(juce::Rectangle<int> tile);
     // The upload badge of a clip's tile.
@@ -129,7 +131,6 @@ private:
     juce::TextEditor search_;
     PresetTree effects_;
     int scroll_ = 0;
-    std::unique_ptr<juce::FileChooser> chooser_;
     std::optional<FileItem> pressed_;
     std::optional<std::string> pressedEffect_;
     std::set<juce::String> closed_;

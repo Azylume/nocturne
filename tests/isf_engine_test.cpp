@@ -113,7 +113,9 @@ TEST_CASE("every built-in ISF shader loads: effects and generators register unde
         if (shader.kind != azl::IsfKind::Transition)
             types.push_back(shader.type);
     }
-    std::vector<std::string> expected{"grain", "classicAutoMask", "blank"};
+    std::vector<std::string> expected{"grain", "classicAutoMask", "blank", "colorize", "edgeDetection", "solid",
+                                      "classicBrightnessContrast", "classicLevels", "classicThreshold",
+                                      "classicHueRotate", "classicStrobe", "strobe", "lines", "checker", "rings", "gradient", "noise"};
     for (const Look& look : kEffects)
         expected.push_back(look.type);
     for (const Look& look : kGenerators)

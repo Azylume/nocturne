@@ -3,6 +3,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace azl::ui {
 
@@ -26,12 +28,22 @@ enum Command : juce::CommandID {
     CmdFullScreen,
     CmdMinimise,
     CmdZoom,
+    CmdNew,
+    CmdImportMedia,
+    CmdImportPresets,
 };
 
 // Fills `info` for the commands of the app's menus and shortcuts: the name (`name` when given), the shortcut and, when
 // `enabled` is false, the disabled flag.
 void describeCommand(Command id, juce::ApplicationCommandInfo& info, bool enabled, bool ticked = false,
                      const juce::String& name = {});
+
+// A line of File > Open Recent.
+struct RecentItem {
+    juce::String name;
+    std::string path;
+    bool enabled = true;
+};
 
 // The menu bar of the window: File, Edit, View, Window and Help, every item a command of `commands`, so a menu pick and
 // its shortcut run the same code as the buttons. On macOS it is the system menu bar; elsewhere it only owns the model.
@@ -43,6 +55,11 @@ public:
     // What the Help items open; the default browser unless a test replaces it.
     std::function<void(const juce::URL&)> openLink = [](const juce::URL& url) { url.launchInDefaultBrowser(); };
 
+    // The Open Recent items (newest first), what picking one does, and what Clear Menu does.
+    std::function<std::vector<RecentItem>()> recentShows;
+    std::function<void(const std::string&)> openRecent;
+    std::function<void()> clearRecent;
+
     // The extra items of the application menu (Settings), after the system's About.
     juce::PopupMenu appMenu() const;
     juce::StringArray getMenuBarNames() override;
@@ -50,8 +67,10 @@ public:
     void menuItemSelected(int itemId, int index) override;
 
 private:
+    juce::PopupMenu recentMenu();
     juce::ApplicationCommandManager& commands_;
     juce::TopLevelWindow& window_;
+    std::vector<std::string> shownRecent_;
 };
 
 } // namespace azl::ui

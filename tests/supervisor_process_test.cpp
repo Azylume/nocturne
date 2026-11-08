@@ -2,6 +2,7 @@
 // counting, safe mode, the skip list and stopping, with no GPU or display. supervisor_test.cpp runs the real engine;
 // on Windows the last case here does, offscreen.
 #include "kill_process.hpp"
+#include "scoped_env.hpp"
 #include "temp_folder.hpp"
 
 #include "document/composition_file.hpp"
@@ -64,7 +65,8 @@ bool contains(const std::string& text, const std::string& part)
 // names one.
 class Supervised {
 public:
-    explicit Supervised(const std::vector<std::string>& extra = {}, azl::Stdio stdio = azl::Stdio::null())
+    explicit Supervised(const std::vector<std::string>& extra = {}, azl::Stdio stdio = azl::Stdio::null(),
+                        bool waitForFirstFrame = true)
     {
         std::vector<std::string> args = {"--engine", NOCTURNE_FAKE_ENGINE, "--state", state().string(), "--logs",
                                          (root.path / "logs").string(), "--desk", "off"};
@@ -77,7 +79,8 @@ public:
                                          .error = stdio},
                                         &error);
         REQUIRE_MESSAGE(supervisor_, error);
-        REQUIRE_MESSAGE(waitForRunning(1), log());
+        const bool ready = !waitForFirstFrame || waitForRunning(1);
+        REQUIRE_MESSAGE(ready, log());
     }
 
     ~Supervised() { stop(); }
@@ -100,6 +103,7 @@ public:
     int engine() const { return status().value("engine", 0); }
     int starts() const { return status().value("starts", 0); }
     std::string mode() const { return status().value("mode", ""); }
+    nlohmann::json retry() const { return status().value("retry", nlohmann::json()); }
     std::string log() const { return readFile(root.path / "logs" / "supervisor.log"); }
     std::string engineLog() const { return readFile(root.path / "logs" / "engine.log"); }
 
@@ -163,6 +167,97 @@ TEST_CASE("supervisor: three crashes within a minute start safe mode with the re
     CHECK(contains(supervised.log(), "safe mode started"));
     std::this_thread::sleep_for(std::chrono::seconds(1));
     CHECK(supervised.starts() == 3);
+    CHECK(supervised.retry().is_null());
+}
+
+namespace {
+
+// The retry cool-down of the cases below: 0.6 s, then 1.2 s and 2.4 s.
+const std::vector<std::string> kQuickRetry = {"--safe-mode-retry", "0.01"};
+
+bool retryIs(const Supervised& supervised, const char* key, const nlohmann::json& value)
+{
+    return supervised.retry().value(key, nlohmann::json()) == value;
+}
+
+} // namespace
+
+TEST_CASE("supervisor: safe mode that crashes caused ends after the cool-down and the engine runs on")
+{
+    ScopedEnv crashes("NOCTURNE_FAKE_ENGINE_DO", "crash-first 3");
+    Supervised supervised(kQuickRetry, azl::Stdio::null(), false);
+    INFO(supervised.log());
+    REQUIRE(eventually([&] { return supervised.mode() == "normal" && retryIs(supervised, "attempts", 1) &&
+                                    supervised.engine() > 0; }, 20.0));
+    CHECK(contains(supervised.log(), "safe mode: retry in 0.01 min (attempt 1 of 3)"));
+    CHECK(contains(supervised.log(), "safe mode: retrying the engine"));
+    CHECK(contains(supervised.engineLog(), "safe retry at "));
+    CHECK(supervised.starts() == 4);
+    CHECK(retryIs(supervised, "limit", 3));
+    CHECK(supervised.retry()["nextAt"].is_null());
+    CHECK(supervised.retry()["startedAt"].size() == 1);
+}
+
+TEST_CASE("supervisor: a retry that crashes goes straight back to safe mode, the cool-down doubles, three retries end it")
+{
+    ScopedEnv crashes("NOCTURNE_FAKE_ENGINE_DO", "crash-first 100");
+    Supervised supervised(kQuickRetry, azl::Stdio::null(), false);
+    INFO(supervised.log());
+    REQUIRE(eventually([&] { return contains(supervised.log(), "retry cap reached"); }, 30.0));
+    CHECK(contains(supervised.log(), "safe mode: retry failed, back in safe mode, next in 0.02 min (attempt 2 of 3)"));
+    CHECK(contains(supervised.log(), "safe mode: retry failed, back in safe mode, next in 0.04 min (attempt 3 of 3)"));
+    CHECK(count(supervised.log(), "safe mode: retrying the engine") == 3);
+    CHECK(contains(supervised.status()["reason"].get<std::string>(), "crashed within 10 min of leaving safe mode"));
+    CHECK(supervised.mode() == "safe");
+    CHECK(supervised.starts() == 6);
+    CHECK(retryIs(supervised, "attempts", 3));
+    CHECK(retryIs(supervised, "last", "failed"));
+    CHECK(supervised.retry()["nextAt"].is_null());
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    CHECK(supervised.starts() == 6);
+}
+
+TEST_CASE("supervisor: safe mode a client asked for is never retried")
+{
+    Supervised supervised(kQuickRetry);
+    INFO(supervised.log());
+    supervised.command("exit 76");
+    REQUIRE(eventually([&] { return supervised.mode() == "safe" && supervised.engine() > 0; }, 10.0));
+    CHECK(supervised.retry()["nextAt"].is_null());
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    CHECK(supervised.mode() == "safe");
+    CHECK(supervised.starts() == 1);
+    CHECK_FALSE(contains(supervised.log(), "retrying the engine"));
+}
+
+TEST_CASE("supervisor: stopping it during a cool-down exits cleanly, and the status says when the retry is due")
+{
+    ScopedEnv crashes("NOCTURNE_FAKE_ENGINE_DO", "crash-first 100");
+    Supervised supervised({"--safe-mode-retry", "10"}, azl::Stdio::null(), false);
+    INFO(supervised.log());
+    REQUIRE(eventually([&] { return supervised.mode() == "safe" && supervised.engine() > 0; }, 10.0));
+    const double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    REQUIRE(supervised.retry()["nextAt"].is_number());
+    CHECK(supervised.retry()["nextAt"].get<double>() == doctest::Approx(now + 600.0).epsilon(0.05));
+    CHECK(contains(supervised.engineLog(), "safe retry at " + std::to_string(supervised.retry()["nextAt"].get<long long>())));
+    CHECK(supervised.stop() == 0);
+    CHECK(contains(supervised.log(), "supervisor stopped"));
+}
+
+TEST_CASE("supervisor: the retries of a supervisor that was restarted still count against the daily cap")
+{
+    ScopedEnv crashes("NOCTURNE_FAKE_ENGINE_DO", "crash-first 100");
+    Supervised first(kQuickRetry, azl::Stdio::null(), false);
+    REQUIRE_MESSAGE(eventually([&] { return contains(first.log(), "retry cap reached"); }, 30.0), first.log());
+    CHECK(first.stop() == 0);
+
+    Supervised second({"--safe-mode-retry", "0.01", "--state", first.state().string()}, azl::Stdio::null(), false);
+    INFO(second.log());
+    // Both supervisors write the state folder of the first.
+    REQUIRE(eventually([&] { return contains(second.log(), "retry cap reached") && first.mode() == "safe"; }, 15.0));
+    CHECK_FALSE(contains(second.log(), "safe mode: retry in"));
+    CHECK(retryIs(first, "attempts", 3));
+    CHECK(first.retry()["nextAt"].is_null());
 }
 
 TEST_CASE("supervisor: a clip the engine faulted on while opening it goes on the skip list")

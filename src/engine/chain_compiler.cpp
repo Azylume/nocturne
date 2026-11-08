@@ -5,6 +5,7 @@
 #include "engine/shader_cross.hpp"
 #include "gpu/glsl.hpp"
 #include "platform/thread_priority.hpp"
+#include "platform/atomic_max.hpp"
 #include "platform/profile.hpp"
 #include "supervisor/crash_guard.hpp"
 
@@ -79,11 +80,20 @@ EffectList effectList(const std::vector<Effect>& effects)
     return list;
 }
 
-EffectList clipChain(const std::vector<Effect>& layerEffects, const ClipRef* clip)
+void clipChain(EffectList& list, const std::vector<Effect>& layerEffects, const ClipRef* clip)
 {
-    EffectList list = clip ? effectList(clip->effects) : EffectList{};
+    list.clear();
+    if (clip)
+        for (const Effect& effect : clip->effects)
+            list.push_back(&effect);
     for (const Effect& effect : layerEffects)
         list.push_back(&effect);
+}
+
+EffectList clipChain(const std::vector<Effect>& layerEffects, const ClipRef* clip)
+{
+    EffectList list;
+    clipChain(list, layerEffects, clip);
     return list;
 }
 
@@ -172,13 +182,22 @@ std::string shaderType(const Composition& composition, const Effect& effect)
     return effect.type;
 }
 
+void chainKey(std::string& key, const Composition& composition, ChainKind kind, const EffectList& effects, bool text)
+{
+    key.clear();
+    if (text)
+        key += "text+";
+    key += kind == ChainKind::Group ? "group:" : kind == ChainKind::Clip ? "clip:" : "";
+    for (const Effect* effect : effects) {
+        key += shaderType(composition, *effect);
+        key += ',';
+    }
+}
+
 std::string chainKey(const Composition& composition, ChainKind kind, const EffectList& effects, bool text)
 {
-    std::string key = kind == ChainKind::Group ? "group:" : kind == ChainKind::Clip ? "clip:" : "";
-    if (text)
-        key = "text+" + key;
-    for (const std::string& type : typesOf(composition, effects))
-        key += type + ",";
+    std::string key;
+    chainKey(key, composition, kind, effects, text);
     return key;
 }
 
@@ -557,7 +576,7 @@ std::vector<gpu::RenderPipeline> ChainCompiler::pipelines(const PlannedPass& pas
     compiled_ += states.size() - archived;
     cached_ += archived;
     archiveChanged_ = archiveChanged_ || archived < states.size();
-    stats_.maxMicros = std::max(stats_.maxMicros.load(), micros);
+    atomicMax(stats_.maxMicros, micros);
     pipelines_[key] = states;
     return states;
 }

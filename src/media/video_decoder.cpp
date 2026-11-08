@@ -3,6 +3,7 @@
 #include "media/hap.hpp"
 #include "media/media_library.hpp"
 #include "media/video_source.hpp"
+#include "platform/atomic_max.hpp"
 #include "platform/profile.hpp"
 #include "platform/thread_priority.hpp"
 
@@ -683,8 +684,7 @@ struct VideoDecoder::Impl {
         std::lock_guard lock(mutex);
         inFlight.reset();
         if (running)
-            for (uint64_t max = options.stats->maxReadMicros; took > max;)
-                options.stats->maxReadMicros.compare_exchange_weak(max, took);
+            atomicMax(options.stats->maxReadMicros, took);
         return sample;
     }
 

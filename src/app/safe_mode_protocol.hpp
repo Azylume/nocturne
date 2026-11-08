@@ -14,7 +14,7 @@ namespace azl {
 class SafeModeProtocol {
 public:
     SafeModeProtocol(const app::EngineConfig& opt, MachineActions::Restart restart, MachineActions::Stop stop)
-        : reason_(opt.safeMode), document_(Composition{}, [](auto) {}),
+        : reason_(opt.safeMode), retryAt_(opt.safeRetryAt), document_(Composition{}, [](auto) {}),
           actions_(opt.state.empty() ? std::filesystem::path() : std::filesystem::path(opt.state) / "show-lock.json",
                    std::move(restart), std::move(stop))
     {
@@ -49,12 +49,14 @@ private:
                {"op", "status"},
                {"mode", "safe"},
                {"reason", reason_},
+               {"safeRetryAt", retryAt_ > 0 ? Message(retryAt_) : Message(nullptr)},
                {"showLock", actions_.locked()},
                {"version", buildId()},
                {"outputs", Message::array()}});
     }
 
     std::string reason_;
+    int64_t retryAt_;
     DocumentServer document_;
     MachineActions actions_;
     std::unique_ptr<WebSocketServer> server_;

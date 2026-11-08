@@ -8,9 +8,9 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 
 | Feature the loader lacks | Why a port needs it |
 |---|---|
-| F1 parameter metadata | `ParamDef` has a unit, `wraps`, a group and shortened labels; an ISF input carries none, so a port would show `0.25` for `25%` and stop a hue from wrapping under a modulator |
-| F2 the stage's Opacity | the Classic wrapper's Add mixer (`addMixer`) reads the stage's `mix`, which an ISF shader cannot see |
-| F3 driven parameters | `ParamDrive::Phase`, `Beats` and `Audio`: a rate integrated over time, beats counted by the beat clock, an audio feature's level |
+| F1 parameter metadata (**done**) | `ParamDef` has a unit, `wraps`, a group and shortened labels; an ISF input carries none, so a port would show `0.25` for `25%` and stop a hue from wrapping under a modulator. The `NOCTURNE` header's `PARAMS` now carries them (below) |
+| F2 the stage's Opacity (**done**) | the Classic wrapper's Add mixer (`addMixer`) reads the stage's `mix`, which an ISF shader cannot see. A built-in shader's `NOCTURNE` header can now ask for `STAGE_OPACITY` (below) |
+| F3 driven parameters (**done**) | `ParamDrive::Phase`, `Beats` and `Audio`: a rate integrated over time, beats counted by the beat clock, an audio feature's level; and the beat clock itself, which Classic Strobe reads as `h.beat`. A built-in shader's `NOCTURNE` header can now ask for both (below) |
 | F4 remap stage kind | a shader that reads its input at one other coordinate fuses as `Remap`; the importer makes it a neighbourhood pass of its own |
 | F5 CPU-derived values | `EffectDef::derive`: values worked out once a frame on the CPU and read by every pixel |
 | F6 multi-pass, persistent 16F targets | `SidePass`: history and feedback |
@@ -21,12 +21,12 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 
 | Type | How | Kind | Parameters | Goldens | Class |
 |---|---|---|---|---|---|
-| transform | one remap body | R | positionX, positionY, scale, rotation | `test_card_warp`, `transform_colorize`, chain goldens | needs F1, F4 |
-| colorize | one pointwise body | P | hue, saturation, brightness, invert, alpha | `colorize_brightness`, `edge_detection`, `transform_colorize`, chain goldens | needs F1 |
-| edgeDetection | Sobel over 3x3 | N | multiplier | `edge_detection` | needs F1 |
-| stripper | pointwise, variants `cross` and `live` | P | 22 (number, direction, speed, spread, width, feather, ..., audioBand, evolve) | `stripper`, `stripper_add`, `stripper_spread`, `stripper_step`, `stripper_swing` | needs F1, F3 |
-| trails | side pass, persistent 16F history | M | feedback | `trails` | needs F1, F6 |
-| reveal | pointwise, hashed cell rank | P | progress, columns, rows, gap, seed, reshuffle, softness, black, evolve | `reveal` | needs F1, F3 |
+| transform | one remap body | R | positionX, positionY, scale, rotation | `test_card_warp`, `transform_colorize`, chain goldens | needs F4 |
+| colorize | one pointwise body | P | hue, saturation, brightness, invert, alpha | `colorize_brightness`, `edge_detection`, `transform_colorize`, chain goldens | **ported** |
+| edgeDetection | Sobel over 3x3 | N | multiplier | `edge_detection` | **ported** |
+| stripper | pointwise, variants `cross` and `live` | P | 22 (number, direction, speed, spread, width, feather, ..., audioBand, evolve) | `stripper`, `stripper_add`, `stripper_spread`, `stripper_step`, `stripper_swing` | needs F3 |
+| trails | side pass, persistent 16F history | M | feedback | `trails` | needs F6 |
+| reveal | pointwise, hashed cell rank | P | progress, columns, rows, gap, seed, reshuffle, softness, black, evolve | `reveal` | needs F3 |
 | slicer | 6 layouts, 10 styles, CPU-derived cells | N | 24 | none | keep native: CPU-derived cell table (F5) shared with the C++ layout code, no goldens |
 | thermal | pointwise, shared style globals | P | hue, colour | none | needs F1 |
 | grain | pointwise, hashed specks | P | none | none before this PR (`grain`, added) | **ported** |
@@ -46,14 +46,14 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | classicKaleidoscope | remap | R | 6 | `classic_kaleidoscope` | needs F2, F4 |
 | classicTwitch | 3x3 blur, shifts, per-frame hash | N | 16 | `classic_twitch` | needs F1, F2 |
 | classicAutoMask | pointwise | P | channel, contrast, invert | `classic_auto_mask` | **ported** |
-| classicBrightnessContrast | pointwise | P | brightness, contrast, blendMode | `classic_brightness_contrast` | needs F1, F2 |
-| classicLevels | pointwise | P | base, midpoint, ratio, blendMode | `classic_levels` | needs F2 |
-| classicThreshold | pointwise | P | 12 | `classic_threshold` | needs F2 |
-| classicHueRotate | pointwise, HSL | P | hueScale, hueRotate, satScale, blendMode | `classic_hue_rotate`, `_add` | needs F2 |
+| classicBrightnessContrast | pointwise | P | brightness, contrast, blendMode | `classic_brightness_contrast` | **ported** |
+| classicLevels | pointwise | P | base, midpoint, ratio, blendMode | `classic_levels` | **ported** |
+| classicThreshold | pointwise | P | 12 | `classic_threshold` | **ported** |
+| classicHueRotate | pointwise, HSL | P | hueScale, hueRotate, satScale, blendMode | `classic_hue_rotate`, `_add` | **ported** |
 | classicMirrorQuad | remap | R | flipX, flipY, blendMode | `classic_mirror_quad` | needs F2, F4 |
 | classicPolarKaleido | remap | R | rings, parts, angle, blendMode | `classic_polar_kaleido` | needs F2, F4 |
 | classicTrails | side pass, persistent history | M | feedback, mode, blendMode | `classic_trails` | needs F2, F6 |
-| classicStrobe | pointwise | P | 8 | `classic_strobe_fade` | needs F2 |
+| classicStrobe | pointwise | P | 8 | `classic_strobe_fade` | **ported** |
 | classicShiftGlitch | remap, CPU-hashed bands | R | 7 | `classic_shift_glitch` | needs F2, F4, F5 |
 | classicEdgeDetection | Sobel or min filter | N | 9 | `classic_edge_detection`, `_color` | needs F2 |
 
@@ -62,15 +62,15 @@ shader in `third_party/isf/` takes. Stage kinds are ADR 0009's: P pointwise, R r
 | Type | How | Parameters | Goldens | Class |
 |---|---|---|---|---|
 | blank | constant | none | `generator_blank` | **ported** |
-| solid | constant colour | red, green, blue | `generator_solid` | needs F1 |
-| strobe | beat clock duty | rate, duty, colour | `generator_strobe` | needs F1, F3 |
-| lines | box-filtered lines | count, width, angle, speed, softness, colour | `generator_lines` | needs F1, F3 |
-| checker | rotated checker | count, angle, speed, colour | `generator_checker` | needs F1, F3 |
-| rings | box-filtered rings | count, width, speed, softness, x, y, colour | `generator_rings` | needs F1, F3 |
-| gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | needs F1, F3 |
-| noise | value noise | scale, speed, contrast, colour | `generator_noise` | needs F1, F3 |
+| solid | constant colour | red, green, blue | `generator_solid` | **ported** |
+| strobe | beat clock duty | rate, duty, colour | `generator_strobe` | **ported** |
+| lines | box-filtered lines | count, width, angle, speed, softness, colour | `generator_lines` | **ported** |
+| checker | rotated checker | count, angle, speed, colour | `generator_checker` | **ported** |
+| rings | box-filtered rings | count, width, speed, softness, x, y, colour | `generator_rings` | **ported** |
+| gradient | mirrored ramp | angle, scale, speed, two colours | `generator_gradient` | **ported** |
+| noise | value noise | scale, speed, contrast, colour | `generator_noise` | **ported** |
 
-Totals: 38 types, 3 ports, 34 need a loader feature, 1 stays native for now.
+Totals: 38 types, 17 ports, 20 need a loader feature, 1 stays native for now. F1, F2 and F3 are done; thermal, letters, dots, duotone and outline need F1 and nothing else (none has a golden).
 
 ## How a ported shader keeps its identity
 
@@ -80,3 +80,29 @@ native effect load unchanged and no alias table is needed. Parameter names, rang
 The header is ignored in a user shader, so a file in the user folder cannot replace a built-in effect.
 Ported shaders live in `third_party/isf/nocturne/`: our own work, AGPL-3.0-or-later like the rest of the repository.
 Ported effects register after the remaining native ones, so they list after them in their group.
+
+## Parameter metadata (F1)
+
+A built-in shader's `NOCTURNE` header may carry `"PARAMS": {"<input name>": {...}}` with `UNIT` (`SUFFIX`, `SCALE`,
+`DECIMALS`), `WRAPS`, `GROUP` and `FULL_LABEL`; the input's own `LABEL` is the short label. A name that is not an input
+is an error. A user shader's `NOCTURNE` header, `PARAMS` included, is ignored. Colorize, Edge Detection and Solid are
+ported with it; a test compares their parameter specs to the native ones.
+
+## The stage's Opacity (F2)
+
+A built-in shader's `NOCTURNE` header may carry `"STAGE_OPACITY": true`. The shader then reads `STAGE_OPACITY`, a float
+global holding the stage's own Opacity (`mix`), the value the native Add mixer reads. It is not an input, so it adds no
+parameter; the compiler passes it after the inputs and a user shader that names it does not translate. Classic
+Brightness Contrast, Levels, Threshold and Hue Rotate are ported with it; a test compares their parameter specs to the
+native ones.
+
+## Driven parameters and the beat clock (F3)
+
+A built-in shader's `NOCTURNE` `PARAMS` entry may carry `"DRIVE": "PHASE"`, `"BEATS"` or `"AUDIO"` and `"SCALED_BY": "<input name>"`
+(Phase only, as native). The planner then hands the shader what the native stage gets: the value integrated over seconds,
+the periods of that many beats the beat clock has counted, or the level of the audio feature with that index. The input
+reads as a plain float, so nothing is allocated or waited for on the render thread, and a driven parameter keeps the
+stage out of the static bake. `"BEAT_CLOCK": true` makes `BEAT`, the beat clock's beats (the native `h.beat`), a float
+global. An unknown `DRIVE` or a `SCALED_BY` that is not an input is an error; a user shader's header is ignored. Strobe,
+Lines, Checker, Classic Strobe, Rings, Gradient and Noise are ported with it; a test compares their parameter specs and drives to the native ones.
+No port uses `AUDIO` yet (Stripper and Reveal need more); a test covers the header.

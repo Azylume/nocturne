@@ -1,6 +1,6 @@
 # The Supervisor may retry the Engine once out of safe mode after a cool-down, off by default
 
-Status: Proposed ([#54](https://github.com/Azylume/nocturne/issues/54)). Nothing here is implemented, so `docs/reference.md` is unchanged.
+Status: Accepted ([#54](https://github.com/Azylume/nocturne/issues/54)); the Decisions section at the end answers the open questions and says what is implemented.
 
 ## The problem, from the code
 
@@ -82,3 +82,33 @@ Do option 3 as described, off by default, because an unattended venue that stays
 6. Should the retry cap survive a Supervisor restart, in a state file?
 7. #54's last criterion: should a repeated hang on the same in-flight mark add a skip? Hangs have no `crash.json`, and a mark held when the Engine was killed may be innocent (a slow decode while the render thread hung for another reason). This proposal leaves hangs alone. If it is wanted, the safest rule is the identical mark set held across two hangs in a row, as its own change and its own decision.
 8. Does #54's acceptance wording (`--safe-mode-retry MINUTES` with "backoff and a cap") match option 3 here, or is a plain single retry enough?
+
+## Decisions
+
+The owner delegated the open questions; they are answered as follows. Implemented means in the change that accepted
+this ADR.
+
+1. Retry at all: yes, strictly opt-in and off by default, so manual control stays optional. Implemented.
+2. Schedule: `--safe-mode-retry MINUTES` sets N; the cool-downs are N, 2N and 4N, at most 3 retries in any rolling
+   24 hours, and 10 minutes of stable running end the probation. Only N is a flag. Implemented
+   (`src/supervisor/safe_retry.hpp`).
+3. Probation: yes, crash limit 1 after a retry, for 10 minutes. Implemented.
+4. The Show lock does not stop the timer: the Supervisor knows neither the Show lock nor Gig windows, only the Engine
+   does. A retry never happens when safe mode was requested by a client (`machine safemode`), and a client's Restart
+   engine clears the retry state. Whoever enables the flag accepts a visible restart out of a dark safe mode.
+   Implemented, and said in `docs/reference.md`.
+5. The safe-mode machine status gains the optional field `safeRetryAt` (UNIX seconds, `null` when no retry is
+   scheduled). The Supervisor passes it to the safe-mode Engine as `--safe-retry-at`. Implemented; showing it in the UI
+   Machines tab and the Venue desk is not, and is a follow-up.
+6. The cap survives a Supervisor restart: `status.json` already is the state file the Supervisor writes, and its
+   `retry` object gains `startedAt`, the start times of the retries within 24 hours, read back on start. A file
+   without it counts as no retries. Implemented.
+7. Hangs on the same in-flight mark: no skip. Hangs stay as they are (see the open question above). Nothing to
+   implement.
+8. #54's wording ("`--safe-mode-retry MINUTES` with backoff and a cap") is option 3 here. Implemented.
+
+Differences from the proposal's text: `status.json`'s `retry` is `null` when the flag is off, else `{"attempts",
+"limit", "nextAt", "last", "startedAt"}`; `nextAt` and `startedAt` are whole UNIX seconds. The `NOCTURNE_CRASH_ON` case
+the issue asks for is not added: it would be a real-time case needing an entry in `.github/realtime-tests.txt`. The
+fake engine tests in `tests/supervisor_process_test.cpp` and the unit tests in `tests/safe_retry_test.cpp` cover the
+logic on short intervals instead.

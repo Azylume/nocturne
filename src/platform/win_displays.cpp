@@ -138,6 +138,8 @@ public:
     {
         if (stale_ && !rebuild())
             return nullptr;
+        if (swapchain_ == VK_NULL_HANDLE)
+            return nullptr;
         if (!(*slots_)[slot_] || backlogged())
             return nullptr;
         uint32_t image = 0;
@@ -282,16 +284,22 @@ private:
             waiter_ = std::thread([this] { waitForPresents(); });
     }
 
+    VkExtent2D surfaceExtent(VkSurfaceCapabilitiesKHR& caps) const
+    {
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu::vulkan::physicalDevice(device_), surface_, &caps);
+        if (caps.currentExtent.width != UINT32_MAX)
+            return caps.currentExtent;
+        const win::Area area = window_->clientArea();
+        return {uint32_t(std::max(area.width, 0)), uint32_t(std::max(area.height, 0))};
+    }
+
     void makeSwapchain(VkSwapchainKHR old)
     {
         std::lock_guard presenting(gpu::vulkan::presentationMutex(device_));
         VkSurfaceCapabilitiesKHR caps{};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu::vulkan::physicalDevice(device_), surface_, &caps);
-        VkExtent2D extent = caps.currentExtent;
-        if (extent.width == UINT32_MAX) {
-            const win::Area area = window_->clientArea();
-            extent = {uint32_t(area.width), uint32_t(area.height)};
-        }
+        const VkExtent2D extent = surfaceExtent(caps);
+        if (extent.width == 0 || extent.height == 0)
+            throw std::runtime_error("vulkan: the output's window has no size");
         VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
         info.surface = surface_;
         info.minImageCount = std::clamp(kImages, caps.minImageCount, caps.maxImageCount ? caps.maxImageCount : kImages);
@@ -358,6 +366,8 @@ private:
     // The last present has reached the screen, so the presentation engine holds none of the swapchain's semaphores.
     void drainPresents()
     {
+        if (swapchain_ == VK_NULL_HANDLE)
+            return;
         if (waitForPresent_ && presents_)
             waitForPresent_(vk_, swapchain_, presents_, 200'000'000);
         else
@@ -393,6 +403,10 @@ private:
     // Present thread: a new swapchain for a window whose size or monitor changed.
     bool rebuild()
     {
+        VkSurfaceCapabilitiesKHR caps{};
+        const VkExtent2D extent = surfaceExtent(caps);
+        if (extent.width == 0 || extent.height == 0)
+            return false;
         if (!idle())
             return false;
         stopWaiter();
@@ -408,8 +422,8 @@ private:
             std::fprintf(stderr, "%s\n", e.what());
         }
         destroySwapchain(old);
-        stale_ = false;
-        return swapchain_ != VK_NULL_HANDLE;
+        stale_ = swapchain_ == VK_NULL_HANDLE;
+        return !stale_;
     }
 
     std::unique_ptr<win::OutputWindow> window_;

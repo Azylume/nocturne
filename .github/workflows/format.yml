@@ -1,0 +1,39 @@
+# clang-format on the lines a pull request changes, and only those: existing code is never reformatted. Needs no build.
+name: Format
+
+on:
+  pull_request:
+    paths:
+      - "**.cpp"
+      - "**.hpp"
+      - "**.h"
+      - "**.mm"
+      - ".clang-format"
+      - ".github/workflows/format.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install clang-format
+        run: sudo apt-get install -y --no-install-recommends clang-format-18
+      - name: Changed lines follow .clang-format
+        run: |
+          base="$(git merge-base origin/${{ github.base_ref }} HEAD)"
+          diff="$(git clang-format-18 --diff "$base" --extensions c,cc,cpp,h,hpp,mm -- src tests fuzz bench)"
+          if grep -q '^diff --git' <<<"$diff"; then
+            echo "$diff"
+            echo "::error::Lines changed by this pull request are not clang-format clean. Fix them: git clang-format-18 $base"
+            exit 1
+          fi
