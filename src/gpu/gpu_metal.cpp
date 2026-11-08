@@ -14,15 +14,19 @@ NS::String* str(const char* s)
     return NS::String::string(s, NS::UTF8StringEncoding);
 }
 
-void setError(std::string* error, const char* what, NS::Error* e)
-{
-    if (error)
-        *error = std::string(what) + (e ? std::string(": ") + e->localizedDescription()->utf8String() : "");
-}
-
 bool responds(const void* object, const char* selector)
 {
     return object && class_respondsToSelector(object_getClass((id)object), sel_registerName(selector));
+}
+
+// Metal can hand back an object that is not an NSError (an XPC string), which has no description to ask for.
+void setError(std::string* error, const char* what, NS::Error* e)
+{
+    if (!error)
+        return;
+    *error = what;
+    if (responds(e, "localizedDescription"))
+        *error += std::string(": ") + e->localizedDescription()->utf8String();
 }
 
 const void* bytes(NS::Data* data)

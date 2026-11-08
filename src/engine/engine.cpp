@@ -465,7 +465,7 @@ void Engine::drawFrame(double seconds)
         if (previewTimes)
             stats_.previewGpuMicros += previewTimer_->finish(*previewTimes, done);
         traceDone(mark, done);
-        finished(std::move(frame), done.ok);
+        finished(std::move(frame), done);
     });
     encoding.cmd.commit();
     AZL_FRAME_MARK;
@@ -1957,15 +1957,29 @@ void Engine::traceDone(FrameTrace::Render& mark, const gpu::Completion& done) co
     config_.frameTrace->add(mark);
 }
 
-void Engine::finished(std::shared_ptr<Frame> frame, bool ok)
+void Engine::finished(std::shared_ptr<Frame> frame, const gpu::Completion& done)
 {
-    if (ok) {
+    if (done.ok) {
         ring_->publish(std::move(frame));
         stats_.rendered++;
+    } else {
+        reportGpuError(done);
     }
     std::lock_guard lock(inFlightMutex_);
     inFlight_--;
     inFlightDone_.notify_all();
+}
+
+void Engine::reportGpuError(const gpu::Completion& done)
+{
+    stats_.gpuErrors++;
+    const int64_t now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    int64_t last = lastGpuErrorLog_.load();
+    if (now == last || !lastGpuErrorLog_.compare_exchange_strong(last, now))
+        return;
+    std::fprintf(stderr, "nocturne: GPU command buffer failed: %s\n",
+                 done.error.empty() ? "no description" : done.error.c_str());
 }
 
 void Engine::waitUntilIdle()

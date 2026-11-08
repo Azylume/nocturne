@@ -320,7 +320,9 @@ inline void CommandBuffer::wait(const Fence& fence, uint64_t value)
 }
 inline Completion completionOf(MTL::CommandBuffer* done)
 {
-    return {done->status() == MTL::CommandBufferStatusCompleted, done->GPUStartTime(), done->GPUEndTime()};
+    const NS::Error* error = done->error();
+    return {done->status() == MTL::CommandBufferStatusCompleted, done->GPUStartTime(), done->GPUEndTime(),
+            error ? error->localizedDescription()->utf8String() : ""};
 }
 template <class F>
 inline void CommandBuffer::onCompleted(F&& handler)

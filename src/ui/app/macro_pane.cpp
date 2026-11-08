@@ -230,11 +230,11 @@ void TargetRow::showCurves()
 
 ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
     : session_(session), id_(modulator),
-      envelope_(session,
-                [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
-      from_(session, 0, 100, 1, "%"), to_(session, 0, 100, 1, "%"),
-      lfo_(session, [this] { return this->modulator(); },
-           [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
+      envelope_(session, [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); }),
+      cycles_(session, 1, kMaxLfoCycles, 1, "x"), from_(session, 0, 100, 1, "%"), to_(session, 0, 100, 1, "%"),
+      lfo_(
+          session, [this] { return this->modulator(); },
+          [this](const auto& change) { send([change](Modulator& m, const ParamInfo&) { change(m); }); })
 {
     for (int i = 0; i < kSourceCount; ++i)
         source_.addItem(kSourceNames[i], i + 1);
@@ -246,7 +246,8 @@ ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
         combine_.addItem(kCombineNames[i], i + 1);
     source_.setTooltip("What drives the macro: an LFO on the beat, or the kick, snare, hat, bass or the Low, Mid or High band of the audio input");
     shape_.setTooltip("The LFO's wave shape");
-    beats_.setTooltip("How many beats one LFO cycle takes");
+    beats_.setTooltip("How many beats the LFO's span takes");
+    cycles_.setTooltip("Cycles: how many times the shape repeats within the span, 1 to 64");
     combine_.setTooltip("How it joins the macro's other modulators: Add puts its range onto the macro, Multiply scales "
                         "the macro by it");
     from_.setTooltip("From: where it takes the macro at its low end (Multiply: the factor), 0% to 100%");
@@ -266,6 +267,9 @@ ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
         const int beats = beats_.getSelectedId();
         send([beats](Modulator& m, const ParamInfo&) { m.beats = beats; });
     };
+    cycles_.onChange = [this](double cycles) {
+        send([cycles](Modulator& m, const ParamInfo&) { m.cycles = int(cycles); });
+    };
     combine_.onChange = [this] {
         const int i = combine_.getSelectedId() - 1;
         if (i >= 0)
@@ -274,8 +278,8 @@ ModulatorRow::ModulatorRow(Session& session, uint64_t modulator)
     from_.onChange = [this](double percent) { setEnd(0, percent / 100.0); };
     to_.onChange = [this](double percent) { setEnd(1, percent / 100.0); };
     remove_.onClick = [this] { session_.client().edit(RemoveModulator{id_}); };
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &combine_, &envelope_,
-                                                                      &from_, &to_, &remove_, &lfo_})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&source_, &shape_, &beats_, &cycles_, &combine_,
+                                                                      &envelope_, &from_, &to_, &remove_, &lfo_})
         addAndMakeVisible(c);
     refresh();
 }
@@ -335,6 +339,7 @@ void ModulatorRow::refresh()
         if (m->shape == kShapes[i])
             shape_.setSelectedId(int(i) + 1, juce::dontSendNotification);
     beats_.setSelectedId(int(m->beats), juce::dontSendNotification);
+    cycles_.setValue(m->cycles);
     combine_.setSelectedId(int(m->combine) + 1, juce::dontSendNotification);
     envelope_.refresh(*m);
     const Ends ends = rangeEnds(*info, *m);
@@ -371,8 +376,11 @@ void ModulatorRow::resized()
     first.removeFromLeft(4);
     shape_.setVisible(beat_);
     beats_.setVisible(beat_);
+    cycles_.setVisible(beat_);
     envelope_.setVisible(!beat_);
     envelope_.setBounds(first);
+    cycles_.setBounds(first.removeFromRight(kCyclesWidth));
+    first.removeFromRight(4);
     shape_.setBounds(first.removeFromLeft(first.getWidth() / 2 - 2));
     first.removeFromLeft(4);
     beats_.setBounds(first);
