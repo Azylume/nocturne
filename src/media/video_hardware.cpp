@@ -109,8 +109,8 @@ std::array<gpu::Texture, 2> GpuDecode::textures(const AVFrame& frame) const
     const auto* frameContext = static_cast<AVVulkanFramesContext*>(frames->hwctx);
     auto* image = reinterpret_cast<AVVkFrame*>(frame.data[0]);
     frameContext->lock_frame(const_cast<AVHWFramesContext*>(frames), image);
-    const gpu::vulkan::DecodedImage source{image->img[0],       image->layout[0], image->access[0],
-                                           image->sem[0],       image->sem_value[0], w, h};
+    const gpu::vulkan::DecodedImage source{
+        image->img[0], image->layout[0], image->access[0], image->sem[0], image->sem_value[0], w, h};
     const bool copied = gpu::vulkan::copyDecodedPlanes(gpu_, source, out[0], out[1], [&](bool submitted) {
         if (submitted) {
             image->layout[0] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
