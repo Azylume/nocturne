@@ -572,7 +572,7 @@ void MachinesView::updateSupervisor()
     autostart_.setToggleState(supervisor->autostart == "on", juce::dontSendNotification);
     autostart_.setEnabled(supervisor->autostart != "unsupported" && !locked);
     autostart_.setTooltip(supervisor->autostart == "unsupported" ? "No autostart job is installed on this machine"
-                          : locked ? "The Show lock is on"
+                          : locked                               ? "The Show lock is on"
                                    : "Turn the autostart job on or off; the running show is not touched");
     const std::optional<StartSettingsView> view = session_.client().startSettings();
     const StartSettingsView::Field* saved[3] = {nullptr, nullptr, nullptr};
