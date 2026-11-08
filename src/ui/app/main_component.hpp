@@ -53,6 +53,12 @@ public:
     // Map, or Perform.
     void setMapMode(bool map) { setTab(map ? TransportBar::Tab::Map : TransportBar::Tab::Perform); }
     void setBrowserHidden(bool hidden);
+    // File > New: an empty composition (the screens stay), asking first over unsaved changes.
+    void newComposition();
+    // File > Open Recent: opens the show the way Open does, asking first over unsaved changes.
+    void openRecent(const std::string& path);
+    std::vector<RecentItem> recentItems() const;
+    void clearRecent();
 
     ClipGrid& grid() { return grid_; }
     PreviewMonitor& preview() { return preview_; }

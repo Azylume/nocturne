@@ -2,6 +2,7 @@
 
 #include "document/palette.hpp"
 #include "ui/app/params.hpp"
+#include "ui/app/recent_shows.hpp"
 #include "ui/client/connection.hpp"
 #include "ui/client/director_media.hpp"
 #include "ui/client/engine_client.hpp"
@@ -113,6 +114,15 @@ public:
     void rememberToken(const std::string& host, const std::string& token);
     // The venue list's entry of the engine this UI talks to, if it is listed.
     std::optional<VenueEntry> currentVenue() const;
+
+    // The show files opened or saved lately at this host.
+    RecentShows& recentShows() { return recentShows_; }
+    // Opens the system's file dialog (`start` is where it opens); a test replaces it. `done` gets the chosen files.
+    using FilePicker = std::function<void(const juce::String& title, const juce::File& start, const juce::String& pattern,
+                                          bool several, std::function<void(std::vector<juce::File>)> done)>;
+    FilePicker pickFiles;
+    // Asks the user before a destructive step (`action` labels the button that goes on); a test replaces it.
+    std::function<void(const juce::String& question, const juce::String& action, std::function<void()> then)> confirm;
 
     void addView(View* view);
     void removeView(View* view);
@@ -301,6 +311,7 @@ private:
     void outputsNotice(const std::string& notice) override { engineError(notice); }
     void prepareNotice(const std::string& notice) override { engineError(notice); }
     void compositionNotice(const std::string& notice) override { engineError(notice); }
+    void showFile(const std::string&, const std::string& path) override;
 
     void post(int changes);
     void handleAsyncUpdate() override;
@@ -380,6 +391,7 @@ private:
     std::set<uint64_t> stepsOpen_;
     std::map<std::string, bool> groupsOpen_;
     juce::PropertiesFile* settings_ = nullptr;
+    RecentShows recentShows_;
     std::optional<ParamRef> focused_;
     double focusedUntil_ = 0.0;
     std::vector<std::string> past_, future_;

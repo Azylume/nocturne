@@ -43,6 +43,8 @@ juce::String chainDrag(const std::string& name, const Message& effects);
 // This machine's presets as a Presets.json file, and a file merged into the engine's presets.
 bool exportPresets(Session& session, const juce::File& file);
 bool importPresets(Session& session, const juce::File& file);
+// Picks a presets file in the system's dialog and imports it.
+void importPresetsFromDialog(Session& session);
 
 // The rows of `types` and their presets. In the browser a section per category ("Ours" for our own effects), an effect
 // row per type, and under an open effect a header per group that holds presets; on a card only the group headers.

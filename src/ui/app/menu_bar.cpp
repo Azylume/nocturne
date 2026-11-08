@@ -10,6 +10,8 @@ namespace {
 constexpr int kShowWindow = 1001;
 constexpr int kHelpDocs = 1002;
 constexpr int kReportIssue = 1003;
+constexpr int kRecentFirst = 2000;
+constexpr int kClearRecent = 2100;
 const char* const kDocsUrl = "https://github.com/Azylume/nocturne/tree/main/docs";
 const char* const kIssuesUrl = "https://github.com/Azylume/nocturne/issues/new";
 
@@ -27,6 +29,9 @@ struct Description {
 Description describe(Command id)
 {
     switch (id) {
+    case CmdNew: return {"New", "File", {'n', cmd, 0}};
+    case CmdImportMedia: return {"Media...", "File", {}};
+    case CmdImportPresets: return {"Presets...", "File", {}};
     case CmdOpen: return {"Open...", "File", {'o', cmd, 0}};
     case CmdSave: return {"Save", "File", {'s', cmd, 0}};
     case CmdSaveAs: return {"Save As...", "File", {'s', cmd | shift, 0}};
@@ -91,6 +96,20 @@ juce::PopupMenu MenuBar::appMenu() const
     return menu;
 }
 
+juce::PopupMenu MenuBar::recentMenu()
+{
+    const std::vector<RecentItem> items = recentShows ? recentShows() : std::vector<RecentItem>();
+    shownRecent_.clear();
+    juce::PopupMenu menu;
+    for (const RecentItem& item : items) {
+        menu.addItem(kRecentFirst + int(shownRecent_.size()), item.name, item.enabled);
+        shownRecent_.push_back(item.path);
+    }
+    menu.addSeparator();
+    menu.addItem(kClearRecent, "Clear Menu", !items.empty());
+    return menu;
+}
+
 juce::StringArray MenuBar::getMenuBarNames()
 {
     return {"File", "Edit", "View", "Window", "Help"};
@@ -104,7 +123,15 @@ juce::PopupMenu MenuBar::getMenuForIndex(int, const juce::String& name)
             menu.addCommandItem(&commands_, id);
     };
     if (name == "File") {
-        add({CmdOpen, CmdSave, CmdSaveAs});
+        add({CmdNew, CmdOpen});
+        menu.addSubMenu("Open Recent", recentMenu());
+        menu.addSeparator();
+        add({CmdSave, CmdSaveAs});
+        menu.addSeparator();
+        juce::PopupMenu import;
+        import.addCommandItem(&commands_, CmdImportMedia);
+        import.addCommandItem(&commands_, CmdImportPresets);
+        menu.addSubMenu("Import", import);
         menu.addSeparator();
         add({CmdClose});
     } else if (name == "Edit") {
@@ -136,6 +163,10 @@ void MenuBar::menuItemSelected(int itemId, int)
         openLink(juce::URL(kDocsUrl));
     else if (itemId == kReportIssue)
         openLink(juce::URL(kIssuesUrl));
+    else if (itemId == kClearRecent && clearRecent)
+        clearRecent();
+    else if (itemId >= kRecentFirst && itemId < kRecentFirst + int(shownRecent_.size()) && openRecent)
+        openRecent(shownRecent_[size_t(itemId - kRecentFirst)]);
 }
 
 } // namespace azl::ui

@@ -1,6 +1,8 @@
 #include "net/websocket.hpp"
 #include "test_client.hpp"
+#include "test_files.hpp"
 #include "ui/app/main_component.hpp"
+#include "ui/app/recent_shows.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -54,6 +56,31 @@ juce::PopupMenu::Item menuItem(azl::ui::MainWindow& window, const juce::String& 
         if (it.getItem().itemID == id)
             return it.getItem();
     return {};
+}
+
+// The File menu's submenu of that name.
+juce::PopupMenu subMenu(azl::ui::MainWindow& window, const juce::String& name)
+{
+    const juce::StringArray names = window.menu().getMenuBarNames();
+    juce::PopupMenu popup = window.menu().getMenuForIndex(names.indexOf("File"), "File");
+    for (juce::PopupMenu::MenuItemIterator it(popup); it.next();)
+        if (it.getItem().text == name && it.getItem().subMenu)
+            return *it.getItem().subMenu;
+    return {};
+}
+
+std::vector<juce::PopupMenu::Item> itemsOf(const juce::PopupMenu& popup)
+{
+    std::vector<juce::PopupMenu::Item> items;
+    for (juce::PopupMenu::MenuItemIterator it(popup); it.next();)
+        if (!it.getItem().isSeparator)
+            items.push_back(it.getItem());
+    return items;
+}
+
+std::unique_ptr<juce::PropertiesFile> settingsAt(const std::filesystem::path& file)
+{
+    return std::make_unique<juce::PropertiesFile>(juce::File(file.string()), juce::PropertiesFile::Options());
 }
 
 // A window that says it is, or is not, in the system's full screen, as the green button would leave it.
@@ -300,10 +327,206 @@ TEST_CASE("menu: no two items of the menu bar share an id")
     MainWindow window(session, {}, false);
     std::set<int> ids;
     const juce::StringArray names = window.menu().getMenuBarNames();
-    for (int i = 0; i < names.size(); ++i) {
-        juce::PopupMenu popup = window.menu().getMenuForIndex(i, names[i]);
-        for (juce::PopupMenu::MenuItemIterator it(popup); it.next();)
-            if (!it.getItem().isSeparator)
-                CHECK(ids.insert(it.getItem().itemID).second);
+    const auto collect = [&](const juce::PopupMenu& popup, const auto& again) -> void {
+        for (juce::PopupMenu::MenuItemIterator it(popup); it.next();) {
+            const auto& item = it.getItem();
+            if (item.subMenu)
+                again(*item.subMenu, again);
+            else if (!item.isSeparator)
+                CHECK(ids.insert(item.itemID).second);
+        }
+    };
+    for (int i = 0; i < names.size(); ++i)
+        collect(window.menu().getMenuForIndex(i, names[i]), collect);
+    CHECK(ids.size() > 20);
+}
+
+TEST_CASE("menu: the recent shows keep ten, newest first, each once, and survive a restart")
+{
+    using azl::ui::RecentShows;
+    TempDir dir;
+    const auto file = dir.path / "UI.settings";
+    {
+        auto settings = settingsAt(file);
+        RecentShows recent;
+        recent.use(settings.get(), "Mini");
+        CHECK(recent.paths().empty());
+        for (int i = 0; i < 12; ++i)
+            recent.add("/shows/" + std::to_string(i) + ".json");
+        REQUIRE(recent.paths().size() == RecentShows::kMax);
+        CHECK(recent.paths().front() == "/shows/11.json");
+        CHECK(recent.paths().back() == "/shows/2.json");
+
+        recent.add("/shows/5.json");
+        const std::vector<std::string> paths = recent.paths();
+        CHECK(paths.front() == "/shows/5.json");
+        CHECK(paths.size() == RecentShows::kMax);
+        CHECK(std::count(paths.begin(), paths.end(), "/shows/5.json") == 1);
+        recent.add("");
+        CHECK(recent.paths().size() == RecentShows::kMax);
     }
+    {
+        auto settings = settingsAt(file);
+        RecentShows recent;
+        recent.use(settings.get(), "mini");
+        REQUIRE(recent.paths().size() == RecentShows::kMax);
+        CHECK(recent.paths().front() == "/shows/5.json");
+        CHECK(recent.paths()[1] == "/shows/11.json");
+
+        recent.use(settings.get(), "other-host");
+        CHECK(recent.paths().empty());
+        recent.use(settings.get(), "mini");
+        recent.clear();
+        CHECK(recent.paths().empty());
+    }
+    auto settings = settingsAt(file);
+    RecentShows recent;
+    recent.use(settings.get(), "mini");
+    CHECK(recent.paths().empty());
+}
+
+TEST_CASE("menu: Open Recent lists the shows saved and opened, greys one whose file is gone, and Clear Menu empties it")
+{
+    using namespace azl::ui;
+    TempDir root;
+    azl::EngineHarness harness({.width = 320, .height = 180}, 60.0, root.path);
+    azl::WebSocketServer server(harness.document(), 0);
+    Session session("127.0.0.1", server.port());
+    MainWindow window(session, settingsAt(root.path / "UI.settings"), false);
+    REQUIRE(runUntil(harness, [&] { return session.client().connected(); }));
+    int changes = 0;
+    struct Count : juce::MenuBarModel::Listener {
+        int& n;
+        explicit Count(int& n_) : n(n_) {}
+        void menuBarItemsChanged(juce::MenuBarModel*) override { ++n; }
+        void menuCommandInvoked(juce::MenuBarModel*, const juce::ApplicationCommandTarget::InvocationInfo&) override {}
+    } count(changes);
+    window.menu().addListener(&count);
+
+    auto items = itemsOf(subMenu(window, "Open Recent"));
+    REQUIRE(items.size() == 1);
+    CHECK(items[0].text == "Clear Menu");
+    CHECK_FALSE(items[0].isEnabled);
+
+    const auto a = root.path / "a.json", b = root.path / "b.json";
+    session.client().saveComposition(a.string());
+    REQUIRE(runUntil(harness, [&] { return session.recentShows().paths().size() == 1; }));
+    session.client().saveComposition(b.string());
+    REQUIRE(runUntil(harness, [&] { return session.recentShows().paths().size() == 2; }));
+    CHECK(changes > 0);
+
+    items = itemsOf(subMenu(window, "Open Recent"));
+    REQUIRE(items.size() == 3);
+    CHECK(items[0].text == "b");
+    CHECK(items[1].text == "a");
+    CHECK(items[0].isEnabled);
+    CHECK(items[1].isEnabled);
+    CHECK(items[2].text == "Clear Menu");
+    CHECK(items[2].isEnabled);
+
+    std::filesystem::remove(a);
+    items = itemsOf(subMenu(window, "Open Recent"));
+    CHECK(items[0].isEnabled);
+    CHECK_FALSE(items[1].isEnabled);
+
+    window.menu().menuItemSelected(items[2].itemID, 0);
+    CHECK(session.recentShows().paths().empty());
+    items = itemsOf(subMenu(window, "Open Recent"));
+    REQUIRE(items.size() == 1);
+    CHECK_FALSE(items[0].isEnabled);
+    window.menu().removeListener(&count);
+}
+
+TEST_CASE("menu: New, Import and an Open Recent item each do their one thing through the system menu's path")
+{
+    using namespace azl::ui;
+    TempDir root;
+    azl::EngineHarness harness({.width = 320, .height = 180}, 60.0, root.path);
+    Client client{harness.document()};
+    azl::WebSocketServer server(harness.document(), 0);
+    Session session("127.0.0.1", server.port());
+    MainWindow window(session, {}, false);
+    REQUIRE(runUntil(harness, [&] { return session.client().connected(); }));
+
+    std::vector<juce::String> asked, picked;
+    std::vector<juce::File> toPick;
+    bool agree = true;
+    session.confirm = [&](const juce::String& question, const juce::String& action, std::function<void()> then) {
+        asked.push_back(action + ": " + question);
+        if (agree)
+            then();
+    };
+    session.pickFiles = [&](const juce::String& title, const juce::File&, const juce::String&, bool,
+                            std::function<void(std::vector<juce::File>)> done) {
+        picked.push_back(title);
+        if (!toPick.empty())
+            done(toPick);
+    };
+    window.menu().openLink = [&](const juce::URL&) { FAIL("a File item opened a link"); };
+
+    const auto pick = [&](int id) {
+        const juce::StringArray names = window.menu().getMenuBarNames();
+        const juce::PopupMenu file = window.menu().getMenuForIndex(names.indexOf("File"), "File");
+        const auto find = [&](const juce::PopupMenu& popup, const auto& again) -> juce::PopupMenu::Item {
+            for (juce::PopupMenu::MenuItemIterator it(popup); it.next();) {
+                if (it.getItem().subMenu) {
+                    if (auto found = again(*it.getItem().subMenu, again); found.itemID == id)
+                        return found;
+                } else if (it.getItem().itemID == id) {
+                    return it.getItem();
+                }
+            }
+            return {};
+        };
+        const juce::PopupMenu::Item item = find(file, find);
+        REQUIRE(item.itemID == id);
+        REQUIRE(item.isEnabled);
+        if (item.commandManager)
+            window.commands().invokeDirectly(Command(id), true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        window.menu().menuItemSelected(id, 0);
+    };
+
+    // New over a clean document asks nothing, and over an edit asks and then replaces; the file is forgotten.
+    const auto show = root.path / "show.json";
+    session.client().saveComposition(show.string());
+    REQUIRE(runUntil(harness, [&] { return !session.client().savedPath().empty(); }));
+    apply(client, azl::AddLayer{0, std::nullopt, azl::Layer{.name = "top"}});
+    REQUIRE(runUntil(harness, [&] { return session.composition().layers.size() == 2; }));
+    REQUIRE(session.client().unsaved());
+    pick(CmdNew);
+    CHECK(asked.size() == 1);
+    CHECK(asked[0].startsWith("New: "));
+    REQUIRE(runUntil(harness, [&] { return harness.document().document().layers.size() == 1; }));
+    CHECK(session.client().savedPath().empty());
+    CHECK_FALSE(session.client().unsaved());
+    pick(CmdNew);
+    CHECK(asked.size() == 1);
+
+    // Declining the question leaves the document alone.
+    apply(client, azl::AddLayer{0, std::nullopt, azl::Layer{.name = "top"}});
+    REQUIRE(runUntil(harness, [&] { return session.composition().layers.size() == 2; }));
+    agree = false;
+    pick(CmdNew);
+    CHECK(asked.size() == 2);
+    harness.step(3);
+    CHECK(harness.document().document().layers.size() == 2);
+
+    // An Open Recent item opens that file through the same guard as Open.
+    pick(2000);
+    CHECK(asked.size() == 3);
+    CHECK(asked[2].startsWith("Open: "));
+    CHECK(session.composition().layers.size() == 2);
+    agree = true;
+    pick(2000);
+    REQUIRE(runUntil(harness, [&] { return session.client().savedPath() == show.string(); }));
+    CHECK(session.recentShows().paths().front() == show.string());
+    CHECK(runUntil(harness, [&] { return session.composition().layers.size() == 1; }));
+
+    // Import: each item opens its picker with nothing chosen and changes nothing.
+    pick(CmdImportMedia);
+    pick(CmdImportPresets);
+    REQUIRE(picked.size() == 2);
+    CHECK(picked[0].contains("media"));
+    CHECK(picked[1].contains("presets"));
 }

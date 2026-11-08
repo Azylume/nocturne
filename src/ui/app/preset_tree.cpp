@@ -130,6 +130,14 @@ bool importPresets(Session& session, const juce::File& file)
     return true;
 }
 
+void importPresetsFromDialog(Session& session)
+{
+    const juce::File start =
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Nocturne Presets.json");
+    session.pickFiles("Import presets", start, "*.json", false,
+                      [&session](std::vector<juce::File> files) { importPresets(session, files.front()); });
+}
+
 std::vector<PresetRow> presetRows(const std::vector<std::string>& types, const std::vector<PresetEntry>& entries,
                                   const juce::String& query, bool card,
                                   const std::function<bool(const std::string& key, bool byDefault)>& isOpen)
@@ -471,9 +479,7 @@ Menu PresetTree::chainMenu(const PresetRow& row)
              },
              .tip = "Save your own presets, defaults and chain presets to a file"},
             {.label = "Import presets...",
-             .run = [&session] {
-                 chooseFile(false, [&session](const juce::File& file) { importPresets(session, file); });
-             },
+             .run = [&session] { importPresetsFromDialog(session); },
              .tip = "Add the presets of a file to yours; a preset of the same name is replaced"}};
 }
 
