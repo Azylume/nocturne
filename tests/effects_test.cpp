@@ -720,6 +720,146 @@ TEST_CASE("the ported Colorize, Edge Detection and Solid keep the native paramet
     CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"colorize", "colorize", "grain"})).size() == 1);
 }
 
+namespace {
+
+struct ClassicSpec {
+    const char* name;
+    const char* label;
+    double min, max, def;
+    std::vector<std::string> options{};
+    const char* suffix = "";
+    double scale = 1.0;
+    int decimals = 2;
+    bool wraps = false;
+};
+
+ClassicSpec classicFloat(const char* name, const char* label, double def)
+{
+    return {name, label, 0.0, 1.0, def};
+}
+
+ClassicSpec classicBlendSpec()
+{
+    return {"blendMode", "Blend Mode", 0.0, 1.0, 0.0, {"Alpha", "Add"}, "", 1.0, 0};
+}
+
+void checkClassicParams(const char* type, const std::vector<ClassicSpec>& expected)
+{
+    CAPTURE(type);
+    const azl::EffectDef* def = azl::findEffect(type);
+    REQUIRE(def);
+    CHECK(def->category == "Classic");
+    REQUIRE(def->params.size() == expected.size() + 1);
+    CHECK(def->params.back().name == "mix");
+    CHECK(def->params.back().label == "Opacity");
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const azl::ParamDef& p = def->params[i];
+        const ClassicSpec& e = expected[i];
+        CAPTURE(e.name);
+        CHECK(p.name == e.name);
+        CHECK(p.label == e.label);
+        CHECK(p.min == e.min);
+        CHECK(p.max == e.max);
+        CHECK(p.defaultValue == e.def);
+        CHECK(p.options == e.options);
+        CHECK(p.choice == !e.options.empty());
+        CHECK(p.unit.suffix == e.suffix);
+        CHECK(p.unit.scale == e.scale);
+        CHECK(p.unit.decimals == e.decimals);
+        CHECK(p.wraps == e.wraps);
+        CHECK(p.group.empty());
+        CHECK(p.fullLabel.empty());
+        CHECK(p.optionStarts.empty());
+    }
+}
+
+} // namespace
+
+TEST_CASE("the ported Classic Brightness Contrast, Levels, Threshold and Hue Rotate keep the native parameters and fuse")
+{
+    checkClassicParams("classicBrightnessContrast",
+                       {{"brightness", "Brightness", -1.0, 1.0, 0.0, {}, " %", 100.0, 0},
+                        {"contrast", "Contrast", -1.0, 1.0, 0.0}, classicBlendSpec()});
+    checkClassicParams("classicLevels", {classicFloat("base", "Base", 0.5), classicFloat("midpoint", "Midpoint", 0.5),
+                                         classicFloat("ratio", "Ratio", 0.5), classicBlendSpec()});
+    checkClassicParams(
+        "classicThreshold",
+        {classicFloat("threshold", "Threshold", 0.5), classicFloat("smoothness", "Smoothness", 0.0),
+         classicFloat("color1Red", "Color 1 Red", 1.0), classicFloat("color1Green", "Color 1 Green", 1.0),
+         classicFloat("color1Blue", "Color 1 Blue", 1.0), classicFloat("color1Alpha", "Color 1 Alpha", 1.0),
+         classicFloat("color2Red", "Color 2 Red", 0.0), classicFloat("color2Green", "Color 2 Green", 0.0),
+         classicFloat("color2Blue", "Color 2 Blue", 0.0), classicFloat("color2Alpha", "Color 2 Alpha", 1.0),
+         {"alpha", "Alpha", 0.0, 2.0, 0.0, {"Original", "Combine", "Replace"}, "", 1.0, 0}, classicBlendSpec()});
+    checkClassicParams("classicHueRotate",
+                       {classicFloat("hueScale", "Hue Scale", 1.0),
+                        {"hueRotate", "Hue Rotate", 0.0, 1.0, 0.0, {}, "", 1.0, 2, true},
+                        classicFloat("satScale", "Sat. Scale", 0.5), classicBlendSpec()});
+    for (const char* type : {"classicBrightnessContrast", "classicLevels", "classicThreshold", "classicHueRotate"})
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"classicBrightnessContrast", "classicLevels", "classicThreshold",
+                                                        "classicHueRotate", "colorize"}))
+              .size() == 1);
+}
+
+TEST_CASE("the ported Strobe, Lines, Checker and Classic Strobe keep the native parameters, drives and fusion")
+{
+    const auto driveOf = [](const char* type, const char* name) {
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            if (p.name == name)
+                return p.drive;
+        return azl::ParamDrive::Value;
+    };
+    checkParams("strobe", {{"rate", 0.25, 16.0, 1.0, " beats", 1.0, 2, false}, percentSpec("duty", 0.5),
+                           percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("lines", {{"count", 1.0, 64.0, 8.0, " lines", 1.0, 1, false}, percentSpec("width", 0.5),
+                          {"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                          {"speed", -8.0, 8.0, 0.0, " lines/s", 1.0, 2, false}, percentSpec("softness", 0.0),
+                          percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("checker", {{"count", 1.0, 64.0, 8.0, " cells", 1.0, 1, false},
+                            {"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                            {"speed", -8.0, 8.0, 0.0, " cells/s", 1.0, 2, false}, percentSpec("red", 1.0),
+                            percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkClassicParams("classicStrobe",
+                       {classicFloat("frequency", "Frequency", 0.5),
+                        {"fade", "Fade", 0.0, 1.0, 0.0, {"Off", "On"}, "", 1.0, 0},
+                        classicFloat("colorRed", "Color Red", 1.0), classicFloat("colorGreen", "Color Green", 1.0),
+                        classicFloat("colorBlue", "Color Blue", 1.0), classicFloat("colorAlpha", "Color Alpha", 1.0),
+                        {"syncToBeat", "Sync to Beat", 0.0, 1.0, 1.0, {"Off", "On"}, "", 1.0, 0}, classicBlendSpec()});
+    CHECK(driveOf("strobe", "rate") == azl::ParamDrive::Beats);
+    CHECK(driveOf("lines", "speed") == azl::ParamDrive::Phase);
+    CHECK(driveOf("checker", "speed") == azl::ParamDrive::Phase);
+    for (const char* type : {"strobe", "lines", "checker", "classicStrobe"}) {
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            if (p.name != "rate" && p.name != "speed")
+                CHECK(p.drive == azl::ParamDrive::Value);
+    }
+    CHECK(azl::planChain(azl::SourceKind::Yuv, effects({"classicStrobe", "colorize", "classicLevels"})).size() == 1);
+    CHECK(azl::planChain(azl::SourceKind::Generator, effects({"lines", "classicStrobe", "colorize"})).size() == 1);
+}
+
+TEST_CASE("the ported Rings, Gradient and Noise keep the native parameters, drives and generator kind")
+{
+    checkParams("rings", {{"count", 1.0, 64.0, 8.0, " rings", 1.0, 1, false}, percentSpec("width", 0.5),
+                          {"speed", -8.0, 8.0, 0.0, " rings/s", 1.0, 2, false}, percentSpec("softness", 0.0),
+                          {"x", -0.5, 0.5, 0.0, "%", 100.0, 0, false}, {"y", -0.5, 0.5, 0.0, "%", 100.0, 0, false},
+                          percentSpec("red", 1.0), percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    checkParams("gradient", {{"angle", -180.0, 180.0, 0.0, "\xc2\xb0", 1.0, 0, true},
+                             {"scale", 0.25, 8.0, 1.0, "x", 1.0, 2, false},
+                             {"speed", -4.0, 4.0, 0.0, "/s", 1.0, 2, false}, percentSpec("red", 0.0),
+                             percentSpec("green", 0.0), percentSpec("blue", 0.0), percentSpec("toRed", 1.0),
+                             percentSpec("toGreen", 1.0), percentSpec("toBlue", 1.0)});
+    checkParams("noise", {{"scale", 0.5, 32.0, 4.0, "x", 1.0, 2, false}, {"speed", 0.0, 4.0, 0.5, "/s", 1.0, 2, false},
+                          {"contrast", 0.0, 4.0, 1.0, "x", 1.0, 2, false}, percentSpec("red", 1.0),
+                          percentSpec("green", 1.0), percentSpec("blue", 1.0)});
+    for (const char* type : {"rings", "gradient", "noise"}) {
+        CHECK(azl::isGenerator(type));
+        CHECK(azl::findEffect(type)->kind == azl::StageKind::Pointwise);
+        for (const azl::ParamDef& p : azl::findEffect(type)->params)
+            CHECK((p.drive == azl::ParamDrive::Phase) == (p.name == "speed"));
+    }
+}
+
 TEST_CASE("Reveal's gap is as wide across as down whatever the cell's shape, and the same at every render scale")
 {
     // 1920 x 1080 at 5 x 4 is 384 x 270 cells: a gap as a fraction of the cell would be 1.42 times thinner down.
@@ -984,7 +1124,7 @@ TEST_CASE("a parameter at its no-op value skips the work it would do for nothing
            "1.5), 1e-5), 1.5));",
            "float keep = pb[p + 6] > 0.5 ? exp(-pow((hi - lo) / max(0.475 * pow(pb[p + 7], 1.5), 1e-5), 1.5)) : 0.0;"}},
          "greysKeep", 0.0, 1.0, {{"colorGreen", 0.5}}},
-        {"noise", {{"if (pb[p + 2] == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
+        {"noise", {{"if (contrast == 0.0)", "if (false)"}}, "contrast", 0.0, 0.5},
     };
     TempDir media;
     const fs::path clip = copyMedia("count_240.mp4", media.path / "clip.mp4");
