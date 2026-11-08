@@ -274,10 +274,11 @@ TEST_CASE("a start on an empty pipeline cache pre-warms every effect in the back
 
 TEST_CASE("a pipeline cache that cannot be written is logged and the engine keeps rendering")
 {
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() /
-                                      ("nocturne-no-cache-" + std::to_string(azl::currentProcessId()));
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("nocturne-no-cache-" + std::to_string(azl::currentProcessId()));
     std::filesystem::remove_all(dir);
-    const std::string cachePath = (dir / "missing" / ("pipelines" + std::string(gpu::kPipelineCacheExtension))).string();
+    const std::string cachePath =
+        (dir / "missing" / ("pipelines" + std::string(gpu::kPipelineCacheExtension))).string();
     const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cachePath.c_str()};
     azl::EngineHarness harness(config, 60.0, {}, twoLayers());
     harness.step();
