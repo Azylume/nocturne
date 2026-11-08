@@ -6,9 +6,10 @@
 //   fault             faults while it holds a "clip" mark for poison.mp4
 //   fault-elsewhere   faults on another thread while this one holds that mark
 //   fault-compiling   faults while it holds an "effect" mark for the chain "chain"
+//   crash-first N     faults without a mark on each of its first N runs, counted in STATE/crash-count, then runs on
 //   no-gpu            says on stderr that it found no usable GPU and exits as the engine does then
-// NOCTURNE_FAKE_ENGINE_DO names the command when there is no --do. It quits on a stop request, and when nobody reads
-// its heartbeat any more.
+// NOCTURNE_FAKE_ENGINE_DO names the command when there is no --do; started with --safe-mode it runs none from there
+// and says its --safe-retry-at. It quits on a stop request, and when nobody reads its heartbeat any more.
 #include "platform/process.hpp"
 #include "supervisor/crash_guard.hpp"
 #include "supervisor/restart_request.hpp"
@@ -60,14 +61,28 @@ void fault()
         std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
+// Faults on each of the first `limit` runs.
+void crashFirst(const fs::path& state, int limit)
+{
+    const fs::path file = state / "crash-count";
+    int runs = 0;
+    std::ifstream(file) >> runs;
+    if (runs >= limit)
+        return;
+    std::ofstream(file) << runs + 1 << "\n";
+    fault();
+}
+
 // Runs one command; the exit status when it ends the process.
-std::optional<int> run(const std::string& command)
+std::optional<int> run(const std::string& command, const fs::path& state)
 {
     say("fake engine: " + command);
     if (command.rfind("exit ", 0) == 0)
         return std::atoi(command.c_str() + 5);
     if (command == "hang")
         hang();
+    if (command.rfind("crash-first ", 0) == 0)
+        crashFirst(state, std::atoi(command.c_str() + 12));
     if (command == "no-gpu") {
         std::fprintf(stderr, "%sfake has no Vulkan 1.3 device.\n", azl::restart::kNoGpuLine);
         return azl::restart::kNoGpu;
@@ -91,7 +106,7 @@ std::optional<int> run(const std::string& command)
 
 int main(int argc, char** argv)
 {
-    std::string command, safeMode;
+    std::string command, safeMode, safeRetryAt;
     fs::path state;
     for (int i = 1; i + 1 < argc; ++i) {
         const std::string arg = argv[i];
@@ -99,11 +114,13 @@ int main(int argc, char** argv)
             command = argv[++i];
         else if (arg == "--safe-mode")
             safeMode = argv[++i];
+        else if (arg == "--safe-retry-at")
+            safeRetryAt = argv[++i];
         else if (arg == "--state")
             state = argv[++i];
     }
     if (const char* fromEnvironment = std::getenv("NOCTURNE_FAKE_ENGINE_DO"); command.empty() && fromEnvironment)
-        command = fromEnvironment;
+        command = safeMode.empty() ? fromEnvironment : "";
     if (!azl::watchStopRequests())
         return 1;
     if (!state.empty()) {
@@ -111,12 +128,14 @@ int main(int argc, char** argv)
         azl::crash::installCrashHandlers();
     }
     say(safeMode.empty() ? "fake engine started" : "safe mode: " + safeMode);
+    if (!safeRetryAt.empty())
+        say("safe retry at " + safeRetryAt);
     const std::optional<azl::NativeHandle> heartbeat = azl::inheritedHeartbeat();
     while (true) {
         if (command.empty())
             command = takeCommand(state);
         if (!command.empty())
-            if (const std::optional<int> status = run(command))
+            if (const std::optional<int> status = run(command, state))
                 return *status;
         command.clear();
         if (heartbeat && azl::writeHandle(*heartbeat, "h", 1) < 0) {

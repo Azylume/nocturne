@@ -446,7 +446,7 @@ add_executable(nocturne_tests tests/main.cpp tests/atomic_write_test.cpp tests/a
   tests/media_files_test.cpp tests/video_decoder_test.cpp tests/gpu_test.cpp tests/gpu_chains_test.cpp
   tests/picture_upload_test.cpp
   tests/websocket_frames_test.cpp tests/websocket_test.cpp
-  tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/supervisor_process_test.cpp
+  tests/udp_clock_test.cpp tests/http_test.cpp tests/crash_guard_test.cpp tests/safe_retry_test.cpp tests/supervisor_process_test.cpp
   tests/bundle_update_test.cpp tests/h264_decoder_test.cpp tests/vulkan_requirements_test.cpp
   ${NOCTURNE_PLATFORM_TESTS})
 target_include_directories(nocturne_tests PRIVATE tests third_party/doctest)

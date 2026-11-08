@@ -59,6 +59,7 @@ struct EngineConfig {
     std::string composition;
     std::string mediaRoot;
     std::string safeMode;
+    int64_t safeRetryAt = 0;
     std::string fallbackImage;
     bool node = false;
     std::string follow;
