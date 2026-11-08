@@ -9,6 +9,7 @@
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <numeric>
 #include <thread>
 
 namespace {
@@ -3120,7 +3121,7 @@ TEST_CASE("panels: the Cycles field repeats an LFO's shape across its span, per 
     second.shape = azl::LfoShape::Square;
     second.cycles = 8;
     second.target.macro = 1;
-    azl::Macro energy{.id = 1, .name = "Energy", .value = 0.2, .targets = {{{0, show.fx, "scale"}, {}, 0.0, 2.0}}};
+    azl::Macro energy{.id = 1, .name = "Energy", .value = 0.0, .targets = {{{0, show.fx, "scale"}, {}, 0.0, 2.0}}};
     apply(show.client, azl::SetMacros{{energy}, {first, second}});
 
     azl::WebSocketServer server(show.harness.document(), 0);
@@ -3169,6 +3170,26 @@ TEST_CASE("panels: the Cycles field repeats an LFO's shape across its span, per 
     CHECK(plotsRepeated(firstRow, 0));
     session.client().redo();
     REQUIRE(runUntil(harness, [&] { return firstRow.cyclesField().value() == 4.0; }));
+
+    // The plotted span is the editor's whole width: N cycles show N periods, from and back to the first cycle's start.
+    for (const azl::LfoShape shape : {azl::LfoShape::Sine, azl::LfoShape::Square})
+        for (const int cycles : {1, 4, 16, 64}) {
+            azl::Modulator m = show.document().modulators[0];
+            m.shape = shape;
+            m.cycles = cycles;
+            apply(show.client, azl::SetModulator{m});
+            REQUIRE(runUntil(harness, [&] { return firstRow.cyclesField().value() == cycles; }));
+            const std::vector<double> plot = firstRow.lfoEditor().curve(4096);
+            CAPTURE(cycles);
+            CHECK(plot.front() == doctest::Approx(1.0));
+            CHECK(plot.back() == doctest::Approx(plot.front()));
+            CHECK(plot[size_t(4096 / cycles)] == doctest::Approx(plot.front()));
+            const double mid = std::accumulate(plot.begin(), plot.end(), 0.0) / double(plot.size()) + 1e-6;
+            int crossings = 0;
+            for (size_t i = 1; i < plot.size(); ++i)
+                crossings += (plot[i - 1] > mid) != (plot[i] > mid);
+            CHECK(crossings == 2 * cycles);
+        }
 
     const struct {
         azl::LfoShape shape;

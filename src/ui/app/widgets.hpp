@@ -168,6 +168,8 @@ public:
     juce::Rectangle<float> plot() const;
     // The plotted height (0..1 of the target's range) at `x` periods, and where point `index` sits.
     double plotAt(double x) const;
+    // The plotted heights at `steps + 1` even steps from the span's start to its end: what paint draws.
+    std::vector<double> curve(int steps) const;
     juce::Point<float> pointPosition(size_t index) const;
 
     void paint(juce::Graphics&) override;

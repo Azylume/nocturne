@@ -675,6 +675,14 @@ double LfoEditor::plotAt(double x) const
     return modulatedAt(composition, *m, source);
 }
 
+std::vector<double> LfoEditor::curve(int steps) const
+{
+    std::vector<double> heights;
+    for (int i = 0; i <= steps; ++i)
+        heights.push_back(plotAt(double(i) / steps));
+    return heights;
+}
+
 juce::Point<float> LfoEditor::pointPosition(size_t index) const
 {
     const auto m = shown();
@@ -736,12 +744,18 @@ void LfoEditor::paint(juce::Graphics& g)
                                r.getBottom());
     auto yAt = [&](double x) { return r.getBottom() - r.getHeight() * float(plotAt(x)); };
     const int steps = std::max(1, juce::roundToInt(r.getWidth()));
-    juce::Path curve;
-    curve.startNewSubPath(r.getX(), yAt(0.0));
-    for (int i = 1; i <= steps; ++i)
-        curve.lineTo(r.getX() + r.getWidth() * float(i) / float(steps), yAt(double(i) / steps));
+    juce::Path line;
+    const std::vector<double> heights = curve(steps);
+    for (int i = 0; i <= steps; ++i) {
+        const float x = r.getX() + r.getWidth() * float(i) / float(steps);
+        const float y = r.getBottom() - r.getHeight() * float(heights[size_t(i)]);
+        if (i == 0)
+            line.startNewSubPath(x, y);
+        else
+            line.lineTo(x, y);
+    }
     g.setColour(p.accent);
-    g.strokePath(curve, juce::PathStrokeType(1.5f));
+    g.strokePath(line, juce::PathStrokeType(1.5f));
     if (m->shape == LfoShape::Custom)
         for (size_t i = 0; i < m->points.size(); ++i) {
             const auto dot = juce::Rectangle<float>(2.0f * kPointRadius, 2.0f * kPointRadius).withCentre(pointPosition(i));
