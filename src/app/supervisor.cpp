@@ -5,6 +5,7 @@
 #include "supervisor/restart_request.hpp"
 #include "supervisor/rotating_log.hpp"
 #include "supervisor/safe_retry.hpp"
+#include "supervisor/start_settings.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -276,6 +277,8 @@ private:
                                     {"error", noGpu_},
                                     {"engine", pid},
                                     {"starts", starts_},
+                                    {"startedAt", startedAt_},
+                                    {"applied", applied_},
                                     {"crashes", crashes},
                                     {"retry", retryStatus()},
                                     {"supervisor", azl::currentProcessId()}};
@@ -450,6 +453,31 @@ private:
         engine.wait();
     }
 
+    // The saved start settings as flags after the launch definition's, so the saved value wins; a file that cannot be
+    // used is ignored and the launch flags stand.
+    std::vector<std::string> savedSettingsFlags()
+    {
+        applied_.clear();
+        azl::StartSettings saved;
+        try {
+            const std::optional<azl::StartSettings> read = azl::readStartSettings(statePath(azl::kStartSettingsFile));
+            if (!read)
+                return {};
+            saved = *read;
+        } catch (const std::exception& e) {
+            say(std::string("settings: ignored, ") + e.what());
+            return {};
+        }
+        for (const auto& [name, value] :
+             {std::pair{"composition", &saved.composition}, std::pair{"mediaRoot", &saved.mediaRoot},
+              std::pair{"audioInput", &saved.audioInput}})
+            if (!value->empty()) {
+                applied_.push_back(name);
+                say(std::string("settings: ") + name + " " + *value + " (saved, wins over the launch flags)");
+            }
+        return azl::startSettingsFlags(saved);
+    }
+
     void runEngine()
     {
         const std::optional<azl::PipeEnds> heartbeat = azl::makePipe();
@@ -459,9 +487,12 @@ private:
             return;
         }
         std::vector<std::string> args = opt_.engineArgs;
-        args.insert(args.end(), {"--state", opt_.state.string()});
+        const std::vector<std::string> saved = savedSettingsFlags();
+        args.insert(args.end(), saved.begin(), saved.end());
+        args.insert(args.end(), {"--state", opt_.state.string(), "--logs", opt_.logs.string()});
         azl::NativeHandle output{};
         const auto started = Clock::now();
+        startedAt_ = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
         std::optional<azl::Process> engine = spawn(opt_.engine, args, heartbeat->write, output, "engine.pid");
         azl::closeHandle(heartbeat->write);
         if (!engine) {
@@ -699,6 +730,10 @@ private:
     // The engine's line saying it found no usable GPU, once it has exited for that.
     std::string noGpu_;
     int starts_ = 0;
+    // Wall-clock Unix seconds of the current engine start; 0 before the first.
+    double startedAt_ = 0.0;
+    // The settings fields the current start took from machine-settings.json.
+    std::vector<std::string> applied_;
 };
 
 } // namespace

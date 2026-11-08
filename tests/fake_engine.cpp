@@ -130,6 +130,10 @@ int main(int argc, char** argv)
     say(safeMode.empty() ? "fake engine started" : "safe mode: " + safeMode);
     if (!safeRetryAt.empty())
         say("safe retry at " + safeRetryAt);
+    std::string args;
+    for (int i = 1; i < argc; ++i)
+        args += std::string(" ") + argv[i];
+    say("fake engine args:" + args);
     const std::optional<azl::NativeHandle> heartbeat = azl::inheritedHeartbeat();
     while (true) {
         if (command.empty())

@@ -14,11 +14,13 @@ add_library(nocturne_platform STATIC)
 if(APPLE)
   target_sources(nocturne_platform PRIVATE
     app_paths_apple.cpp
+    autostart_apple.cpp
     clock_apple.cpp
     credentials_apple.cpp
     crypto_apple.cpp
     preview_channel_apple.cpp
     process_apple.cpp
+    run_command.cpp
     thread_priority_apple.cpp
     work_queue_apple.cpp
   )
@@ -26,6 +28,7 @@ if(APPLE)
 elseif(WIN32)
   target_sources(nocturne_platform PRIVATE
     app_paths_win.cpp
+    autostart_win.cpp
     clock_win.cpp
     credentials_win.cpp
     crypto_win.cpp
@@ -33,6 +36,7 @@ elseif(WIN32)
     main_loop_win.cpp
     preview_channel_win.cpp
     process_win.cpp
+    run_command.cpp
     thermal_win.cpp
     thread_priority_win.cpp
     win_monitors.cpp
@@ -51,6 +55,7 @@ target_link_libraries(nocturne_platform_child PRIVATE nocturne_platform)
 
 # Built into nocturne_tests as well; they need NOCTURNE_PLATFORM_CHILD.
 set(platform_tests
+  ${repo_root}/tests/platform_autostart_test.cpp
   ${repo_root}/tests/platform_clock_test.cpp
   ${repo_root}/tests/platform_credentials_test.cpp
   ${repo_root}/tests/platform_crypto_test.cpp

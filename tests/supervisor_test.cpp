@@ -657,6 +657,9 @@ TEST_CASE("a killed engine restarts and resumes the same clip on the same beat g
     checkRestart(engine, Stop::Kill, 2.0);
     CHECK(engine.log().find(std::string("engine ") + kKilled) != std::string::npos);
     CHECK(engine.status()["mode"] == "normal");
+    const std::string token = readFile(engine.root.path / "state" / "token");
+    REQUIRE(token.size() >= 32);
+    CHECK(engine.engineLog().find(token.substr(0, token.find_first_of("\r\n"))) == std::string::npos);
 }
 
 TEST_CASE("a hung engine is killed after 2 s without a frame and resumes")

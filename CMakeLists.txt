@@ -174,7 +174,9 @@ add_library(nocturne_protocol STATIC
   src/protocol/remote_files.cpp
   src/protocol/return_stream.cpp
   src/supervisor/crash_guard.cpp
+  src/supervisor/log_tail.cpp
   src/supervisor/rotating_log.cpp
+  src/supervisor/start_settings.cpp
   src/supervisor/state_saver.cpp
 )
 target_include_directories(nocturne_protocol PUBLIC src)
@@ -193,6 +195,7 @@ add_library(nocturne_engine_logic STATIC
   src/engine/autopilot_stepper.cpp
   src/engine/bundle_update.cpp
   src/engine/machine_actions.cpp
+  src/engine/machine_control.cpp
   src/engine/transport.cpp
 )
 target_link_libraries(nocturne_engine_logic PUBLIC nocturne_protocol nocturne_profile)
@@ -542,7 +545,7 @@ target_sources(nocturne_tests PRIVATE tests/harness_test.cpp tests/golden.cpp te
   tests/generator_test.cpp tests/prototype_gaps_test.cpp tests/continuity_test.cpp
   tests/resilience_test.cpp tests/still_test.cpp tests/colour_test.cpp tests/engine_config_test.cpp
   tests/playhead_test.cpp tests/upload_test.cpp tests/profile_test.cpp
-  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/desk_test.cpp tests/palette_steps_test.cpp
+  tests/djlink_test.cpp tests/effect_steps_test.cpp tests/venues_test.cpp tests/venue_alerts_test.cpp tests/machine_test.cpp tests/machine_settings_test.cpp tests/static_bake_test.cpp tests/settings_test.cpp tests/gig_test.cpp tests/switch_log_test.cpp tests/machine_control_test.cpp tests/desk_test.cpp tests/palette_steps_test.cpp
   tests/media_sync_test.cpp tests/upscale_test.cpp tests/render_scale_test.cpp tests/isf_engine_test.cpp tests/isf_user_test.cpp tests/prepare_test.cpp
   tests/return_video_test.cpp tests/return_audio_test.cpp tests/rename_test.cpp tests/pairing_test.cpp tests/mcp_test.cpp tests/remote_files_test.cpp
   tests/hap_playback_test.cpp

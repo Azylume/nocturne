@@ -1030,6 +1030,18 @@ int runEngine(const EngineConfig& opt)
     azl::MachineActions::Restart restart = azl::restartRequest(&exitCode, azl::app::stopMain);
     azl::MachineActions::Stop stop = azl::stopRequest(&exitCode, azl::app::stopMain);
     const azl::UpdateSource update = restart && !opt.state.empty() ? azl::installedUpdate(stateDir) : azl::UpdateSource{};
+    azl::ControlSource control;
+    if (restart && !opt.state.empty()) {
+        control.state = stateDir;
+        control.logs = opt.logs;
+        control.running = {opt.composition, opt.mediaRoot, opt.audioInput};
+        control.audioInput = [&input](const std::string& name) {
+            const std::vector<azl::AudioDeviceInfo> devices = input.inputDevices();
+            return name == "off" || std::any_of(devices.begin(), devices.end(), [&](const azl::AudioDeviceInfo& d) {
+                       return d.uid == name || azl::containsIgnoringCase(d.name, name);
+                   });
+        };
+    }
     azl::MachineService machine(
         document, engine, displays, &known, azl::engineTime,
         [](std::function<void()> work) { azl::app::onMain(std::move(work)); },
@@ -1044,6 +1056,7 @@ int runEngine(const EngineConfig& opt)
          .restart = std::move(restart),
          .stop = std::move(stop),
          .update = update,
+         .control = std::move(control),
          .wall = azl::unixTime});
     machine.setAudio(&analysis);
     auto timer = std::make_unique<azl::app::MainTimer>(std::chrono::seconds(1), [printer] { printer->print(); });

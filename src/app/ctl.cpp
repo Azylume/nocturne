@@ -146,6 +146,14 @@ commands:
                                     leaves it); refused while the Show lock is on
   machine lock on|off               the venue's Show lock: while on, every client is refused restart, safe mode and
                                     update; kept across engine restarts
+  machine autostart on|off          enable or disable the installed autostart job (LaunchAgent, scheduled task); it
+                                    does not start or stop the running show. Refused under the Show lock and in a Gig window
+  machine settings [composition PATH] [mediaroot PATH] [audioinput NAME]
+                                    show, or first save, what the supervisor starts the engine with at its next start
+                                    (PATH "" or NAME "" clears one); paths must lie in ~/Nocturne/shows (composition)
+                                    or ~/Nocturne/media. Saving is refused under the Show lock and in a Gig window
+  machine logs engine|supervisor [LINES]
+                                    the last LINES (default 100, at most 200) lines of that log
   machine update BUNDLE             send Nocturne.app (a path on this machine) to the engine machine, which installs
                                     it with tools/update-bundle.sh: restart, health check, rollback when unhealthy;
                                     prints the result. Refused under the Show lock and inside a Gig window
@@ -1062,6 +1070,20 @@ azl::Message saveChainMessage(const std::vector<std::string>& c, const azl::Mess
     return {{"type", "preset"}, {"op", "saveChain"}, {"name", c[2]}, {"effects", effects}};
 }
 
+// machine settings [composition PATH] [mediaroot PATH] [audioinput NAME]: each pair a field to save.
+std::optional<azl::Message> machineSettingsMessage(const std::vector<std::string>& c)
+{
+    static const std::map<std::string, std::string> fields{
+        {"composition", "composition"}, {"mediaroot", "mediaRoot"}, {"audioinput", "audioInput"}};
+    azl::Message request{{"type", "machine"}, {"op", "settings"}};
+    for (size_t i = 2; i + 1 < c.size(); i += 2) {
+        const auto field = fields.find(c[i]);
+        if (field == fields.end())
+            return std::nullopt;
+        request[field->second] = c[i + 1];
+    }
+    return request;
+}
 
 std::optional<azl::Message> machineMessage(const std::vector<std::string>& c)
 {
@@ -1076,6 +1098,13 @@ std::optional<azl::Message> machineMessage(const std::vector<std::string>& c)
         return azl::Message{{"type", "machine"}, {"op", "safeMode"}};
     if (c.size() == 3 && (op == "testcard" || op == "lock"))
         return azl::Message{{"type", "machine"}, {"op", op}, {"on", onOff(c[2])}};
+    if (c.size() == 3 && op == "autostart")
+        return azl::Message{{"type", "machine"}, {"op", op}, {"on", onOff(c[2])}};
+    if (c.size() <= 4 && c.size() >= 3 && op == "logs")
+        return azl::Message{
+            {"type", "machine"}, {"op", op}, {"file", c[2]}, {"lines", c.size() == 4 ? std::stoi(c[3]) : 100}};
+    if (op == "settings" && c.size() % 2 == 0)
+        return machineSettingsMessage(c);
     if (c.size() <= 3 && op == "identify")
         return azl::Message{{"type", "machine"}, {"op", op}, {"seconds", c.size() == 3 ? std::stod(c[2]) : 3.0}};
     return std::nullopt;
@@ -2226,6 +2255,24 @@ int replyOnce(azl::WebSocketClient& client, Queue& queue, const azl::Message& re
     return 1;
 }
 
+// Prints a log tail as text, not as JSON.
+int printLogs(azl::WebSocketClient& client, Queue& queue, const azl::Message& request)
+{
+    client.send(request);
+    while (const auto reply = queue.pop(std::chrono::seconds(5))) {
+        if ((*reply)["type"] == "error") {
+            print(*reply);
+            return 1;
+        }
+        if ((*reply)["type"] == "machine" && (*reply)["op"] == "logs") {
+            std::fputs((*reply)["text"].get<std::string>().c_str(), stdout);
+            return 0;
+        }
+    }
+    std::fprintf(stderr, "nocturne-ctl: no reply\n");
+    return 1;
+}
+
 int clock(azl::WebSocketClient& client, Queue& queue, const std::vector<std::string>& c, const azl::Message& request)
 {
     const int count = c.size() == 3 ? std::stoi(c[1]) : 1;
@@ -2870,6 +2917,8 @@ int run(const Options& opt)
         return replyOnce(client, queue, *mediaSync, "status");
     if (isf)
         return replyOnce(client, queue, *isf);
+    if (machine && c.size() >= 3 && c[1] == "logs")
+        return printLogs(client, queue, *machine);
     if (machine)
         return replyOnce(client, queue, *machine);
     if (videoWatch)

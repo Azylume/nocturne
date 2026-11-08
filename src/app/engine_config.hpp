@@ -56,6 +56,8 @@ struct EngineConfig {
     double audioLatencyMs = 0.0;
     bool micCheck = false;
     std::string state;
+    // The supervisor's logs folder, whose engine.log and supervisor.log the Machines tab reads.
+    std::string logs;
     std::string composition;
     std::string mediaRoot;
     std::string safeMode;

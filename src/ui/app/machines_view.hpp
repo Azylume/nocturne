@@ -3,6 +3,7 @@
 #include "ui/app/session.hpp"
 #include "ui/app/widgets.hpp"
 
+#include <array>
 #include <deque>
 #include <filesystem>
 #include <map>
@@ -55,6 +56,16 @@ public:
     juce::TextButton& syncButton(const std::string& mode);
     HoldButton& updateButton() { return update_; }
     juce::TextButton& listenButton() { return listen_; }
+    juce::TextButton& autostartButton() { return autostart_; }
+    juce::TextEditor& settingsField(int index) { return fields_[size_t(index)]; }
+    juce::TextButton& saveSettingsButton() { return saveSettings_; }
+    juce::TextButton& logButton(const std::string& file) { return file == "supervisor" ? supervisorLog_ : engineLog_; }
+    juce::TextButton& refreshLogButton() { return refreshLog_; }
+    juce::TextEditor& logText() { return logText_; }
+    // The Supervisor panel's status rows as drawn; empty while the engine runs without a supervisor.
+    juce::StringArray supervisorLines() const;
+    // The note under the settings fields as drawn.
+    juce::String settingsNote() const;
     juce::Slider& volumeSlider() { return volume_; }
     void setUpdateBundle(std::filesystem::path app);
     // The Update's progress or result as the Actions panel shows it; empty when there is none.
@@ -70,6 +81,11 @@ private:
     juce::Rectangle<int> actionsPanel() const;
     juce::Rectangle<int> mediaPanel() const;
     void updateActions();
+    void updateSupervisor();
+    void sendSettings();
+    void showLog(const std::string& file);
+    juce::Rectangle<int> supervisorPanel() const;
+    void paintSupervisor(juce::Graphics& g, const MachineStatus::Supervisor& supervisor) const;
     void startUpdate();
     std::pair<juce::String, juce::Colour> updateNote() const;
     void paintActions(juce::Graphics& g, const MachineStatus& status) const;
@@ -103,6 +119,19 @@ private:
     HoldButton update_{"Update"};
     juce::TextButton listen_{"Listen"};
     juce::Slider volume_{juce::Slider::LinearHorizontal, juce::Slider::NoTextBox};
+    // The Supervisor panel: autostart, the three start settings (show file, media root, audio input), their log.
+    juce::TextButton autostart_{"Autostart"};
+    std::array<juce::TextEditor, 3> fields_;
+    // What each field last showed from the machine; a field that differs is being typed in and is left alone.
+    std::array<juce::String, 3> shown_;
+    juce::TextButton saveSettings_{"Save"};
+    juce::TextButton engineLog_{"Engine log"};
+    juce::TextButton supervisorLog_{"Supervisor log"};
+    juce::TextButton refreshLog_{"Refresh"};
+    juce::TextEditor logText_;
+    std::string logFile_ = "engine";
+    // The settings and the log are asked for once per connection, when the supervisor first shows.
+    bool supervisorAsked_ = false;
     std::filesystem::path updateBundle_;
     // The installer's last result when this UI started its Update, to tell the new one from it.
     std::optional<MachineStatus::Update> updateBefore_;

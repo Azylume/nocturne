@@ -1,4 +1,6 @@
 #include "net/websocket.hpp"
+#include "platform/process.hpp"
+#include "scoped_env.hpp"
 #include "test_client.hpp"
 #include "ui/app/main_component.hpp"
 #include "upload/media_sync.hpp"
@@ -376,4 +378,155 @@ TEST_CASE("the Machines tab shows every output's return video beside its state, 
     const uint64_t bytes = session.client().videoBytes();
     runUntil([] { return false; }, 0.7);
     CHECK(session.client().videoBytes() == bytes);
+}
+
+namespace {
+
+void writeText(const fs::path& file, const std::string& text)
+{
+    fs::create_directories(file.parent_path());
+    std::ofstream(file, std::ios::binary) << text;
+}
+
+double unixNow()
+{
+    return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+// A venue machine under a supervisor: its status.json says the engine started two minutes ago.
+struct Supervised {
+    explicit Supervised(azl::AutostartState autostart = azl::AutostartState::On)
+        : home("HOME", homeDir.path.c_str()),
+          harness({.width = 160, .height = 90}, 60.0, root.path, azl::defaultComposition()),
+          server(harness.document(), 0), session("127.0.0.1", server.port()), main(session)
+    {
+        fs::create_directories(homeDir.path / "Nocturne" / "shows");
+        harness.setAutostart(autostart);
+        writeText(root.path / "status.json", nlohmann::json{{"mode", "normal"},
+                                                            {"engine", 4242},
+                                                            {"starts", 3},
+                                                            {"crashes", nlohmann::json::array()},
+                                                            {"startedAt", unixNow() - 125.0},
+                                                            {"supervisor", azl::currentProcessId()}}
+                                                 .dump());
+        main.setSize(1600, 950);
+        REQUIRE(runUntil([&] { return session.client().synced(); }));
+        main.transport().tabButton(Tab::Machines).triggerClick();
+        REQUIRE(runUntil([&] { return main.machines().supervisorLines().size() == 2; }));
+    }
+    azl::ui::MachinesView& machines() { return main.machines(); }
+    fs::path shows() const { return homeDir.path / "Nocturne" / "shows"; }
+
+    TempDir root;
+    TempDir homeDir;
+    ScopedEnv home;
+    azl::EngineHarness harness;
+    azl::WebSocketServer server;
+    Session session;
+    azl::ui::MainComponent main;
+};
+
+} // namespace
+
+TEST_CASE("supervisor panel: it shows the supervisor and engine state, and the autostart label follows the machine")
+{
+    Supervised venue;
+    azl::ui::MachinesView& machines = venue.machines();
+    const juce::StringArray lines = machines.supervisorLines();
+    CHECK(lines[0] == juce::String::fromUTF8("Supervisor \xc2\xb7 running"));
+    CHECK(lines[1].startsWith(juce::String::fromUTF8("Engine \xc2\xb7 pid 4242 \xc2\xb7 up 0:02:")));
+    CHECK(lines[1].endsWith(juce::String::fromUTF8("3 starts \xc2\xb7 0 crashes")));
+
+    REQUIRE(runUntil([&] { return machines.autostartButton().getButtonText() == "Autostart: on"; }));
+    CHECK(machines.autostartButton().getToggleState());
+    CHECK(machines.autostartButton().isEnabled());
+    machines.autostartButton().triggerClick();
+    REQUIRE(runUntil([&] { return machines.autostartButton().getButtonText() == "Autostart: off"; }));
+    CHECK_FALSE(machines.autostartButton().getToggleState());
+    writePng(venue.main, "machines-supervisor.png");
+
+    venue.harness.setAutostart(azl::AutostartState::Off, "launchctl enable failed: no right");
+    machines.autostartButton().triggerClick();
+    runUntil([] { return false; }, 1.0);
+    CHECK(machines.autostartButton().getButtonText() == "Autostart: off");
+    CHECK_FALSE(machines.autostartButton().getToggleState());
+}
+
+TEST_CASE("supervisor panel: a machine with no autostart job and a Show lock both leave the toggle and Save disabled")
+{
+    Supervised venue(azl::AutostartState::Unsupported);
+    azl::ui::MachinesView& machines = venue.machines();
+    REQUIRE(runUntil([&] { return machines.autostartButton().getButtonText() == "Autostart: unsupported"; }));
+    CHECK_FALSE(machines.autostartButton().isEnabled());
+    CHECK(machines.saveSettingsButton().isVisible());
+    CHECK_FALSE(machines.saveSettingsButton().isEnabled());
+
+    venue.session.client().machineAction({{"op", "lock"}, {"on", true}});
+    REQUIRE(runUntil([&] { return venue.session.client().machine() && venue.session.client().machine()->showLock; }));
+    machines.settingsField(0).setText((venue.shows() / "a.json").string(), true);
+    REQUIRE(runUntil([&] { return machines.saveSettingsButton().getTooltip() == "The Show lock is on"; }));
+    CHECK_FALSE(machines.saveSettingsButton().isEnabled());
+}
+
+TEST_CASE("supervisor panel: settings are saved on Save, a refused one stays typed, and typing is never overwritten")
+{
+    Supervised venue;
+    azl::ui::MachinesView& machines = venue.machines();
+    const std::string show = (venue.shows() / "Friday.json").string();
+    REQUIRE(runUntil([&] { return venue.session.client().startSettings().has_value(); }));
+    CHECK(machines.settingsField(0).getText().isEmpty());
+    CHECK_FALSE(machines.saveSettingsButton().isEnabled());
+    CHECK(machines.settingsNote() == "Saved values apply at the next engine start");
+
+    machines.settingsField(0).setText("/etc/passwd", true);
+    REQUIRE(runUntil([&] { return machines.saveSettingsButton().isEnabled(); }));
+    machines.saveSettingsButton().triggerClick();
+    runUntil([] { return false; }, 1.0);
+    CHECK(machines.settingsField(0).getText().toStdString() == "/etc/passwd");
+    CHECK(machines.saveSettingsButton().isEnabled());
+    CHECK_FALSE(fs::exists(venue.root.path / "machine-settings.json"));
+
+    machines.settingsField(0).setText(show, true);
+    machines.settingsField(1).setText("half typed", true);
+    machines.saveSettingsButton().triggerClick();
+    runUntil([] { return false; }, 1.0);
+    CHECK(machines.settingsField(1).getText().toStdString() == "half typed");
+    CHECK_FALSE(fs::exists(venue.root.path / "machine-settings.json"));
+
+    machines.settingsField(1).setText("", true);
+    machines.saveSettingsButton().triggerClick();
+    REQUIRE(runUntil([&] { return venue.session.client().startSettings()->composition.saved == show; }));
+    CHECK(fs::exists(venue.root.path / "machine-settings.json"));
+    REQUIRE(runUntil([&] { return !machines.saveSettingsButton().isEnabled(); }));
+    CHECK(machines.settingsField(0).getText().toStdString() == show);
+
+    machines.settingsField(2).setText("typing", true);
+    runUntil([] { return false; }, 1.0);
+    CHECK(machines.settingsField(2).getText().toStdString() == "typing");
+    CHECK(machines.saveSettingsButton().isEnabled());
+    writePng(venue.main, "machines-supervisor-settings.png");
+}
+
+TEST_CASE("supervisor panel: the log viewer shows the engine and supervisor logs and refreshes on request")
+{
+    Supervised venue;
+    azl::ui::MachinesView& machines = venue.machines();
+    CHECK(machines.logText().isReadOnly());
+    CHECK(machines.logText().getText().isEmpty());
+
+    writeText(venue.root.path / "logs" / "engine.log", "engine first\nengine second\n");
+    writeText(venue.root.path / "logs" / "supervisor.log", "supervisor says hello\n");
+    machines.refreshLogButton().triggerClick();
+    REQUIRE(runUntil([&] { return machines.logText().getText() == "engine first\nengine second\n"; }));
+    CHECK(machines.logButton("engine").getToggleState());
+
+    machines.logButton("supervisor").triggerClick();
+    REQUIRE(runUntil([&] { return machines.logText().getText() == "supervisor says hello\n"; }));
+    CHECK(machines.logButton("supervisor").getToggleState());
+    CHECK_FALSE(machines.logButton("engine").getToggleState());
+
+    writeText(venue.root.path / "logs" / "supervisor.log", "supervisor says hello\nand then more\n");
+    machines.refreshLogButton().triggerClick();
+    REQUIRE(runUntil([&] { return machines.logText().getText() == "supervisor says hello\nand then more\n"; }));
+    writePng(venue.main, "machines-supervisor-logs.png");
 }
