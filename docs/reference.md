@@ -170,7 +170,7 @@ Effects live on clips, layers, groups and the composition: `clipfx LAYER COLUMN 
 
 A clip's chain runs before its layer's and travels with the clip, through transitions too; a group's chain runs on the group's picture; the composition's on the final picture, in one more pass, before the outputs. A clip's chain and its layer's are planned as one chain, so they fuse into the same passes, and every chain (each clip's with its layer's) compiles when the composition loads or changes, never on a trigger.
 
-Chains compile off the render thread; the stats line shows the average GPU time per frame, the passes and full-resolution intermediates of the last frame, and the pipelines compiled each second with the slowest compile. Trails history and an effect's integrated phases belong to the effect's id: they survive parameter and chain edits and an effect moved to another chain, and Trails history restarts when the drawing layer's clip or group changes.
+Chains compile off the render thread; the stats line shows the average GPU time per frame, the GPU command buffers that failed in the second (`gpu errors`; the first error is logged once per second, the frame is not shown, and `nocturne-ctl machine` and `--stats-json` carry it as `render.gpuErrors`), the passes and full-resolution intermediates of the last frame, and the pipelines compiled each second with the slowest compile. Trails history and an effect's integrated phases belong to the effect's id: they survive parameter and chain edits and an effect moved to another chain, and Trails history restarts when the drawing layer's clip or group changes.
 
 ## ISF shaders
 

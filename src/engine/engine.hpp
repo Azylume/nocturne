@@ -104,6 +104,8 @@ struct EngineConfig {
 struct RenderStats {
     std::atomic<uint64_t> rendered{0};
     std::atomic<uint64_t> skipped{0};
+    // Frames whose command buffer failed on the GPU; they are not published.
+    std::atomic<uint64_t> gpuErrors{0};
     // Frames where a playing clip's frame was not decoded in time, so its layer repeated its previous picture. The
     // harness waits for the frame instead, but counts it all the same.
     std::atomic<uint64_t> videoMisses{0};
@@ -563,7 +565,9 @@ private:
     // The pools are deques: a texture handed out this frame keeps its address while the pool grows.
     const gpu::Texture* poolTexture(std::deque<gpu::Texture>& pool, size_t index, gpu::Format format, Size size);
     void traceDone(FrameTrace::Render& mark, const gpu::Completion& done) const;
-    void finished(std::shared_ptr<Frame> frame, bool ok);
+    // GPU completion thread. Never blocks: counts the failure and logs at most one line per second.
+    void finished(std::shared_ptr<Frame> frame, const gpu::Completion& done);
+    void reportGpuError(const gpu::Completion& done);
     void drawFrame(double seconds);
     void reportFrameFailure(const char* what);
     void modulate(const std::shared_ptr<ModulationPlan>& plan, double seconds, double beat);
@@ -678,6 +682,8 @@ private:
     std::unique_ptr<GpuProfile> profile_;
     std::unique_ptr<GpuProfile> previewTimer_;
 
+    // Whole seconds of the steady clock at the last logged GPU error.
+    std::atomic<int64_t> lastGpuErrorLog_{0};
     std::mutex inFlightMutex_;
     std::condition_variable inFlightDone_;
     int inFlight_ = 0;
