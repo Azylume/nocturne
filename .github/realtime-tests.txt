@@ -11,6 +11,12 @@
 *the Machines tab watches the machine only while it is visible*
 # Failed twice in the UI shard on a hosted macos-15 runner (PR #117): the layer label never read "auto next 1".
 *parity: a trigger on an Autopiloted layer shows manual*
+# Failed twice on a hosted macos-15 runner after PR #117 moved them (a shard assignment follows its files):
+# screens_test.cpp cases in engine-0 and the djlink loopback receiver in engine-2, though they pass 10 of 10 on a Mac.
+*after a restart*screens find their displays by identity*
+*displays: a projector back under a new id*
+*displays: macOS mirroring displays*
+*djlink: the receiver hears a loopback feed*
 # Mounts a disk image with hdiutil to fill it.
 *a full disk stops the recording cleanly*
 # Asserts at least 55 fps, no render gap over 50 ms and a reply under 250 ms while clients hang or crash.
