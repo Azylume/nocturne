@@ -272,6 +272,21 @@ TEST_CASE("a start on an empty pipeline cache pre-warms every effect in the back
     std::filesystem::remove(cache);
 }
 
+TEST_CASE("a pipeline cache that cannot be written is logged and the engine keeps rendering")
+{
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("nocturne-no-cache-" + std::to_string(azl::currentProcessId()));
+    std::filesystem::remove_all(dir);
+    const std::string cachePath =
+        (dir / "missing" / ("pipelines" + std::string(gpu::kPipelineCacheExtension))).string();
+    const azl::EngineConfig config{.width = 960, .height = 540, .pipelineCache = cachePath.c_str()};
+    azl::EngineHarness harness(config, 60.0, {}, twoLayers());
+    harness.step();
+    CHECK(harness.compileStats().pipelines > 0);
+    checkRgb(harness.readScreen(), kYellowX, kYellowY, 177, 0, 0);
+    CHECK_FALSE(std::filesystem::exists(cachePath));
+}
+
 TEST_CASE("effect edits are undoable and seen by every client")
 {
     azl::EngineHarness harness({.width = 960, .height = 540});
