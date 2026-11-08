@@ -37,7 +37,7 @@ Message textOrNull(const Message& j, const char* key)
     return value.is_string() && !value.get<std::string>().empty() ? value : Message(nullptr);
 }
 
-}
+} // namespace
 
 MachineControl::MachineControl(ControlSource source, Refusal refusal)
     : source_(std::move(source)), refusal_(std::move(refusal))
@@ -181,8 +181,9 @@ void MachineControl::logs(const Message& message, const DocumentServer::Sink& re
     const Message lines = message.value("lines", Message(int64_t(kDefaultLines)));
     if (!lines.is_number_integer() || lines.get<int64_t>() < 1 || lines.get<int64_t>() > int64_t(kMaxLogLines))
         return reply(error("lines must be a whole number from 1 to " + std::to_string(kMaxLogLines)));
-    const LogTail tail = source_.logs.empty() ? LogTail{} : tailLog(source_.logs / (file + ".log"), size_t(lines.get<int64_t>()));
+    const LogTail tail =
+        source_.logs.empty() ? LogTail{} : tailLog(source_.logs / (file + ".log"), size_t(lines.get<int64_t>()));
     reply({{"type", "machine"}, {"op", "logs"}, {"file", file}, {"text", tail.text}, {"truncated", tail.truncated}});
 }
 
-}
+} // namespace azl

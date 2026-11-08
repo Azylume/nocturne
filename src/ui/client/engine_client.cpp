@@ -377,7 +377,8 @@ void EngineClient::receiveLocked(const std::string& type, const Message& message
         else if (op == "settings")
             receiveStartSettings(message);
         else if (op == "logs")
-            machineLog_ = MachineLog{message.value("file", ""), message.value("text", ""), message.value("truncated", false)};
+            machineLog_ =
+                MachineLog{message.value("file", ""), message.value("text", ""), message.value("truncated", false)};
         if (op == "status" || op == "lock" || op == "testcard" || op == "autostart" || op == "settings" || op == "logs")
             notify.push_back([this] { listener_.machineChanged(); });
     } else if (type == "switches") {

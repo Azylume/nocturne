@@ -402,10 +402,13 @@ struct Supervised {
     {
         fs::create_directories(homeDir.path / "Nocturne" / "shows");
         harness.setAutostart(autostart);
-        writeText(root.path / "status.json",
-                  nlohmann::json{{"mode", "normal"}, {"engine", 4242}, {"starts", 3}, {"crashes", nlohmann::json::array()},
-                                 {"startedAt", unixNow() - 125.0}, {"supervisor", azl::currentProcessId()}}
-                      .dump());
+        writeText(root.path / "status.json", nlohmann::json{{"mode", "normal"},
+                                                            {"engine", 4242},
+                                                            {"starts", 3},
+                                                            {"crashes", nlohmann::json::array()},
+                                                            {"startedAt", unixNow() - 125.0},
+                                                            {"supervisor", azl::currentProcessId()}}
+                                                 .dump());
         main.setSize(1600, 950);
         REQUIRE(runUntil([&] { return session.client().synced(); }));
         main.transport().tabButton(Tab::Machines).triggerClick();
@@ -423,7 +426,7 @@ struct Supervised {
     azl::ui::MainComponent main;
 };
 
-}
+} // namespace
 
 TEST_CASE("supervisor panel: it shows the supervisor and engine state, and the autostart label follows the machine")
 {

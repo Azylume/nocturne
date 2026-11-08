@@ -54,8 +54,7 @@ std::optional<std::string> setAutostart(bool on)
 {
     if (!installed())
         return "autostart is not installed on this machine (tools/autostart.sh install)";
-    const CommandResult result =
-        runCommand(launchctl(), {on ? "enable" : "disable", domain() + "/" + kLabel}, false);
+    const CommandResult result = runCommand(launchctl(), {on ? "enable" : "disable", domain() + "/" + kLabel}, false);
     if (result.ended && result.exitCode == 0)
         return std::nullopt;
     return "launchctl " + std::string(on ? "enable" : "disable") + " failed: " + result.output;

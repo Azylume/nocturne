@@ -65,9 +65,8 @@ Composition placedByRole(Composition composition, const RoleDisplays& roles)
 EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::path libraryRoot, Composition initial)
     : fps_(fps), device_(gpu::Device::systemDefault()),
       libraryRoot_(libraryRoot.empty() ? temporaryLibrary() : libraryRoot), library_(libraryRoot_),
-      userIsf_(libraryRoot_ / "isf-user", libraryRoot_ / "isf"),
-      engine_(device_, deterministic(config), &library_), screenDisplays_(libraryRoot_ / "screen-displays.json"),
-      outputs_(engine_, displays_, {}, &known_),
+      userIsf_(libraryRoot_ / "isf-user", libraryRoot_ / "isf"), engine_(device_, deterministic(config), &library_),
+      screenDisplays_(libraryRoot_ / "screen-displays.json"), outputs_(engine_, displays_, {}, &known_),
       document_(placedByRole(std::move(initial), screenDisplays_.roles()),
                 [this](auto composition) {
                     screenDisplays_.keep(*composition);
@@ -77,20 +76,21 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
                     composition_ = std::move(composition);
                 }),
       libraryService_(document_, library_, [this](const std::string& hash) { engine_.mediaAdded(hash); }),
-      compositionService_(document_, library_,
-                          [this] { return DisplayPlacement{displayIds(displays_), known_.ids(), false, screenDisplays_.roles()}; },
-                          {libraryRoot_ / "shows", {libraryRoot_}}),
+      compositionService_(
+          document_, library_,
+          [this] { return DisplayPlacement{displayIds(displays_), known_.ids(), false, screenDisplays_.roles()}; },
+          {libraryRoot_ / "shows", {libraryRoot_}}),
       clockService_(document_, engine_, [this] { return time(); }),
       outputService_(document_, displays_, outputs_, known_, screenDisplays_, [](auto work) { work(); }),
       triggerService_(document_, engine_, [this] { return time(); }),
       cueService_(document_, engine_, [this] { return time(); }),
-      wallCueService_(document_, engine_, [this] { return time(); }, [this] { return wallTime(); },
-                      [this](int64_t t) { return zone_(t); }),
+      wallCueService_(
+          document_, engine_, [this] { return time(); }, [this] { return wallTime(); },
+          [this](int64_t t) { return zone_(t); }),
       presetService_(document_, libraryRoot_ / "presets.json"),
       isfService_(document_, userIsf_, [this] { engine_.refreshEffects(); }),
       modulationService_(document_, engine_, libraryRoot_ / "macro-sets.json"), previewService_(document_, engine_),
-      returnVideoService_(document_, engine_),
-      recordService_(document_, engine_, fps, testRecording()),
+      returnVideoService_(document_, engine_), recordService_(document_, engine_, fps, testRecording()),
       switchLog_(document_, {.now = [this] { return time(); },
                              .wall = [this] { return wallTime(); },
                              .zone = [this](int64_t t) { return zone_(t); },
@@ -104,65 +104,66 @@ EngineHarness::EngineHarness(EngineConfig config, double fps, std::filesystem::p
                                .zone = [this](int64_t t) { return zone_(t); },
                                .file = libraryRoot_ / "desk.json"}),
       analysis_([this] { return time(); }, {.thread = false}),
-      audioService_(document_, analysis_, &audioInput_, [this] { return time(); }, {},
-                    libraryRoot_ / "audio-devices.json"),
+      audioService_(
+          document_, analysis_, &audioInput_, [this] { return time(); }, {}, libraryRoot_ / "audio-devices.json"),
       returnAudio_(document_, analysis_),
-      settingsService_(document_, startingSettings(loadMachineSettings(libraryRoot_ / "settings.json", settingsOf(config)), {}),
-                       libraryRoot_ / "settings.json",
-                       [this](const MachineSettings& s) { applySettings(s, engine_, previewService_); },
-                       [this] { return settingsUse(engine_, previewService_); }),
+      settingsService_(
+          document_, startingSettings(loadMachineSettings(libraryRoot_ / "settings.json", settingsOf(config)), {}),
+          libraryRoot_ / "settings.json",
+          [this](const MachineSettings& s) { applySettings(s, engine_, previewService_); },
+          [this] { return settingsUse(engine_, previewService_); }),
       // NOCTURNE_OPAQUE_OUTPUTS=1 reads every screen back as --opaque-outputs draws it, to check it changes nothing.
-      painter_(device_, kReadbackFormat, {config.width, config.height},
-               config.debugFrameBits, config.opaqueOutputs || std::getenv("NOCTURNE_OPAQUE_OUTPUTS")),
+      painter_(device_, kReadbackFormat, {config.width, config.height}, config.debugFrameBits,
+               config.opaqueOutputs || std::getenv("NOCTURNE_OPAQUE_OUTPUTS")),
       queue_(device_.makeQueue()),
-      machineService_(document_, engine_, displays_, &known_, [this] { return time(); }, [](auto work) { work(); },
-                      {.stats = [this] { return machineStats(); },
-                       .thermal =
+      machineService_(
+          document_, engine_, displays_, &known_, [this] { return time(); }, [](auto work) { work(); },
+          {.stats = [this] { return machineStats(); },
+           .thermal =
+               [this] {
+                   std::lock_guard lock(machineMutex_);
+                   return thermal_;
+               },
+           .djlink = [this] { return machineSource(djlink_); },
+           .media = [this] { return machineSource(media_); },
+           .identify = [this](double seconds) { outputs_.identify({}, seconds); },
+           .unmirror = [this] { return outputService_.unmirrorNow(); },
+           .showLock = libraryRoot_ / "show-lock.json",
+           .restart =
+               [this](bool safeMode) {
+                   std::lock_guard lock(machineMutex_);
+                   if (restart_)
+                       restart_(safeMode);
+               },
+           .update = {.incoming = libraryRoot_ / "incoming",
+                      .install = [this](const std::filesystem::path& app) -> std::optional<std::string> {
+                          std::lock_guard lock(machineMutex_);
+                          return install_ ? install_(app) : "no installer in the harness";
+                      },
+                      .result = libraryRoot_ / "update.json"},
+           .control = {.state = libraryRoot_,
+                       .logs = libraryRoot_ / "logs",
+                       .autostart =
                            [this] {
                                std::lock_guard lock(machineMutex_);
-                               return thermal_;
+                               return autostart_;
                            },
-                       .djlink = [this] { return machineSource(djlink_); },
-                       .media = [this] { return machineSource(media_); },
-                       .identify = [this](double seconds) { outputs_.identify({}, seconds); },
-                       .unmirror = [this] { return outputService_.unmirrorNow(); },
-                       .showLock = libraryRoot_ / "show-lock.json",
-                       .restart =
-                           [this](bool safeMode) {
-                               std::lock_guard lock(machineMutex_);
-                               if (restart_)
-                                   restart_(safeMode);
-                           },
-                       .update = {.incoming = libraryRoot_ / "incoming",
-                                  .install = [this](const std::filesystem::path& app) -> std::optional<std::string> {
-                                      std::lock_guard lock(machineMutex_);
-                                      return install_ ? install_(app) : "no installer in the harness";
-                                  },
-                                  .result = libraryRoot_ / "update.json"},
-                       .control = {.state = libraryRoot_,
-                                   .logs = libraryRoot_ / "logs",
-                                   .autostart =
-                                       [this] {
-                                           std::lock_guard lock(machineMutex_);
-                                           return autostart_;
-                                       },
-                                   .setAutostart =
-                                       [this](bool on) -> std::optional<std::string> {
-                                           std::lock_guard lock(machineMutex_);
-                                           if (autostartFailure_)
-                                               return autostartFailure_;
-                                           autostart_ = on ? AutostartState::On : AutostartState::Off;
-                                           return std::nullopt;
-                                       },
-                                   .audioInput =
-                                       [this](const std::string& name) {
-                                           const auto devices = audioInput_.inputDevices();
-                                           return std::any_of(devices.begin(), devices.end(), [&](const AudioDeviceInfo& d) {
-                                               return d.uid == name || d.name == name;
-                                           });
-                                       }},
-                       .wall = [this] { return wallTime(); },
-                       .zone = [this](int64_t t) { return zone_(t); }})
+                       .setAutostart = [this](bool on) -> std::optional<std::string> {
+                           std::lock_guard lock(machineMutex_);
+                           if (autostartFailure_)
+                               return autostartFailure_;
+                           autostart_ = on ? AutostartState::On : AutostartState::Off;
+                           return std::nullopt;
+                       },
+                       .audioInput =
+                           [this](const std::string& name) {
+                               const auto devices = audioInput_.inputDevices();
+                               return std::any_of(devices.begin(), devices.end(), [&](const AudioDeviceInfo& d) {
+                                   return d.uid == name || d.name == name;
+                               });
+                           }},
+           .wall = [this] { return wallTime(); },
+           .zone = [this](int64_t t) { return zone_(t); }})
 {
     engine_.onChainFailure(
         [this](const auto& chain, const auto& error) { document_.broadcast(msg::chainFailed(chain, error)); });

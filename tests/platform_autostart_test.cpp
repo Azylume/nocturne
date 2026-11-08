@@ -34,7 +34,7 @@ void writeFile(const fs::path& file, const std::string& text)
     std::ofstream(file) << text;
 }
 
-}
+} // namespace
 
 TEST_CASE("platform: runCommand captures a program's output and exit code, and kills one that outlasts its time")
 {
@@ -59,13 +59,15 @@ namespace {
 
 // A home folder with a stand-in launchctl that records its arguments; the real launchd is never asked.
 struct StubLaunchctl {
-    StubLaunchctl()
-        : home("HOME", root.path.c_str()), program("NOCTURNE_LAUNCHCTL", (root.path / "launchctl").c_str())
+    StubLaunchctl() : home("HOME", root.path.c_str()), program("NOCTURNE_LAUNCHCTL", (root.path / "launchctl").c_str())
     {
-        writeFile(root.path / "launchctl",
-                  "#!/bin/sh\necho \"$@\" >> \"" + (root.path / "calls").string() + "\"\n"
-                  "[ -f \"" + (root.path / "fail").string() + "\" ] && { echo no right; exit 1; }\n"
-                  "[ \"$1\" = print-disabled ] && cat \"" + (root.path / "disabled").string() + "\"\nexit 0\n");
+        writeFile(root.path / "launchctl", "#!/bin/sh\necho \"$@\" >> \"" + (root.path / "calls").string() +
+                                               "\"\n"
+                                               "[ -f \"" +
+                                               (root.path / "fail").string() +
+                                               "\" ] && { echo no right; exit 1; }\n"
+                                               "[ \"$1\" = print-disabled ] && cat \"" +
+                                               (root.path / "disabled").string() + "\"\nexit 0\n");
         fs::permissions(root.path / "launchctl", fs::perms::owner_all);
     }
     void install() { writeFile(root.path / "Library/LaunchAgents/ai.azylume.nocturne.plist", "<plist/>"); }
@@ -77,7 +79,7 @@ struct StubLaunchctl {
     ScopedEnv program;
 };
 
-}
+} // namespace
 
 TEST_CASE("platform: autostart is unsupported until the LaunchAgent is installed, and asks launchd about nothing")
 {
@@ -97,7 +99,8 @@ TEST_CASE("platform: autostart reads the job's enabled state from launchctl and 
     stub.disabled("disabled services = {\n\t\"com.apple.other\" => disabled\n}\n");
     CHECK(azl::autostartState() == azl::AutostartState::On);
 
-    stub.disabled("disabled services = {\n\t\"ai.azylume.nocturne\" => disabled\n\t\"com.apple.other\" => enabled\n}\n");
+    stub.disabled(
+        "disabled services = {\n\t\"ai.azylume.nocturne\" => disabled\n\t\"com.apple.other\" => enabled\n}\n");
     CHECK(azl::autostartState() == azl::AutostartState::Off);
 
     stub.disabled("disabled services = {\n\t\"ai.azylume.nocturne\" => enabled\n}\n");

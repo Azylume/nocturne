@@ -468,9 +468,9 @@ private:
             say(std::string("settings: ignored, ") + e.what());
             return {};
         }
-        for (const auto& [name, value] : {std::pair{"composition", &saved.composition},
-                                          std::pair{"mediaRoot", &saved.mediaRoot},
-                                          std::pair{"audioInput", &saved.audioInput}})
+        for (const auto& [name, value] :
+             {std::pair{"composition", &saved.composition}, std::pair{"mediaRoot", &saved.mediaRoot},
+              std::pair{"audioInput", &saved.audioInput}})
             if (!value->empty()) {
                 applied_.push_back(name);
                 say(std::string("settings: ") + name + " " + *value + " (saved, wins over the launch flags)");

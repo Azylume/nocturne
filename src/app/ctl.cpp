@@ -1062,7 +1062,6 @@ azl::Message saveChainMessage(const std::vector<std::string>& c, const azl::Mess
     return {{"type", "preset"}, {"op", "saveChain"}, {"name", c[2]}, {"effects", effects}};
 }
 
-
 // machine settings [composition PATH] [mediaroot PATH] [audioinput NAME]: each pair a field to save.
 std::optional<azl::Message> machineSettingsMessage(const std::vector<std::string>& c)
 {
@@ -1094,7 +1093,8 @@ std::optional<azl::Message> machineMessage(const std::vector<std::string>& c)
     if (c.size() == 3 && op == "autostart")
         return azl::Message{{"type", "machine"}, {"op", op}, {"on", onOff(c[2])}};
     if (c.size() <= 4 && c.size() >= 3 && op == "logs")
-        return azl::Message{{"type", "machine"}, {"op", op}, {"file", c[2]}, {"lines", c.size() == 4 ? std::stoi(c[3]) : 100}};
+        return azl::Message{
+            {"type", "machine"}, {"op", op}, {"file", c[2]}, {"lines", c.size() == 4 ? std::stoi(c[3]) : 100}};
     if (op == "settings" && c.size() % 2 == 0)
         return machineSettingsMessage(c);
     if (c.size() <= 3 && op == "identify")

@@ -271,7 +271,8 @@ bool readFileFlag(const std::string& arg, Args& in, EngineConfig& c)
     else if (arg == "--presets") c.presets = in.value();
     else if (arg == "--macro-sets") c.macroSets = in.value();
     else if (arg == "--state") c.state = in.value();
-    else if (arg == "--logs") c.logs = in.value();
+    else if (arg == "--logs")
+        c.logs = in.value();
     else if (arg == "--composition") c.composition = in.value();
     else if (arg == "--media-root") c.mediaRoot = in.value();
     else if (arg == "--safe-mode") c.safeMode = in.value();

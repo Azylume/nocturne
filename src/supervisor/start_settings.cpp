@@ -73,18 +73,17 @@ std::optional<StartSettings> readStartSettings(const std::filesystem::path& file
 
 void writeStartSettings(const std::filesystem::path& file, const StartSettings& settings)
 {
-    const nlohmann::json j{{"composition", settings.composition},
-                           {"mediaRoot", settings.mediaRoot},
-                           {"audioInput", settings.audioInput}};
+    const nlohmann::json j{
+        {"composition", settings.composition}, {"mediaRoot", settings.mediaRoot}, {"audioInput", settings.audioInput}};
     writeFileAtomically(file, j.dump(2) + "\n", false);
 }
 
 std::vector<std::string> startSettingsFlags(const StartSettings& settings)
 {
     std::vector<std::string> flags;
-    for (const auto& [flag, value] : {std::pair{"--composition", &settings.composition},
-                                      std::pair{"--media-root", &settings.mediaRoot},
-                                      std::pair{"--audio-input", &settings.audioInput}})
+    for (const auto& [flag, value] :
+         {std::pair{"--composition", &settings.composition}, std::pair{"--media-root", &settings.mediaRoot},
+          std::pair{"--audio-input", &settings.audioInput}})
         if (!value->empty())
             flags.insert(flags.end(), {flag, *value});
     return flags;

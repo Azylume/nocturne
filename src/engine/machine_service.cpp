@@ -57,8 +57,8 @@ Message thermalJson(const Thermal& thermal)
 MachineService::MachineService(DocumentServer& document, Engine& engine, Displays& displays, const KnownDisplays* known,
                                Now now, Post post, MachineSources sources)
     : document_(document), engine_(engine), displays_(displays), known_(known), now_(std::move(now)),
-      post_(std::move(post)), sources_(std::move(sources)), actions_(sources_.showLock, sources_.restart, sources_.stop),
-      update_(sources_.update),
+      post_(std::move(post)), sources_(std::move(sources)),
+      actions_(sources_.showLock, sources_.restart, sources_.stop), update_(sources_.update),
       control_(sources_.control, [this](const std::string& action) { return writeRefusal(action); })
 {
     document_.handle("machine", [this](const Message& message, DocumentServer::Sink reply) { handle(message, reply); });
@@ -217,7 +217,8 @@ Message MachineService::status(const Thermal& thermal, const Message& supervisor
             {"testCard", composition->testCard},
             {"version", buildId()},
             {"supervisor", supervisor},
-            {"render", {{"fps", figure(render, "fps")}, {"gpuMs", figure(render, "gpuMs")}, {"guard", transport.budgetLevel}}},
+            {"render",
+             {{"fps", figure(render, "fps")}, {"gpuMs", figure(render, "gpuMs")}, {"guard", transport.budgetLevel}}},
             {"thermal", thermalJson(thermal)},
             {"nextCue", nextCue(*composition, beat, transport.tempo)},
             {"outputs", outputs(*composition, stats)},

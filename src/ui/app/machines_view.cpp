@@ -271,7 +271,8 @@ MachinesView::MachinesView(Session& session) : session_(session)
     };
     for (size_t i = 0; i < fields_.size(); ++i) {
         fields_[i].setMultiLine(false);
-        fields_[i].setTooltip(juce::String("Saved on the machine; applies at the next engine start. Empty: the launch flag or the default."));
+        fields_[i].setTooltip(juce::String(
+            "Saved on the machine; applies at the next engine start. Empty: the launch flag or the default."));
         fields_[i].onTextChange = [this] { updateSupervisor(); };
         fields_[i].onReturnKey = [this] { sendSettings(); };
     }
@@ -286,9 +287,9 @@ MachinesView::MachinesView(Session& session) : session_(session)
     logText_.setCaretVisible(false);
     logText_.setScrollbarsShown(true);
     logText_.setTooltip("The last lines of the log on the machine");
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2],
-                                                                      &saveSettings_, &engineLog_, &supervisorLog_,
-                                                                      &refreshLog_, &logText_})
+    for (juce::Component* c :
+         std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2], &saveSettings_,
+                                                 &engineLog_, &supervisorLog_, &refreshLog_, &logText_})
         addChildComponent(c);
     listen_.setClickingTogglesState(false);
     listen_.setTooltip("Hear this machine's audio input here, about half a second late");
@@ -554,9 +555,9 @@ void MachinesView::updateSupervisor()
 {
     const std::optional<MachineStatus::Supervisor> supervisor = status_ ? status_->supervisor : std::nullopt;
     const bool shown = supervisor.has_value();
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2],
-                                                                      &saveSettings_, &engineLog_, &supervisorLog_,
-                                                                      &refreshLog_, &logText_})
+    for (juce::Component* c :
+         std::initializer_list<juce::Component*>{&autostart_, &fields_[0], &fields_[1], &fields_[2], &saveSettings_,
+                                                 &engineLog_, &supervisorLog_, &refreshLog_, &logText_})
         c->setVisible(shown);
     if (!shown) {
         supervisorAsked_ = false;
@@ -571,8 +572,8 @@ void MachinesView::updateSupervisor()
     autostart_.setToggleState(supervisor->autostart == "on", juce::dontSendNotification);
     autostart_.setEnabled(supervisor->autostart != "unsupported" && !locked);
     autostart_.setTooltip(supervisor->autostart == "unsupported" ? "No autostart job is installed on this machine"
-                          : locked                                ? "The Show lock is on"
-                                                                  : "Turn the autostart job on or off; the running show is not touched");
+                          : locked ? "The Show lock is on"
+                                   : "Turn the autostart job on or off; the running show is not touched");
     const std::optional<StartSettingsView> view = session_.client().startSettings();
     const StartSettingsView::Field* saved[3] = {nullptr, nullptr, nullptr};
     if (view)
@@ -621,7 +622,8 @@ void MachinesView::paintSupervisor(juce::Graphics& g, const MachineStatus::Super
     const Palette& p = Look::palette();
     paintPanel(g, supervisorPanel(), "Supervisor");
     const SupervisorLayout panel = supervisorLayout(supervisorPanel());
-    paintRow(g, panel.supervisor.withTrimmedLeft(-8), "Supervisor", supervisorState(s), s.running && s.mode != "safe" ? p.live : p.fault);
+    paintRow(g, panel.supervisor.withTrimmedLeft(-8), "Supervisor", supervisorState(s),
+             s.running && s.mode != "safe" ? p.live : p.fault);
     paintRow(g, panel.engine.withTrimmedLeft(-8), "Engine", engineText(s), p.text);
     for (size_t i = 0; i < 3; ++i) {
         g.setFont(Look::font());

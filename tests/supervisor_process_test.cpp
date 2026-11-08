@@ -438,7 +438,7 @@ bool waitForArgs(const Supervised& supervised, size_t starts)
     return eventually([&] { return count(supervised.engineLog(), "fake engine args:") >= starts; }, 15.0);
 }
 
-}
+} // namespace
 
 TEST_CASE("supervisor: saved machine settings are read at each start and win over the launch flags")
 {
@@ -458,8 +458,9 @@ TEST_CASE("supervisor: saved machine settings are read at each start and win ove
                              nlohmann::json{{"composition", show}, {"audioInput", "savedmic"}}.dump());
     supervised.command("exit 0");
     REQUIRE(waitForArgs(supervised, 2));
-    CHECK(lastArgs(supervised).find("--composition /launch/show.json --audio-input launchmic --composition " + show +
-                                    " --audio-input savedmic --state ") != std::string::npos);
+    CHECK(lastArgs(supervised)
+              .find("--composition /launch/show.json --audio-input launchmic --composition " + show +
+                    " --audio-input savedmic --state ") != std::string::npos);
     CHECK(supervised.status()["applied"] == nlohmann::json::array({"composition", "audioInput"}));
     CHECK(contains(supervised.log(), "settings: composition " + show));
 
@@ -492,7 +493,8 @@ TEST_CASE("supervisor: a saved setting that a path outside the shows folder name
     for (const std::string& path : {(home.path / "Nocturne" / "shows" / "escape" / "a.json").string(),
                                     (home.path / "Nocturne" / "shows" / ".." / ".." / "outside" / "a.json").string(),
                                     std::string("relative.json"), std::string(3000, '/')}) {
-        azl::writeFileAtomically(supervised.state() / "machine-settings.json", nlohmann::json{{"composition", path}}.dump());
+        azl::writeFileAtomically(supervised.state() / "machine-settings.json",
+                                 nlohmann::json{{"composition", path}}.dump());
         const size_t starts = count(supervised.engineLog(), "fake engine args:");
         supervised.command("exit 0");
         REQUIRE(waitForArgs(supervised, starts + 1));

@@ -20,7 +20,8 @@ CommandResult powershell(const std::string& script)
 
 AutostartState autostartState()
 {
-    const CommandResult result = powershell(std::string("(Get-ScheduledTask -TaskName ") + kTask + ").Settings.Enabled");
+    const CommandResult result =
+        powershell(std::string("(Get-ScheduledTask -TaskName ") + kTask + ").Settings.Enabled");
     if (!result.ended || result.exitCode != 0)
         return AutostartState::Unsupported;
     if (result.output.find("True") != std::string::npos)

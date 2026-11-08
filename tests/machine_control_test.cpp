@@ -70,7 +70,7 @@ Message settings(Client& client, Message fields = Message::object())
     return ask(client, fields);
 }
 
-}
+} // namespace
 
 TEST_CASE("supervisor status: the machine status carries the Supervisor's status.json and the autostart state")
 {
@@ -79,11 +79,15 @@ TEST_CASE("supervisor status: the machine status carries the Supervisor's status
     harness.setAutostart(azl::AutostartState::On);
     Client client(harness.document());
 
-    write(root.path / "status.json",
-          Message{{"mode", "normal"}, {"reason", ""}, {"error", ""}, {"engine", 4242}, {"starts", 3},
-                  {"startedAt", 1790000000.5}, {"crashes", Message::array({"2026-10-16 hung"})},
-                  {"supervisor", azl::currentProcessId()}}
-              .dump());
+    write(root.path / "status.json", Message{{"mode", "normal"},
+                                             {"reason", ""},
+                                             {"error", ""},
+                                             {"engine", 4242},
+                                             {"starts", 3},
+                                             {"startedAt", 1790000000.5},
+                                             {"crashes", Message::array({"2026-10-16 hung"})},
+                                             {"supervisor", azl::currentProcessId()}}
+                                         .dump());
     const Message alive = supervisorOf(client);
     CHECK(alive["running"] == true);
     CHECK(alive["mode"] == "normal");
@@ -94,7 +98,8 @@ TEST_CASE("supervisor status: the machine status carries the Supervisor's status
     CHECK(alive["crashes"] == Message::array({"2026-10-16 hung"}));
     CHECK(alive["autostart"] == "on");
 
-    write(root.path / "status.json", Message{{"mode", "safe"}, {"reason", "3 crashes"}, {"supervisor", 2147483000}}.dump());
+    write(root.path / "status.json",
+          Message{{"mode", "safe"}, {"reason", "3 crashes"}, {"supervisor", 2147483000}}.dump());
     const Message dead = supervisorOf(client);
     CHECK(dead["running"] == false);
     CHECK(dead["mode"] == "safe");
@@ -132,7 +137,8 @@ TEST_CASE("autostart: on and off go through the platform and show in the next st
     Client client(harness.document());
     CHECK(supervisorOf(client)["autostart"] == "on");
 
-    CHECK(ask(client, {{"op", "autostart"}, {"on", false}}) == Message{{"type", "machine"}, {"op", "autostart"}, {"on", false}});
+    CHECK(ask(client, {{"op", "autostart"}, {"on", false}}) ==
+          Message{{"type", "machine"}, {"op", "autostart"}, {"on", false}});
     CHECK(supervisorOf(client)["autostart"] == "off");
     CHECK(ask(client, {{"op", "autostart"}, {"on", true}})["on"] == true);
     CHECK(supervisorOf(client)["autostart"] == "on");
@@ -167,7 +173,8 @@ TEST_CASE("autostart and settings writes are refused under the Show lock and in 
     CHECK(ask(client, {{"op", "lock"}, {"on", false}})["on"] == false);
 
     apply(client, azl::SetGigWindow{"2026-10-16", azl::GigWindow{"2026-10-16", 20 * 60, 3 * 60}});
-    CHECK(refusedWith(ask(client, {{"op", "autostart"}, {"on", false}}), "Gig window 2026-10-16 20:00-03:00 is on: Autostart"));
+    CHECK(refusedWith(ask(client, {{"op", "autostart"}, {"on", false}}),
+                      "Gig window 2026-10-16 20:00-03:00 is on: Autostart"));
     CHECK(refusedWith(settings(client, save), "Gig window 2026-10-16 20:00-03:00 is on: Settings"));
     CHECK(settings(client)["op"] == "settings");
 
@@ -189,8 +196,10 @@ TEST_CASE("machine settings: saved fields are read back, applied only at the nex
     CHECK_FALSE(none.contains("error"));
 
     const std::string show = (home.shows() / "Friday.json").string();
-    const Message saved = settings(client, {{"composition", show}, {"mediaRoot", home.media().string()}, {"audioInput", "fake-mic"}});
-    CHECK(saved["saved"] == Message{{"composition", show}, {"mediaRoot", home.media().string()}, {"audioInput", "fake-mic"}});
+    const Message saved =
+        settings(client, {{"composition", show}, {"mediaRoot", home.media().string()}, {"audioInput", "fake-mic"}});
+    CHECK(saved["saved"] ==
+          Message{{"composition", show}, {"mediaRoot", home.media().string()}, {"audioInput", "fake-mic"}});
     CHECK(saved["running"]["composition"] == "");
     CHECK(Message::parse(read(root.path / "machine-settings.json"))["audioInput"] == "fake-mic");
 
@@ -222,7 +231,8 @@ TEST_CASE("machine settings: a file that cannot be used reads as empty with its 
     CHECK(Message::parse(read(root.path / "machine-settings.json"))["mediaRoot"] == "");
 }
 
-TEST_CASE("machine settings: paths outside ~/Nocturne/shows and media, relative, traversing, linked out or very long are refused")
+TEST_CASE("machine settings: paths outside ~/Nocturne/shows and media, relative, traversing, linked out or very long "
+          "are refused")
 {
     TempDir root;
     Home home;
@@ -271,17 +281,21 @@ TEST_CASE("machine logs: the newest lines of the engine and supervisor logs, cap
         return ask(client, request);
     };
 
-    CHECK(logs({{"file", "engine"}}) == Message{{"type", "machine"}, {"op", "logs"}, {"file", "engine"}, {"text", ""}, {"truncated", false}});
+    CHECK(logs({{"file", "engine"}}) ==
+          Message{{"type", "machine"}, {"op", "logs"}, {"file", "engine"}, {"text", ""}, {"truncated", false}});
 
     write(root.path / "logs" / "engine.log", "one\ntwo\nthree\n");
     write(root.path / "logs" / "supervisor.log", "supervisor line\n");
     write(root.path / "logs" / "audio.jsonl", "secret\n");
     write(root.path / "token", "TOKEN");
     CHECK(logs({{"file", "engine"}})["text"] == "one\ntwo\nthree\n");
-    CHECK(logs({{"file", "engine"}, {"lines", 2}}) == Message{{"type", "machine"}, {"op", "logs"}, {"file", "engine"}, {"text", "two\nthree\n"}, {"truncated", true}});
+    CHECK(logs({{"file", "engine"}, {"lines", 2}}) ==
+          Message{
+              {"type", "machine"}, {"op", "logs"}, {"file", "engine"}, {"text", "two\nthree\n"}, {"truncated", true}});
     CHECK(logs({{"file", "supervisor"}})["text"] == "supervisor line\n");
 
-    for (const char* file : {"audio", "audio.jsonl", "../token", "../../etc/passwd", "engine.log", "desk", "", "Engine"})
+    for (const char* file :
+         {"audio", "audio.jsonl", "../token", "../../etc/passwd", "engine.log", "desk", "", "Engine"})
         CHECK(refusedWith(logs({{"file", file}}), "\"engine\" or \"supervisor\""));
     CHECK(refusedWith(logs({}), "\"engine\" or \"supervisor\""));
     CHECK(refusedWith(logs({{"file", 3}}), "\"engine\" or \"supervisor\""));
