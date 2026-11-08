@@ -23,16 +23,16 @@ ever make it closed; running it as a network service counts as distribution, so 
 | metal-cpp | third_party/metal-cpp | Apache-2.0 | yes |
 | nlohmann/json (also our MessagePack encoding) | third_party/nlohmann | MIT | yes |
 | doctest | third_party/doctest, tests only | MIT | yes |
-| Tracy v0.14.1 | optional profiler build (`-DNOCTURNE_TRACY=ON`, ticket 92), FetchContent; not in the default build | BSD-3-Clause | yes |
-| glslang vulkan-sdk-1.4.363.0 | engine, FetchContent (ticket 95): ISF GLSL to SPIR-V | BSD-3 / BSD-2 / MIT / Apache-2.0 (GPL-3 with the Bison exception covers only Bison output) | yes |
-| SPIRV-Cross vulkan-sdk-1.4.363.0 | engine, FetchContent (ticket 95): SPIR-V to MSL | Apache-2.0 | yes |
-| Curated ISF shaders (ISF-Files, gl-transitions) | third_party/isf, built into the program (ticket 95) | MIT, per shader in `docs/licence-notes.md` | yes |
+| Tracy v0.14.1 | optional profiler build (`-DNOCTURNE_TRACY=ON`), FetchContent; not in the default build | BSD-3-Clause | yes |
+| glslang vulkan-sdk-1.4.363.0 | engine, FetchContent: ISF GLSL to SPIR-V | BSD-3 / BSD-2 / MIT / Apache-2.0 (GPL-3 with the Bison exception covers only Bison output) | yes |
+| SPIRV-Cross vulkan-sdk-1.4.363.0 | engine, FetchContent: SPIR-V to MSL | Apache-2.0 | yes |
+| Curated ISF shaders (ISF-Files, gl-transitions) | third_party/isf, built into the program | MIT, per shader in `docs/licence-notes.md` | yes |
 | Oxanium (SIL OFL 1.1) | outlined lettering in `assets/icon/svg/nocturne-lockup.svg`; no font file in the repo or the bundle | OFL-1.1 | yes (artwork only, see `docs/licence-notes.md`) |
-| AMD FidelityFX Super Resolution 1 (v1.20210629, EASU and RCAS) | shaders ported to Metal in src/engine/fsr_upscaler.cpp (ticket 93), AMD's notice kept in that file | MIT | yes |
+| AMD FidelityFX Super Resolution 1 (v1.20210629, EASU and RCAS) | shaders ported to Metal in src/engine/fsr_upscaler.cpp, AMD's notice kept in that file | MIT | yes |
 | Apple frameworks (Metal, AVFoundation, VideoToolbox, CoreAudio, ...) | system | system libraries | yes (system library exception) |
-| stb_dxt.h v1.12 | third_party/stb, the HAP encoder's BC block compressor (ticket 94) | MIT / public domain (dual) | yes |
-| HAP frame format (Vidvox) and snappy format (Google) | re-implemented from their specifications in src/media/hap.cpp and src/media/snappy.cpp (ticket 94); no code copied | BSD-2-Clause, BSD-3-Clause (the references) | yes |
-| ffmpeg, ffprobe (Homebrew, with libx264) | tools/transcode-media.sh and nocturne-upload (ticket 84) run them as separate programs; nothing links them | GPL-2.0-or-later build | yes (not linked; GPL-2.0+ allows GPL-3.0 anyway) |
+| stb_dxt.h v1.12 | third_party/stb, the HAP encoder's BC block compressor | MIT / public domain (dual) | yes |
+| HAP frame format (Vidvox) and snappy format (Google) | re-implemented from their specifications in src/media/hap.cpp and src/media/snappy.cpp; no code copied | BSD-2-Clause, BSD-3-Clause (the references) | yes |
+| ffmpeg, ffprobe (Homebrew, with libx264) | tools/transcode-media.sh and nocturne-upload run them as separate programs; nothing links them | GPL-2.0-or-later build | yes (not linked; GPL-2.0+ allows GPL-3.0 anyway) |
 | pocketfft (C++ header-only, commit 0fa0ef5) | the audio spectrum's FFT off Apple, through vcpkg (`pocketfft` 2024-11-30); on Apple only the tests, through FetchContent, to compare it with vDSP (ADR 0016) | BSD-3-Clause | yes |
 | libopus 1.6.1 | return audio's Opus codec off Apple, through vcpkg (`opus`); Apple uses AudioToolbox (ADR 0016) | BSD-3-Clause | yes |
 
