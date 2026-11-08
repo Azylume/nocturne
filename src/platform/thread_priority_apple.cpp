@@ -9,27 +9,27 @@
 #include <sys/resource.h>
 
 #include <cstdint>
-#include <thread>
 
 namespace azl {
 
 namespace {
 
-uint32_t machTicks(double ms)
+uint32_t machTicks(std::chrono::nanoseconds span)
 {
     mach_timebase_info_data_t base;
     mach_timebase_info(&base);
-    return uint32_t(ms * 1e6 * base.denom / base.numer);
+    return uint32_t(uint64_t(span.count()) * base.denom / base.numer);
 }
 
 // Even at the highest QoS a timed wait wakes about 3 ms late, and 20 ms and more on a busy machine; a time-constraint
-// thread wakes on time. Each frame thread works a few milliseconds of every 60 Hz refresh.
-void makeTimeConstrained()
+// thread wakes on time.
+void makeTimeConstrained(std::chrono::nanoseconds period)
 {
+    const TimeConstraint want = timeConstraintFor(period);
     thread_time_constraint_policy_data_t policy{
-        .period = machTicks(1000.0 / 60.0),
-        .computation = machTicks(4.0),
-        .constraint = machTicks(1000.0 / 60.0),
+        .period = machTicks(want.period),
+        .computation = machTicks(want.computation),
+        .constraint = machTicks(want.constraint),
         .preemptible = 1,
     };
     thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY,
@@ -44,12 +44,20 @@ void setThreadRole(ThreadRole role)
     if (role == ThreadRole::Idle)
         setiopolicy_np(IOPOL_TYPE_DISK, IOPOL_SCOPE_THREAD, IOPOL_THROTTLE);
     if (role == ThreadRole::Frames && realtimeFrames())
-        makeTimeConstrained();
+        makeTimeConstrained(std::chrono::microseconds(16667));
+}
+
+std::chrono::microseconds paceFrameThread(std::chrono::nanoseconds period)
+{
+    makeTimeConstrained(period);
+    return std::chrono::microseconds(0);
 }
 
 void sleepUntil(std::chrono::steady_clock::time_point deadline)
 {
-    std::this_thread::sleep_until(deadline);
+    const auto span = deadline - std::chrono::steady_clock::now();
+    if (span.count() > 0)
+        mach_wait_until(mach_absolute_time() + machTicks(span));
 }
 
 } // namespace azl
