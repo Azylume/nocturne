@@ -37,10 +37,20 @@
 #include <optional>
 #include <random>
 #include <set>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace azl {
+
+// A ClipKey that borrows its hash from the document, so the render thread can compare wants without copying strings.
+using ClipView = std::pair<uint64_t, std::string_view>;
+
+struct PreloadView {
+    ClipView clip;
+    double position;
+    bool forward;
+};
 
 struct EngineConfig {
     uint32_t width = 1920;
@@ -488,11 +498,13 @@ private:
 
     // `slot` is a layer id, a layer's fadeId for its outgoing clip, or 0 for the composition. Until the slot's first
     // chain is compiled it has none, so nothing shows; only a chain that failed falls back to no effects.
-    const LayerChain* pickChain(uint64_t slot, ChainKind kind, EffectList effects,
+    const LayerChain* pickChain(uint64_t slot, ChainKind kind, const EffectList& effects,
                                 const std::shared_ptr<const Composition>& document, bool text = false);
     // The chain itself, null until it is compiled.
-    const LayerChain* readyChain(uint64_t slot, ChainKind kind, EffectList effects,
+    const LayerChain* readyChain(uint64_t slot, ChainKind kind, const EffectList& effects,
                                  const std::shared_ptr<const Composition>& document, bool text = false);
+    // `layerEffects` after the clip's own, in the render thread's scratch list: valid until the next call.
+    const EffectList& clipChainOf(const std::vector<Effect>& layerEffects, const ClipRef* clip);
     Draw outgoingDraw(const LayerChain& chain, const VideoFrame* shown, const LayerState& from, uint64_t layer,
                       uint64_t parent);
     // Turns a layer's draw in a transition into a clipMix one; false while a chain it needs is not compiled.
@@ -641,7 +653,11 @@ private:
     IdSet chainEffects_;
     IdSet published_;
     IdSet previewOnly_;
-    std::vector<Preload> preloadScratch_;
+    std::string keyScratch_;
+    EffectList effectsScratch_;
+    std::vector<std::pair<double, Draw*>> guardScratch_;
+    std::vector<ClipView> playingScratch_;
+    std::vector<PreloadView> preloadScratch_;
     std::shared_ptr<FrameTap> tap_;
     std::shared_ptr<ModulationPlan> modulationShared_ = std::make_shared<ModulationPlan>(Composition{});
     // Render thread only: the plan of the frame being rendered and the parameter values of the pass being encoded.
