@@ -19,7 +19,6 @@ struct PipelineObject;
 struct FenceObject;
 struct QueryObject;
 struct CommandObject;
-struct SharedPictureObject;
 } // namespace vk
 
 using NativeDevice = vk::DeviceObject*;
@@ -47,7 +46,6 @@ using RenderPipelineHandle = std::shared_ptr<vk::PipelineObject>;
 using ComputePipelineHandle = std::shared_ptr<vk::PipelineObject>;
 using FenceHandle = std::shared_ptr<vk::FenceObject>;
 using TimestampQueriesHandle = std::shared_ptr<vk::QueryObject>;
-using SharedPictureHandle = std::shared_ptr<vk::SharedPictureObject>;
 // How many command buffers the thread's scopes held when this one opened.
 using ScopeHandle = size_t;
 

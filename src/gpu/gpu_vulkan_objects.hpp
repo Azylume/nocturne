@@ -59,16 +59,6 @@ struct TextureObject : std::enable_shared_from_this<TextureObject> {
     std::atomic<VkImageLayout> layout{VK_IMAGE_LAYOUT_UNDEFINED};
 };
 
-// The luma and chroma images of a picture whose memory is D3D11 textures' (Windows).
-struct SharedPictureObject {
-    ~SharedPictureObject();
-    std::shared_ptr<DeviceObject> device;
-    std::array<VkImage, 2> images{};
-    std::array<VkDeviceMemory, 2> memories{};
-    std::array<uint32_t, 2> widths{};
-    std::array<uint32_t, 2> heights{};
-};
-
 struct BufferObject : std::enable_shared_from_this<BufferObject> {
     ~BufferObject();
     std::shared_ptr<DeviceObject> device;

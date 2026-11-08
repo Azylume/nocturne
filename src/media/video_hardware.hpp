@@ -2,38 +2,43 @@
 
 #include "gpu/gpu.hpp"
 
-extern "C" {
-#include <libavutil/buffer.h>
-#include <libavutil/frame.h>
-}
-
 #include <array>
 #include <memory>
 
+extern "C" {
+#include <libavutil/hwcontext.h>
+}
+
 namespace azl {
 
-// Hardware video decode whose pictures reach the GPU without a trip through system memory. On Windows D3D11VA decodes
-// into D3D11 textures and the Vulkan device copies out of them directly; the D3D11 device is shared by every source.
-// One per source.
+// FFmpeg's Vulkan Video decoder on the renderer's own VkDevice, so a decoded picture is already a VkImage the renderer
+// can copy from: nothing visits system memory. One per device, shared by every clip, because FFmpeg locks the decode
+// queues it was given on its own and two contexts over the same queues would submit to them unsynchronised.
 class GpuDecode {
 public:
-    // Null when this machine cannot, or NOCTURNE_SOFTWARE_DECODE is set: the caller decodes on the CPU. Any thread.
-    static std::unique_ptr<GpuDecode> open(const gpu::Device& device);
+    // Null when NOCTURNE_SOFTWARE_DECODE is set, the device was made without Vulkan Video decode or FFmpeg cannot use
+    // it. Logs which, once. Any thread.
+    static std::shared_ptr<GpuDecode> open(const gpu::Device& device);
+
     ~GpuDecode();
+    GpuDecode(const GpuDecode&) = delete;
+    GpuDecode& operator=(const GpuDecode&) = delete;
 
-    // The D3D11VA device a decoder opens with. Any thread.
-    AVBufferRef* device() const;
-
-    // Whether textures() takes this decoded frame: a hardware frame of 8-bit 4:2:0.
-    bool takes(const AVFrame& frame) const;
-    // The frame's luma (R8) and chroma (RG8) as textures; null ones when it cannot. Waits for the GPU to copy the
-    // picture and for nothing else. One thread at a time (the source's decode thread), never the render thread.
-    std::array<gpu::Texture, 2> textures(const AVFrame& frame);
+    // The hardware device context a decoder is opened with.
+    AVBufferRef* device() const { return device_; }
+    // Whether `textures` can take this decoded frame as it is: an 8-bit NV12 picture of exactly width x height (both
+    // even) that no other queue family owns. A frame it refuses comes back through av_hwframe_transfer_data. Any
+    // thread.
+    bool takes(const AVFrame& frame, int width, int height) const;
+    // The frame's luma (R8) and chroma (RG8) as textures of their own, copied on the GPU, waiting for the copy; null
+    // on failure. Decode thread, never the render thread.
+    std::array<gpu::Texture, 2> textures(const AVFrame& frame) const;
 
 private:
-    struct Impl;
-    explicit GpuDecode(std::unique_ptr<Impl> impl);
-    std::unique_ptr<Impl> impl_;
+    GpuDecode(const gpu::Device& device, AVBufferRef* context) : gpu_(device), device_(context) {}
+
+    gpu::Device gpu_;
+    AVBufferRef* device_ = nullptr;
 };
 
 } // namespace azl

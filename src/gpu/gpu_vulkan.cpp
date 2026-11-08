@@ -169,10 +169,12 @@ struct DeviceObject : std::enable_shared_from_this<DeviceObject> {
     VkPhysicalDeviceProperties properties{};
     VkPhysicalDeviceMemoryProperties memory{};
     uint32_t family = 0;
+    uint32_t familyQueues = 0;
+    // The first queue of `family` the backend uses; those before it belong to the video decoder.
+    uint32_t firstQueue = 0;
+    std::unique_ptr<vulkan::VideoDecodeDevice> video;
     bool timestamps = false;
     bool presentWait = false;
-    // Windows: the adapter's LUID when the device can import D3D11 textures, else 0.
-    uint64_t sharingAdapter = 0;
     std::shared_mutex presentationMutex;
     VkDeviceSize uniformAlign = 256;
     PFN_vkCmdPushDescriptorSetKHR pushDescriptorSet = nullptr;
@@ -418,29 +420,6 @@ void beginRecording(VkCommandBuffer cmd)
     VkCommandBufferBeginInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &info);
-}
-
-// The uploader's next command buffer, recording once its previous submission is done; null when that wait failed.
-// Under uploader.mutex.
-Uploader::Recording* beginUpload(DeviceObject& d)
-{
-    Uploader& u = d.uploader;
-    Uploader::Recording& rec = u.recordings[u.next++ % kUploadCommands];
-    if (rec.value && !waitReached(d, u.slot->timeline, rec.value))
-        return nullptr;
-    vkResetCommandPool(d.device, rec.pool, 0);
-    beginRecording(rec.cmd);
-    return &rec;
-}
-
-// Ends and submits what beginUpload began, returning the timeline value its completion signals. Under uploader.mutex.
-uint64_t submitUpload(DeviceObject& d, Uploader::Recording& rec)
-{
-    vkEndCommandBuffer(rec.cmd);
-    VkCommandBufferSubmitInfo cmd{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cmd.commandBuffer = rec.cmd;
-    std::vector<VkSemaphoreSubmitInfo> none, signals;
-    return rec.value = submit(d, *d.uploader.slot, &cmd, 1, none, signals, nullptr);
 }
 
 VkCommandBuffer prologue(CommandObject* c)
@@ -843,7 +822,75 @@ bool calibratesHostClock(VkInstance instance, VkPhysicalDevice physical, const c
     return has(VK_TIME_DOMAIN_DEVICE_KHR) && has(kHostDomain);
 }
 
-bool makeLogical(DeviceObject& d, uint32_t queues)
+// The queue family that decodes video with the most queues; -1 when there is none.
+int decodeFamily(VkPhysicalDevice physical)
+{
+    uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, families.data());
+    int best = -1;
+    for (uint32_t i = 0; i < count; ++i)
+        if ((families[i].queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) &&
+            (best < 0 || families[i].queueCount > families[size_t(best)].queueCount))
+            best = int(i);
+    return best;
+}
+
+// Reserves what Vulkan Video decode needs: its extensions, a decode family and one queue of the main family for the
+// decoder's own transfers. Leaves `video` empty, and `queues` as it was, when the device cannot.
+void planVideoDecode(DeviceObject& d, const std::vector<VkExtensionProperties>& available,
+                     std::vector<const char*>& extensions, uint32_t& queues,
+                     std::vector<VkDeviceQueueCreateInfo>& queueInfos, std::vector<float>& videoPriorities)
+{
+    constexpr std::array<const char*, 3> kRequired{VK_KHR_VIDEO_QUEUE_EXTENSION_NAME,
+                                                   VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME,
+                                                   VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME};
+    const int family = decodeFamily(d.physical);
+    const bool all = std::all_of(kRequired.begin(), kRequired.end(),
+                                 [&](const char* name) { return hasExtension(available, name); });
+    if (family < 0 || !all || d.familyQueues < 2 || uint32_t(family) == d.family)
+        return;
+    auto video = std::make_unique<vulkan::VideoDecodeDevice>();
+    video->extensions.assign(kRequired.begin(), kRequired.end());
+    if (hasExtension(available, VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME))
+        video->extensions.push_back(VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME);
+    extensions.insert(extensions.end(), video->extensions.begin(), video->extensions.end());
+    uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(d.physical, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> properties(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(d.physical, &count, properties.data());
+    const uint32_t videoQueues = std::min(properties[size_t(family)].queueCount, 4u);
+    video->families = {{d.family, 1, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT},
+                       {uint32_t(family), videoQueues, VK_QUEUE_VIDEO_DECODE_BIT_KHR}};
+    d.firstQueue = 1;
+    queues = std::min(d.familyQueues - 1, 4u);
+    videoPriorities.assign(videoQueues, 1.0f);
+    VkDeviceQueueCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+    info.queueFamilyIndex = uint32_t(family);
+    info.queueCount = videoQueues;
+    info.pQueuePriorities = videoPriorities.data();
+    queueInfos.push_back(info);
+    d.video = std::move(video);
+}
+
+// What the decoder is told the device was made with: the features the backend enables.
+void describeVideoDecode(DeviceObject& d)
+{
+    vulkan::VideoDecodeDevice& v = *d.video;
+    v.getInstanceProcAddr = vkGetInstanceProcAddr;
+    v.instance = d.instance;
+    v.physicalDevice = d.physical;
+    v.logicalDevice = d.device;
+    v.features12.timelineSemaphore = VK_TRUE;
+    v.features13.synchronization2 = VK_TRUE;
+    v.features13.dynamicRendering = VK_TRUE;
+    v.features12.pNext = &v.features13;
+    v.features.pNext = &v.features12;
+    v.features.features.textureCompressionBC = VK_TRUE;
+}
+
+bool makeLogical(DeviceObject& d, uint32_t& queues, bool withVideo = true)
 {
     uint32_t count = 0;
     vkEnumerateDeviceExtensionProperties(d.physical, nullptr, &count, nullptr);
@@ -861,20 +908,6 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
         calibration = nullptr;
     if (calibration)
         extensions.push_back(calibration);
-
-#if defined(_WIN32)
-    if (hasExtension(available, VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME) &&
-        hasExtension(available, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME)) {
-        VkPhysicalDeviceIDProperties id{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
-        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &id};
-        vkGetPhysicalDeviceProperties2(d.physical, &properties);
-        if (id.deviceLUIDValid) {
-            std::memcpy(&d.sharingAdapter, id.deviceLUID, sizeof(d.sharingAdapter));
-            extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
-            extensions.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
-        }
-    }
-#endif
 
     VkPhysicalDevicePresentWaitFeaturesKHR hasWait{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR};
     VkPhysicalDevicePresentIdFeaturesKHR hasId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR, &hasWait};
@@ -911,18 +944,31 @@ bool makeLogical(DeviceObject& d, uint32_t queues)
     use.features.shaderStorageImageWriteWithoutFormat = has.features.shaderStorageImageWriteWithoutFormat;
     use.features.shaderStorageImageReadWithoutFormat = has.features.shaderStorageImageReadWithoutFormat;
 
-    const std::vector<float> priorities(queues, 1.0f);
-    VkDeviceQueueCreateInfo queue{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-    queue.queueFamilyIndex = d.family;
-    queue.queueCount = queues;
-    queue.pQueuePriorities = priorities.data();
+    std::vector<VkDeviceQueueCreateInfo> queueInfos(1);
+    std::vector<float> videoPriorities;
+    if (withVideo)
+        planVideoDecode(d, available, extensions, queues, queueInfos, videoPriorities);
+    const std::vector<float> priorities(d.firstQueue + queues, 1.0f);
+    queueInfos[0] = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+    queueInfos[0].queueFamilyIndex = d.family;
+    queueInfos[0].queueCount = d.firstQueue + queues;
+    queueInfos[0].pQueuePriorities = priorities.data();
     VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &use};
-    info.queueCreateInfoCount = 1;
-    info.pQueueCreateInfos = &queue;
+    info.queueCreateInfoCount = uint32_t(queueInfos.size());
+    info.pQueueCreateInfos = queueInfos.data();
     info.enabledExtensionCount = uint32_t(extensions.size());
     info.ppEnabledExtensionNames = extensions.data();
-    if (vkCreateDevice(d.physical, &info, nullptr, &d.device) != VK_SUCCESS)
-        return false;
+    if (vkCreateDevice(d.physical, &info, nullptr, &d.device) != VK_SUCCESS) {
+        if (!d.video)
+            return false;
+        std::fprintf(stderr, "vulkan: the driver refused the video decode queues; video decodes on the CPU\n");
+        d.video.reset();
+        d.firstQueue = 0;
+        queues = std::min(d.familyQueues, 4u);
+        return makeLogical(d, queues, false);
+    }
+    if (d.video)
+        describeVideoDecode(d);
     d.pushDescriptorSet = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
         vkGetDeviceProcAddr(d.device, "vkCmdPushDescriptorSetKHR"));
     if (calibration)
@@ -943,6 +989,7 @@ bool pickFamily(DeviceObject& d, uint32_t& queues)
     for (uint32_t i = 0; i < count; ++i)
         if ((families[i].queueFlags & kNeed) == kNeed) {
             d.family = i;
+            d.familyQueues = families[i].queueCount;
             queues = std::min(families[i].queueCount, 4u);
             d.timestamps = families[i].timestampValidBits > 0 && d.properties.limits.timestampComputeAndGraphics;
             return true;
@@ -1009,7 +1056,7 @@ std::shared_ptr<DeviceObject> makeDevice(std::string& problem)
     d->allocator.init(d->device, d->memory);
     for (uint32_t i = 0; i < queues; ++i) {
         auto slot = std::make_unique<QueueSlot>();
-        vkGetDeviceQueue(d->device, d->family, i, &slot->queue);
+        vkGetDeviceQueue(d->device, d->family, d->firstQueue + i, &slot->queue);
         slot->timeline = makeTimeline(d->device);
         d->slots.push_back(std::move(slot));
     }
@@ -1040,17 +1087,6 @@ TextureObject::~TextureObject()
         device->allocator.release(memory);
     }
 }
-
-#if defined(_WIN32)
-SharedPictureObject::~SharedPictureObject()
-{
-    for (size_t i = 0; i < images.size(); ++i) {
-        vkDestroyImage(device->device, images[i], nullptr);
-        vkFreeMemory(device->device, memories[i], nullptr);
-    }
-}
-
-#endif
 
 BufferObject::~BufferObject()
 {
@@ -1789,142 +1825,26 @@ bool Device::upload(const Texture& texture, uint32_t level, const void* data, si
         std::memcpy(u.memory.mapped + start + VkDeviceSize(r) * tight, static_cast<const uint8_t*>(data) + r * rowBytes,
                     tight);
 
-    vk::Uploader::Recording* rec = vk::beginUpload(d);
-    if (!rec)
+    vk::Uploader::Recording& rec = u.recordings[u.next++ % vk::kUploadCommands];
+    if (rec.value && !vk::waitReached(d, u.slot->timeline, rec.value))
         return false;
+    vkResetCommandPool(d.device, rec.pool, 0);
+    vk::beginRecording(rec.cmd);
     const bool whole = t->mipLevels == 1;
-    vk::barrier(rec->cmd, t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, whole);
+    vk::barrier(rec.cmd, t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, whole);
     const VkBufferImageCopy copy = vk::region(*t, level, start);
-    vkCmdCopyBufferToImage(rec->cmd, u.staging, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-    vk::barrier(rec->cmd, t, t->resting);
-    const uint64_t value = vk::submitUpload(d, *rec);
-    u.spans.push_back({start, end, value});
+    vkCmdCopyBufferToImage(rec.cmd, u.staging, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    vk::barrier(rec.cmd, t, t->resting);
+    vkEndCommandBuffer(rec.cmd);
+    VkCommandBufferSubmitInfo cmd{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmd.commandBuffer = rec.cmd;
+    std::vector<VkSemaphoreSubmitInfo> none, signals;
+    rec.value = vk::submit(d, *u.slot, &cmd, 1, none, signals, nullptr);
+    u.spans.push_back({start, end, rec.value});
+    const uint64_t value = rec.value;
     lock.unlock();
     return vk::waitReached(d, u.slot->timeline, value);
 }
-
-#if defined(_WIN32)
-uint64_t Device::sharingAdapter() const
-{
-    return handle_->sharingAdapter;
-}
-
-// Binds `image` (made with kHandleType's external memory info) to the D3D11 texture shared at `handle`.
-static bool importTexture(vk::DeviceObject& d, VkFormat format, void* handle, uint32_t width, uint32_t height, VkImage& image,
-                   VkDeviceMemory& memory)
-{
-    constexpr VkExternalMemoryHandleTypeFlagBits kHandleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
-    VkPhysicalDeviceExternalImageFormatInfo external{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO};
-    external.handleType = kHandleType;
-    VkPhysicalDeviceImageFormatInfo2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2, &external};
-    query.format = format;
-    query.type = VK_IMAGE_TYPE_2D;
-    query.tiling = VK_IMAGE_TILING_OPTIMAL;
-    query.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    VkExternalImageFormatProperties support{VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES};
-    VkImageFormatProperties2 properties{VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, &support};
-    if (vkGetPhysicalDeviceImageFormatProperties2(d.physical, &query, &properties) != VK_SUCCESS ||
-        !(support.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT))
-        return false;
-    VkExternalMemoryImageCreateInfo share{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
-    share.handleTypes = kHandleType;
-    VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, &share};
-    info.imageType = VK_IMAGE_TYPE_2D;
-    info.format = format;
-    info.extent = {width, height, 1};
-    info.mipLevels = 1;
-    info.arrayLayers = 1;
-    info.samples = VK_SAMPLE_COUNT_1_BIT;
-    info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    if (vkCreateImage(d.device, &info, nullptr, &image) != VK_SUCCESS)
-        return false;
-    VkMemoryRequirements req;
-    vkGetImageMemoryRequirements(d.device, image, &req);
-    const uint32_t type = d.memoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
-    VkMemoryDedicatedAllocateInfo dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
-    dedicated.image = image;
-    VkImportMemoryWin32HandleInfoKHR import{VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR, &dedicated};
-    import.handleType = kHandleType;
-    import.handle = handle;
-    VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &import};
-    alloc.allocationSize = req.size;
-    alloc.memoryTypeIndex = type;
-    return type != ~0u && vkAllocateMemory(d.device, &alloc, nullptr, &memory) == VK_SUCCESS &&
-           vkBindImageMemory(d.device, image, memory, 0) == VK_SUCCESS;
-}
-
-SharedPicture Device::importSharedPicture(void* lumaHandle, void* chromaHandle, uint32_t width, uint32_t height) const
-{
-    vk::DeviceObject& d = *handle_;
-    if (!d.sharingAdapter)
-        return {};
-    auto picture = std::make_shared<vk::SharedPictureObject>();
-    picture->device = handle_;
-    picture->widths = {width, width / 2};
-    picture->heights = {height, height / 2};
-    void* handles[2] = {lumaHandle, chromaHandle};
-    const VkFormat formats[2] = {VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM};
-    for (size_t i = 0; i < 2; ++i)
-        if (!importTexture(d, formats[i], handles[i], picture->widths[i], picture->heights[i], picture->images[i],
-                           picture->memories[i]))
-            return {};
-    SharedPicture result;
-    result.handle_ = std::move(picture);
-    return result;
-}
-
-bool Device::copyPicture(const SharedPicture& picture, const Texture& luma, const Texture& chroma) const
-{
-    vk::DeviceObject& d = *handle_;
-    vk::SharedPictureObject* source = picture.handle_.get();
-    vk::TextureObject* targets[2] = {luma.native(), chroma.native()};
-    if (!source || !targets[0] || !targets[1])
-        return false;
-
-    std::unique_lock lock(d.uploader.mutex);
-    vk::Uploader::Recording* rec = vk::beginUpload(d);
-    if (!rec)
-        return false;
-    // The textures' contents are D3D11's: a transition out of undefined would discard them.
-    const auto own = [&](VkImage image, uint32_t from, uint32_t to) {
-        VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        b.dstStageMask = to == VK_QUEUE_FAMILY_EXTERNAL ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-        b.dstAccessMask = to == VK_QUEUE_FAMILY_EXTERNAL ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_READ_BIT;
-        b.oldLayout = b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        b.srcQueueFamilyIndex = from;
-        b.dstQueueFamilyIndex = to;
-        b.image = image;
-        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        return b;
-    };
-    const auto transfer = [&](uint32_t from, uint32_t to) {
-        const std::array<VkImageMemoryBarrier2, 2> barriers{own(source->images[0], from, to),
-                                                            own(source->images[1], from, to)};
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.imageMemoryBarrierCount = 2;
-        dependency.pImageMemoryBarriers = barriers.data();
-        vkCmdPipelineBarrier2(rec->cmd, &dependency);
-    };
-    transfer(VK_QUEUE_FAMILY_EXTERNAL, d.family);
-    for (size_t i = 0; i < 2; ++i) {
-        vk::barrier(rec->cmd, targets[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
-        VkImageCopy copy{};
-        copy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        copy.extent = {source->widths[i], source->heights[i], 1};
-        vkCmdCopyImage(rec->cmd, source->images[i], VK_IMAGE_LAYOUT_GENERAL, targets[i]->image,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-        vk::barrier(rec->cmd, targets[i], targets[i]->resting);
-    }
-    transfer(d.family, VK_QUEUE_FAMILY_EXTERNAL);
-    const uint64_t value = vk::submitUpload(d, *rec);
-    lock.unlock();
-    return vk::waitReached(d, d.uploader.slot->timeline, value);
-}
-#endif
 
 ShaderModule Device::makeShaderModule(const ShaderSource& source, std::string* error) const
 {
@@ -2240,6 +2160,66 @@ VkDevice logicalDevice(const Device& device)
 uint32_t queueFamily(const Device& device)
 {
     return device.native()->family;
+}
+
+const VideoDecodeDevice* videoDecode(const Device& device)
+{
+    return device.native()->video.get();
+}
+
+bool copyDecodedPlanes(const Device& device, const DecodedImage& image, const Texture& luma, const Texture& chroma,
+                       const std::function<void(bool)>& submitted)
+{
+    vk::DeviceObject& d = *device.native();
+    vk::Uploader& u = d.uploader;
+    vk::TextureObject* lumaTexture = luma.native();
+    vk::TextureObject* chromaTexture = chroma.native();
+    std::unique_lock lock(u.mutex);
+    vk::Uploader::Recording& rec = u.recordings[u.next++ % vk::kUploadCommands];
+    if (rec.value && !vk::waitReached(d, u.slot->timeline, rec.value)) {
+        submitted(false);
+        return false;
+    }
+    vkResetCommandPool(d.device, rec.pool, 0);
+    vk::beginRecording(rec.cmd);
+    VkImageMemoryBarrier2 acquire{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    acquire.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    acquire.srcAccessMask = image.access;
+    acquire.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    acquire.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+    acquire.oldLayout = image.layout;
+    acquire.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    acquire.srcQueueFamilyIndex = acquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    acquire.image = image.image;
+    acquire.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.imageMemoryBarrierCount = 1;
+    dependency.pImageMemoryBarriers = &acquire;
+    vkCmdPipelineBarrier2(rec.cmd, &dependency);
+    const auto copyPlane = [&](VkImageAspectFlagBits plane, vk::TextureObject* to, uint32_t width, uint32_t height) {
+        vk::barrier(rec.cmd, to, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
+        VkImageCopy region{};
+        region.srcSubresource = {VkImageAspectFlags(plane), 0, 0, 1};
+        region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.extent = {width, height, 1};
+        vkCmdCopyImage(rec.cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to->image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        vk::barrier(rec.cmd, to, to->resting);
+    };
+    copyPlane(VK_IMAGE_ASPECT_PLANE_0_BIT, lumaTexture, image.width, image.height);
+    copyPlane(VK_IMAGE_ASPECT_PLANE_1_BIT, chromaTexture, image.width / 2, image.height / 2);
+    vkEndCommandBuffer(rec.cmd);
+    VkCommandBufferSubmitInfo cmd{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmd.commandBuffer = rec.cmd;
+    std::vector<VkSemaphoreSubmitInfo> waits{{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, nullptr, image.semaphore,
+                                              image.value, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0}};
+    std::vector<VkSemaphoreSubmitInfo> signals{{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, nullptr, image.semaphore,
+                                                image.value + 1, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0}};
+    rec.value = vk::submit(d, *u.slot, &cmd, 1, waits, signals, nullptr);
+    const uint64_t value = rec.value;
+    lock.unlock();
+    submitted(true);
+    return vk::waitReached(d, u.slot->timeline, value);
 }
 
 uint64_t validationErrors()

@@ -175,7 +175,7 @@ jobs:
   # this build.
   windows:
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 180
     env:
       VCPKG_ROOT: C:\vcpkg-nocturne
       VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-archives
@@ -229,6 +229,7 @@ jobs:
           "CXX=clang-cl" >> $env:GITHUB_ENV
       - uses: ./.github/actions/vulkan-sdk
       - name: Configure
+        timeout-minutes: 120
         # Embedded debug info (/Z7) keeps it in the object files, which sccache can cache; /Zi writes a shared PDB it
         # cannot.
         run: >

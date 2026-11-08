@@ -15,6 +15,8 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <mutex>
+#include <set>
 #include <thread>
 
 namespace azl {
@@ -76,9 +78,8 @@ bool deepOf(const AVCodecParameters* p)
     return format && format->comp[0].depth > 8;
 }
 
-// The hardware decoder clips larger than 1080p share when GpuDecode is unavailable: D3D11VA (NVDEC on NVIDIA, the
-// vendor's decoder elsewhere), then CUDA. Null when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip
-// decodes on the CPU.
+// The hardware decoder every clip larger than 1080p shares: D3D11VA (NVDEC on NVIDIA, the vendor's decoder elsewhere),
+// then CUDA. Null when there is none or NOCTURNE_SOFTWARE_DECODE is set, and every clip decodes on the CPU.
 struct Hardware {
     AVBufferRef* device = nullptr;
     AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
@@ -103,8 +104,8 @@ const Hardware& hardware()
     return shared;
 }
 
-// Without GpuDecode, up to 1080p the CPU decodes a frame faster than the GPU does and hands it back: a GPU-decoded
-// picture comes back to system memory through a wait for the GPU, behind the render thread's work.
+// Larger than 1080p, where GpuDecode is not used and the shared hardware decoder reads frames back. Up to 1080p the CPU
+// decodes a frame faster than that readback, which waits for the GPU behind the render thread's work.
 bool worthHardware(const AVCodecParameters* p)
 {
     return int64_t(p->width) * p->height > int64_t(1920) * 1080;
@@ -143,6 +144,8 @@ struct Stream {
     double fps = 0.0;
     HapCodec hap = HapCodec::None;
     bool deep = false;
+    int width = 0;
+    int height = 0;
     YuvMatrix matrix = YuvMatrix::Rec709;
     bool fullRange = false;
     // The demuxer's timestamp of each keyframe by frame index, where readers seek to start there.
@@ -215,25 +218,42 @@ private:
         AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
         if (gpu_) {
             device = gpu_->device();
-            type = AV_HWDEVICE_TYPE_D3D11VA;
+            type = AV_HWDEVICE_TYPE_VULKAN;
         } else if (const Hardware& h = hardware(); h.device && worthHardware(parameters)) {
             device = h.device;
             type = h.type;
         }
         const AVPixelFormat wanted = device ? hardwareFormat(codec, type) : AV_PIX_FMT_NONE;
-        if (wanted == AV_PIX_FMT_NONE)
+        if (wanted == AV_PIX_FMT_NONE) {
+            if (gpu_)
+                logCpuFallback(codec, "no Vulkan hardware decoder for it");
             return false;
+        }
         ff::Codec context = makeContext(codec, parameters);
         context->hw_device_ctx = av_buffer_ref(device);
         context->opaque = reinterpret_cast<void*>(intptr_t(wanted));
         context->get_format = pickFormat;
         // Frames the reader holds beyond the decoder's own reference frames: the last picture, until its textures exist.
         context->extra_hw_frames = 4;
-        if (avcodec_open2(context.get(), codec, nullptr) < 0)
+        if (const int error = avcodec_open2(context.get(), codec, nullptr); error < 0) {
+            if (gpu_)
+                logCpuFallback(codec, ff::describe(error));
             return false;
+        }
         codec_ = std::move(context);
         hardwareFormat_ = wanted;
         return true;
+    }
+
+    // Once per codec: the device has Vulkan Video but not for this stream (profile, size or codec).
+    static void logCpuFallback(const AVCodec* codec, const std::string& reason)
+    {
+        static std::mutex mutex;
+        static std::set<std::string> logged;
+        std::lock_guard lock(mutex);
+        if (logged.insert(codec->name).second)
+            std::fprintf(stderr, "nocturne: %s decodes on the CPU: the GPU does not decode this stream (%s)\n",
+                         codec->name, reason.c_str());
     }
 
     int seek()
@@ -312,7 +332,7 @@ private:
         SourceSample sample;
         const int64_t pts = frame->best_effort_timestamp != AV_NOPTS_VALUE ? frame->best_effort_timestamp : frame->pts;
         sample.index = stream_->frameIndex(pts);
-        if (gpu_ && gpu_->takes(*frame)) {
+        if (gpu_ && gpu_->takes(*frame, stream_->width, stream_->height)) {
             auto picture = std::make_shared<DecodedPicture>();
             picture->storage = std::shared_ptr<AVFrame>(frame.release(), ff::FrameFree());
             sample.picture = std::move(picture);
@@ -415,6 +435,8 @@ public:
             throw MediaError(MediaStatus::Unsupported, "a picture of " + std::to_string(parameters->width) + "x" +
                                                            std::to_string(parameters->height));
         stream->deep = deepOf(parameters);
+        stream->width = parameters->width;
+        stream->height = parameters->height;
         stream->matrix = matrixOf(parameters);
         stream->fullRange = fullRangeOf(parameters);
         track_.fps = stream->fps;
@@ -423,7 +445,8 @@ public:
         track_.turns = turnsOf(video);
         track_.hap = stream->hap;
         track_.pictureBytes = int64_t(track_.width) * track_.height * 3 / 2 * (stream->deep ? 2 : 1);
-        if (device_ && stream->hap == HapCodec::None && !stream->deep && !((track_.width | track_.height) & 1))
+        if (device_ && stream->hap == HapCodec::None && !stream->deep && !((track_.width | track_.height) & 1) &&
+            !worthHardware(parameters))
             gpu_ = GpuDecode::open(device_);
         indexKeyframes(*format, *stream);
         yuvToRgb_ = yuvToRgbRows(stream->matrix, stream->fullRange);

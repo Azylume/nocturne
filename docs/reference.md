@@ -102,9 +102,7 @@ A decode error mid-stream skips to the next keyframe while the layer holds its l
 
 Rotation metadata (phone videos) is honoured; variable frame rate files play by their timestamps, a gap showing the next frame. Off Apple the same decoder reads with FFmpeg.
 
-On Windows 8-bit H.264 and HEVC decode on the GPU through D3D11VA (NVDEC on NVIDIA) at any size, and a decoded picture never visits system memory: the decode thread copies it on the GPU into a texture D3D11 shares with the Vulkan device and from there into the clip's textures, so the render thread never waits for it. That needs the renderer's Vulkan device to import D3D11 textures (`VK_KHR_external_memory_win32`).
-
-Without it, 10-bit and odd-sized clips, other codecs and every clip with `NOCTURNE_SOFTWARE_DECODE=1` decode on the CPU, except clips larger than 1080p, which decode on D3D11VA (CUDA when D3D11VA is missing) and come back to system memory through a wait for the GPU on every frame (up to 1080p the CPU is faster than that); the log says which at the first clip. HAP files written on macOS and on Windows play on both.
+8-bit 4:2:0 H.264 and HEVC up to 1080p decode on the GPU through Vulkan Video (FFmpeg's Vulkan hwaccel on the renderer's own Vulkan device), and a decoded picture never visits system memory: the decode thread copies its luma and chroma planes on the GPU into the clip's textures, so the render thread never waits for it. That needs a driver with `VK_KHR_video_decode_queue` and the H.264 extension, a queue family that decodes video and a second queue in the main family; a stream the driver refuses (profile, size, codec) decodes on the CPU, as do 10-bit and odd-sized clips and every clip with `NOCTURNE_SOFTWARE_DECODE=1`. Clips larger than 1080p decode on D3D11VA (CUDA when D3D11VA is missing) and come back to system memory through a wait for the GPU on every frame (up to 1080p the CPU is faster than that). The log says which at the first clip, and once per codec the GPU cannot take. HAP files written on macOS and on Windows play on both.
 
 ### Start-up
 
