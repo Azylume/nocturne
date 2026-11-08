@@ -539,7 +539,7 @@ One window: transport bar, Perform (composition monitor with a view selector for
 
 Clicking a thumbnail triggers, clicking a name selects, clicking a column header triggers the column; media drags from the browser or the Finder (local engine only) onto cells, a clip drags to another cell (Alt copies). A second click on a queued clip takes that layer's trigger back and Esc takes back all of them (`{"type": "trigger", "op": "cancel"[, "layer": L]}`).
 
-Cmd+Z / Cmd+Shift+Z and the Undo and Redo buttons (greyed when empty, the step's op as tooltip) follow the engine's history: every change and snapshot carries `"history": {"undo", "redo", "undoOp", "redoOp"}`, and the commands of one mouse drag or compound action carry the same `"gesture"` number, so the engine makes them one undo step (a drag keeps only its first inverse and its last value; moving a clip is two cells in one step).
+Cmd+Z / Cmd+Shift+Z and Edit > Undo and Redo (greyed when empty) follow the engine's history: every change and snapshot carries `"history": {"undo", "redo", "undoOp", "redoOp"}`, and the commands of one mouse drag or compound action carry the same `"gesture"` number, so the engine makes them one undo step (a drag keeps only its first inverse and its last value; moving a clip is two cells in one step).
 
 An edit that removes a layer or an effect (or replaces it with its clip) takes the macro targets, modulators and Cue steps on it along in the same step, undone together; the change carries a `"notice"` naming them, which the UI shows in the status area.
 
@@ -564,7 +564,13 @@ Menu bar (macOS): File (New Cmd+N: an empty composition in one undo step, the sc
 
 
 
-Each item runs the handler of its button and is greyed when it does not apply (Open and Save while disconnected, Undo and Redo with an empty history, clip commands and Browser off Perform); the menu is built in `src/ui/app/menu_bar.*`. The transport bar also has the composition file (name, an unsaved dot, Save and Open on the engine machine, Cmd+S), nudge held on - and +, /2 and x2, and the Section buttons (`cue mark`, lit while that Section plays).
+Each item runs the handler of its button and is greyed when it does not apply (Open and Save while disconnected, Undo and Redo with an empty history, clip commands and Browser off Perform); the menu is built in `src/ui/app/menu_bar.*`. The top bar has Open, Save and Save As only in the File menu (on the engine machine) and Undo and Redo only in the Edit menu.
+
+It is laid out in groups with a wider gap between them: the venue, the Perform, Map and Machines tabs and Prepare (Live or Prepare stays in the bar because Send, At switch and Discard appear next to it while it is on); the tempo (BPM, nudge held on - and +, /2 and x2, TAP, Resync, the beat, quantisation); the Section buttons (`cue mark`, lit while that Section plays); REC with its audio label, Previews and Settings; then the composition's name, quiet, with an unsaved dot, and the engine's status.
+
+Settings > Top bar switches the tempo, Sections and recording groups off (all on by default, kept per machine in `UI.settings` as `barTransport`, `barSections` and `barRecording`); a hidden group takes no space and the rest use it.
+
+As the window narrows the bar drops, in this order, the recording audio label, Previews (View > Previews has it), the beat and the Section buttons (which become one Sections menu button showing the current Section) and the nudge; the status shrinks to a dot when almost nothing is left.
 
 The middle pane has Macros, Autopilot (buttons per layer), Cues (by Section, add and remove) and History (the steps as this UI saw them).
 
