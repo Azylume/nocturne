@@ -45,7 +45,7 @@ bool refusedWith(const Message& reply, const std::string& text)
 
 // A home folder with ~/Nocturne/shows and ~/Nocturne/media, so settings paths are confined to it.
 struct Home {
-    Home() : env("HOME", root.path.c_str())
+    Home() : env("HOME", root.path.string().c_str())
     {
         fs::create_directories(shows());
         fs::create_directories(media());

@@ -59,7 +59,9 @@ namespace {
 
 // A home folder with a stand-in launchctl that records its arguments; the real launchd is never asked.
 struct StubLaunchctl {
-    StubLaunchctl() : home("HOME", root.path.c_str()), program("NOCTURNE_LAUNCHCTL", (root.path / "launchctl").c_str())
+    StubLaunchctl()
+        : home("HOME", root.path.string().c_str()),
+          program("NOCTURNE_LAUNCHCTL", (root.path / "launchctl").string().c_str())
     {
         writeFile(root.path / "launchctl", "#!/bin/sh\necho \"$@\" >> \"" + (root.path / "calls").string() +
                                                "\"\n"
